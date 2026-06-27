@@ -1,5 +1,6 @@
 import type { Story } from './prd.js'
 import { execFileSync } from 'node:child_process'
+import type { Agent } from '../retrofit/config.js'
 
 export interface AgentContext {
   targetDir: string
@@ -28,7 +29,7 @@ export function buildClaudePrompt(story: Story): string {
   ].join('\n')
 }
 
-export interface ClaudeInvocation {
+export interface Invocation {
   command: string
   args: string[]
   options: {
@@ -39,14 +40,20 @@ export interface ClaudeInvocation {
   }
 }
 
-// Build the cross-platform invocation for `claude -p`. The prompt is passed via
-// stdin (documented `claude -p` usage), so it needs no shell escaping. On Windows
-// `claude` is a `.cmd` shim that execFileSync cannot resolve via PATHEXT without a
-// shell, so shell mode is enabled there (the only arg is the safe literal `-p`).
-export function claudeInvocation(prompt: string, cwd: string): ClaudeInvocation {
+const AGENT_SPECS: Record<Agent, { command: string; baseArgs: string[] }> = {
+  claude: { command: 'claude', baseArgs: ['-p'] },
+  codex: { command: 'codex', baseArgs: ['exec'] },
+  gemini: { command: 'gemini', baseArgs: ['-p'] },
+}
+
+// Build a cross-platform headless invocation for an agent. The prompt goes via
+// stdin (so it needs no shell escaping); shell mode is enabled on Windows so the
+// agent's `.cmd` shim resolves via PATHEXT (the only args are safe literal flags).
+export function agentInvocation(agent: Agent, prompt: string, cwd: string): Invocation {
+  const spec = AGENT_SPECS[agent]
   return {
-    command: 'claude',
-    args: ['-p'],
+    command: spec.command,
+    args: spec.baseArgs,
     options: {
       cwd,
       input: prompt,
@@ -56,15 +63,38 @@ export function claudeInvocation(prompt: string, cwd: string): ClaudeInvocation 
   }
 }
 
-export function claudeRunner(ctx: AgentContext): AgentResult {
-  const prompt = buildClaudePrompt(ctx.story)
-  const inv = claudeInvocation(prompt, ctx.targetDir)
+export function claudeInvocation(prompt: string, cwd: string): Invocation {
+  return agentInvocation('claude', prompt, cwd)
+}
+
+export function makeRunner(agent: Agent): AgentRunner {
+  return (ctx: AgentContext): AgentResult => {
+    const inv = agentInvocation(agent, buildClaudePrompt(ctx.story), ctx.targetDir)
+    try {
+      // NOTE: The loop trusts the agent's exit code as a proxy for "it ran".
+      // Independent test verification happens in the loop (Baustein C2), not here.
+      execFileSync(inv.command, inv.args, inv.options)
+      return { success: true, summary: `${agent} implemented ${ctx.story.id}` }
+    } catch (e) {
+      return { success: false, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}` }
+    }
+  }
+}
+
+export const claudeRunner: AgentRunner = makeRunner('claude')
+
+// Probe whether the agent's CLI is on PATH (so the loop can refuse upfront with a
+// clear message instead of failing mid-run with spawn ENOENT). Never throws.
+export function isAgentAvailable(agent: Agent): boolean {
+  const spec = AGENT_SPECS[agent]
   try {
-    // NOTE: The loop trusts claude's exit code as a proxy for "tests green".
-    // There is no independent test run here. Full verification is deferred to C2.
-    execFileSync(inv.command, inv.args, inv.options)
-    return { success: true, summary: `claude implemented ${ctx.story.id}` }
-  } catch (e) {
-    return { success: false, summary: `claude failed on ${ctx.story.id}: ${(e as Error).message}` }
+    execFileSync(spec.command, ['--version'], {
+      stdio: 'pipe',
+      shell: process.platform === 'win32',
+      timeout: 5000,
+    })
+    return true
+  } catch {
+    return false
   }
 }

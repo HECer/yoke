@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, claudeInvocation } from '../../src/loop/runner.js'
+import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable } from '../../src/loop/runner.js'
 import type { Story } from '../../src/loop/prd.js'
 
 const story: Story = {
@@ -36,5 +36,40 @@ describe('claudeInvocation', () => {
   it('uses shell mode only on Windows (to resolve the claude.cmd shim)', () => {
     const inv = claudeInvocation('p', '/work')
     expect(inv.options.shell).toBe(process.platform === 'win32')
+  })
+})
+
+describe('agentInvocation', () => {
+  it('maps codex to `codex exec` with the prompt on stdin', () => {
+    const inv = agentInvocation('codex', 'P', '/w')
+    expect(inv.command).toBe('codex')
+    expect(inv.args).toEqual(['exec'])
+    expect(inv.options.input).toBe('P')
+    expect(inv.args).not.toContain('P')
+  })
+
+  it('maps gemini to `gemini -p` with the prompt on stdin', () => {
+    const inv = agentInvocation('gemini', 'P', '/w')
+    expect(inv.command).toBe('gemini')
+    expect(inv.args).toEqual(['-p'])
+    expect(inv.options.input).toBe('P')
+  })
+
+  it('claude back-compat: claudeInvocation equals agentInvocation(claude)', () => {
+    expect(claudeInvocation('P', '/w')).toEqual(agentInvocation('claude', 'P', '/w'))
+  })
+
+  it('uses shell mode only on Windows for every agent', () => {
+    expect(agentInvocation('gemini', 'P', '/w').options.shell).toBe(process.platform === 'win32')
+  })
+})
+
+describe('makeRunner / isAgentAvailable', () => {
+  it('makeRunner returns a callable AgentRunner', () => {
+    expect(typeof makeRunner('codex')).toBe('function')
+  })
+
+  it('isAgentAvailable returns a boolean and never throws', () => {
+    expect(typeof isAgentAvailable('claude')).toBe('boolean')
   })
 })
