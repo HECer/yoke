@@ -1,0 +1,16 @@
+name: forge-canon
+version: 0.1.0
+agents: [claude, codex, gemini]
+skills:
+  - { id: tdd, path: skills/tdd, kind: methodology }
+  - { id: eng-review, path: skills/eng-review, kind: role }
+policy:
+  - { path: policy/gates.md }
+  - { path: policy/roles.md }
+loop:
+  spec: loop/loop-spec.md
+  prdSchema: loop/prd.schema.md
+tools:
+  - { id: rtk, path: tools/rtk.md }
+  - { id: graphify, path: tools/graphify.md }
+  - { id: playwright-mcp, path: tools/playwright-mcp.md }
