@@ -87,10 +87,16 @@ function main(argv: string[]): number {
           console.error(`Invalid --max value: ${maxArg}`)
           return 1
         }
-        const maxIterations = rawMax
-        return runLoopCommand(targetDir, { maxIterations })
+        const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
+        const valid = ['claude', 'codex', 'gemini']
+        const agent = runnerArg && valid.includes(runnerArg) ? (runnerArg as Agent) : undefined
+        if (runnerArg && !agent) {
+          console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini)`)
+          return 1
+        }
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent })
       }
-      console.log('usage: forge loop <on|off|status|run [--max=N]> [targetDir]')
+      console.log('usage: forge loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>]> [targetDir]')
       return 1
     }
     default:
