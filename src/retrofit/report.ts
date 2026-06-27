@@ -16,7 +16,7 @@ export function formatReport(applied: AppliedAction[], meta: ReportMeta): string
   }
   lines.push('')
   lines.push(`Detected agents: ${meta.detectedAgents.length ? meta.detectedAgents.join(', ') : 'none'}`)
-  lines.push(`Summary: ${count('created')} created, ${count('overwritten')} overwritten, ${count('unchanged')} unchanged`)
+  lines.push(`Summary: ${count('created')} created, ${count('overwritten')} overwritten, ${count('merged')} merged, ${count('unchanged')} unchanged`)
   lines.push(`Loop: ${meta.loopEnabled ? 'enabled' : 'disabled'}`)
   return lines.join('\n')
 }
