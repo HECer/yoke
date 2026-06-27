@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { loadManifest } from './manifest.js'
+import { loadManifest, type Manifest } from './manifest.js'
 import { parseFrontmatter } from './frontmatter.js'
 
 export interface Issue {
@@ -15,7 +15,7 @@ export function validateCanon(canonDir: string): Issue[] {
     return [{ level: 'error', message: `manifest.yaml not found in ${canonDir}` }]
   }
 
-  let manifest
+  let manifest: Manifest
   try {
     manifest = loadManifest(manifestPath)
   } catch (e) {

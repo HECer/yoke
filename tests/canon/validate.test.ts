@@ -65,6 +65,36 @@ describe('validateCanon', () => {
     expect(validateCanon(dir).some(i => i.message.includes('policy file not found'))).toBe(true)
   })
 
+  it('flags a missing loop.spec file', () => {
+    seedValidCanon()
+    rmSync(join(dir, 'loop/loop-spec.md'))
+    expect(validateCanon(dir).some(i => i.message.includes('loop.spec not found'))).toBe(true)
+  })
+
+  it('flags a missing tool path', () => {
+    seedValidCanon()
+    rmSync(join(dir, 'tools/rtk.md'))
+    expect(validateCanon(dir).some(i => i.message.includes('tool rtk: path not found'))).toBe(true)
+  })
+
+  it('flags duplicate tool ids', () => {
+    seedValidCanon()
+    write('manifest.yaml', `
+name: c
+version: 0.1.0
+agents: [claude]
+skills:
+  - { id: tdd, path: skills/tdd, kind: methodology }
+policy:
+  - { path: policy/gates.md }
+loop: { spec: loop/loop-spec.md, prdSchema: loop/prd.schema.md }
+tools:
+  - { id: rtk, path: tools/rtk.md }
+  - { id: rtk, path: tools/rtk.md }
+`)
+    expect(validateCanon(dir).some(i => i.message.includes('duplicate tool id'))).toBe(true)
+  })
+
   it('flags duplicate skill ids', () => {
     seedValidCanon()
     write('manifest.yaml', `

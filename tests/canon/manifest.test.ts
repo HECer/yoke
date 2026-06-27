@@ -1,14 +1,19 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { loadManifest } from '../../src/canon/manifest.js'
 
+let dir: string
+
 function withManifest(yaml: string): string {
-  const dir = mkdtempSync(join(tmpdir(), 'forge-mani-'))
-  writeFileSync(join(dir, 'manifest.yaml'), yaml)
-  return join(dir, 'manifest.yaml')
+  const file = join(dir, 'manifest.yaml')
+  writeFileSync(file, yaml)
+  return file
 }
+
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'forge-mani-')) })
+afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('loadManifest', () => {
   it('parses a valid manifest', () => {
@@ -28,7 +33,6 @@ tools:
     expect(m.name).toBe('forge-canon')
     expect(m.agents).toEqual(['claude', 'codex', 'gemini'])
     expect(m.skills[0]).toMatchObject({ id: 'tdd', kind: 'methodology' })
-    rmSync(join(file, '..'), { recursive: true, force: true })
   })
 
   it('rejects an unknown agent', () => {
@@ -42,6 +46,5 @@ loop: { spec: a, prdSchema: b }
 tools: []
 `)
     expect(() => loadManifest(file)).toThrow()
-    rmSync(join(file, '..'), { recursive: true, force: true })
   })
 })

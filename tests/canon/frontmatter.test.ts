@@ -15,4 +15,9 @@ describe('parseFrontmatter', () => {
   it('returns null when there is no frontmatter', () => {
     expect(parseFrontmatter('# just a heading\n')).toBeNull()
   })
+
+  it('returns null when the frontmatter body is a YAML list', () => {
+    const md = '---\n- one\n- two\n---\nbody'
+    expect(parseFrontmatter(md)).toBeNull()
+  })
 })

@@ -1,10 +1,13 @@
 #!/usr/bin/env node
+import { pathToFileURL } from 'node:url'
 import { validateCanon } from './canon/validate.js'
 
 export function runValidate(canonDir: string): number {
   const issues = validateCanon(canonDir)
   for (const i of issues) {
-    console.log(`${i.level === 'error' ? 'ERROR' : 'warn '} ${i.message}`)
+    const line = `${i.level === 'error' ? 'ERROR' : 'warn '} ${i.message}`
+    if (i.level === 'error') console.error(line)
+    else console.log(line)
   }
   const errors = issues.filter(i => i.level === 'error')
   if (errors.length === 0) {
@@ -26,4 +29,7 @@ function main(argv: string[]): number {
   }
 }
 
-process.exit(main(process.argv.slice(2)))
+const isMain = process.argv[1] ? pathToFileURL(process.argv[1]).href === import.meta.url : false
+if (isMain) {
+  process.exit(main(process.argv.slice(2)))
+}
