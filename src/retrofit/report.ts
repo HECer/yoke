@@ -1,7 +1,9 @@
 import type { AppliedAction } from './apply.js'
+import type { Agent } from './config.js'
 
 export interface ReportMeta {
   loopEnabled: boolean
+  detectedAgents: Agent[]
 }
 
 export function formatReport(applied: AppliedAction[], meta: ReportMeta): string {
@@ -13,6 +15,7 @@ export function formatReport(applied: AppliedAction[], meta: ReportMeta): string
     lines.push(`  ${a.status.padEnd(11)} ${a.target}${note}`)
   }
   lines.push('')
+  lines.push(`Detected agents: ${meta.detectedAgents.length ? meta.detectedAgents.join(', ') : 'none'}`)
   lines.push(`Summary: ${count('created')} created, ${count('overwritten')} overwritten, ${count('unchanged')} unchanged`)
   lines.push(`Loop: ${meta.loopEnabled ? 'enabled' : 'disabled'}`)
   return lines.join('\n')

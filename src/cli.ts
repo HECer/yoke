@@ -5,6 +5,7 @@ import { resolveCanonDir } from './retrofit/canon-dir.js'
 import { planClaudeRetrofit } from './retrofit/plan.js'
 import { applyActions } from './retrofit/apply.js'
 import { formatReport } from './retrofit/report.js'
+import { detectProject } from './retrofit/detect.js'
 import { loadConfig, saveConfig, defaultConfig, type ForgeConfig } from './retrofit/config.js'
 import { loadManifest } from './canon/manifest.js'
 import { join } from 'node:path'
@@ -26,6 +27,7 @@ export function runValidate(canonDir: string): number {
 }
 
 export function runRetrofit(targetDir: string, opts: { loop: boolean }): number {
+  const detection = detectProject(targetDir)
   const canonDir = resolveCanonDir()
   const canonVersion = loadManifest(join(canonDir, 'manifest.yaml')).version
 
@@ -34,15 +36,17 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean }): number 
   const applied = applyActions(actions, targetDir, { backupDir })
 
   const existing = loadConfig(targetDir)
+  const priorAgents = existing?.agents ?? []
+  const agents = [...new Set([...priorAgents, 'claude' as const])]
   const config: ForgeConfig = {
     ...(existing ?? defaultConfig(canonVersion)),
     canonVersion,
-    agents: ['claude'],
+    agents,
     loop: { enabled: opts.loop },
   }
   saveConfig(targetDir, config)
 
-  console.log(formatReport(applied, { loopEnabled: config.loop.enabled }))
+  console.log(formatReport(applied, { loopEnabled: config.loop.enabled, detectedAgents: detection.agents }))
   return 0
 }
 

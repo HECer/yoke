@@ -8,7 +8,11 @@ export function resolveCanonDir(): string {
   let dir = dirname(fileURLToPath(import.meta.url))
   for (let i = 0; i < 10; i++) {
     if (existsSync(join(dir, 'package.json'))) {
-      return join(dir, 'canon')
+      const canon = join(dir, 'canon')
+      if (existsSync(join(canon, 'manifest.yaml'))) {
+        return canon
+      }
+      throw new Error(`forge installation incomplete — canon/ missing at ${canon}`)
     }
     const parent = dirname(dir)
     if (parent === dir) break

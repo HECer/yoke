@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runRetrofit } from '../../src/cli.js'
-import { loadConfig } from '../../src/retrofit/config.js'
+import { loadConfig, saveConfig } from '../../src/retrofit/config.js'
 
 let target: string
 beforeEach(() => { target = mkdtempSync(join(tmpdir(), 'forge-retro-')) })
@@ -17,9 +17,18 @@ describe('forge retrofit (integration, Claude)', () => {
     expect(existsSync(join(target, 'CLAUDE.md'))).toBe(true)
     expect(existsSync(join(target, '.claude/skills/tdd/SKILL.md'))).toBe(true)
     expect(existsSync(join(target, '.claude/skills/eng-review/SKILL.md'))).toBe(true)
+    expect(existsSync(join(target, '.claude/skills/forge-retrofit/SKILL.md'))).toBe(true)
     const cfg = loadConfig(target)!
     expect(cfg.agents).toContain('claude')
     expect(cfg.loop.enabled).toBe(false)
+  })
+
+  it('additively merges claude into pre-existing agents', () => {
+    saveConfig(target, { canonVersion: '0.1.0', agents: ['codex'], loop: { enabled: false } })
+    runRetrofit(target, { loop: false })
+    const cfg = loadConfig(target)!
+    expect(cfg.agents).toContain('codex')
+    expect(cfg.agents).toContain('claude')
   })
 
   it('records loop enabled when --loop is passed', () => {
