@@ -9,6 +9,7 @@ import { detectProject } from './retrofit/detect.js'
 import { loadConfig, saveConfig, defaultConfig, type ForgeConfig } from './retrofit/config.js'
 import { loadManifest } from './canon/manifest.js'
 import { join } from 'node:path'
+import { setLoopEnabled, loopStatus, runLoopCommand } from './loop/run-command.js'
 
 export function runValidate(canonDir: string): number {
   const issues = validateCanon(canonDir)
@@ -60,8 +61,22 @@ function main(argv: string[]): number {
       const loop = rest.includes('--loop')
       return runRetrofit(targetDir, { loop })
     }
+    case 'loop': {
+      const sub = rest[0]
+      const targetDir = rest.slice(1).find(a => !a.startsWith('-')) ?? '.'
+      if (sub === 'on') { setLoopEnabled(targetDir, true); console.log('Loop enabled.'); return 0 }
+      if (sub === 'off') { setLoopEnabled(targetDir, false); console.log('Loop disabled.'); return 0 }
+      if (sub === 'status') { console.log(loopStatus(targetDir)); return 0 }
+      if (sub === 'run') {
+        const maxArg = rest.find(a => a.startsWith('--max='))
+        const maxIterations = maxArg ? Number(maxArg.slice('--max='.length)) : 25
+        return runLoopCommand(targetDir, { maxIterations })
+      }
+      console.log('usage: forge loop <on|off|status|run [--max=N]> [targetDir]')
+      return 1
+    }
     default:
-      console.log('usage: forge <validate [canonDir] | retrofit [targetDir] [--loop]>')
+      console.log('usage: forge <validate [canonDir] | retrofit [targetDir] [--loop] | loop <on|off|status|run>>')
       return cmd ? 1 : 0
   }
 }
