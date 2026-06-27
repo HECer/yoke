@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadConfig, saveConfig, defaultConfig } from '../../src/retrofit/config.js'
+import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand } from '../../src/retrofit/config.js'
+import { writeFileSync } from 'node:fs'
 
 let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'forge-cfg-')) })
@@ -22,5 +23,24 @@ describe('forge config', () => {
 
   it('defaultConfig has loop disabled', () => {
     expect(defaultConfig('0.1.0').loop.enabled).toBe(false)
+  })
+
+  it('round-trips an optional verify command', () => {
+    const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: false }, verify: { command: 'npm test' } }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)).toEqual(cfg)
+  })
+
+  it('resolveVerifyCommand prefers config.verify.command', () => {
+    expect(resolveVerifyCommand(dir, { canonVersion: '0', agents: [], loop: { enabled: true }, verify: { command: 'pytest' } })).toBe('pytest')
+  })
+
+  it('resolveVerifyCommand falls back to npm test when package.json has a test script', () => {
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'vitest run' } }))
+    expect(resolveVerifyCommand(dir, { canonVersion: '0', agents: [], loop: { enabled: true } })).toBe('npm test')
+  })
+
+  it('resolveVerifyCommand returns null when nothing is configured or detectable', () => {
+    expect(resolveVerifyCommand(dir, { canonVersion: '0', agents: [], loop: { enabled: true } })).toBeNull()
   })
 })
