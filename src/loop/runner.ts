@@ -88,6 +88,8 @@ export const claudeRunner: AgentRunner = makeRunner('claude')
 export function isAgentAvailable(agent: Agent): boolean {
   const spec = AGENT_SPECS[agent]
   try {
+    // Assumes the agent CLI supports `--version`; if not, the probe returns false
+    // (refuse-to-start) rather than a mid-run crash — an acceptable failure mode.
     execFileSync(spec.command, ['--version'], {
       stdio: 'pipe',
       shell: process.platform === 'win32',

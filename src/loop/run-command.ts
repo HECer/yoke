@@ -4,7 +4,7 @@ import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand } from '../
 import { loadPrd, progress } from './prd.js'
 import { runLoop } from './loop.js'
 import { realGitOps } from './git.js'
-import { claudeRunner, makeRunner, isAgentAvailable, type AgentRunner } from './runner.js'
+import { makeRunner, isAgentAvailable, type AgentRunner } from './runner.js'
 import type { Agent } from '../retrofit/config.js'
 import type { GitOps } from './gates.js'
 import { commandVerifier, type Verifier } from './verify.js'
@@ -86,6 +86,3 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   }
   return result.status === 'complete' ? 0 : 1
 }
-
-// claudeRunner is still exported for back-compat consumers
-export { claudeRunner }

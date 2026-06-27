@@ -96,7 +96,7 @@ function main(argv: string[]): number {
         }
         return runLoopCommand(targetDir, { maxIterations: rawMax, agent })
       }
-      console.log('usage: forge loop <on|off|status|run [--max=N]> [targetDir]')
+      console.log('usage: forge loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>]> [targetDir]')
       return 1
     }
     default:
