@@ -1,12 +1,14 @@
 import { loadPrd, savePrd, selectNextStory, allPass, progress } from './prd.js'
 import { stopTheLineGate, preDispatchGate, type GitOps } from './gates.js'
 import type { AgentRunner } from './runner.js'
+import type { Verifier } from './verify.js'
 
 export interface LoopOptions {
   prdPath: string
   targetDir: string
   runner: AgentRunner
   git: GitOps
+  verify: Verifier
   maxIterations: number
 }
 
@@ -58,6 +60,16 @@ export function runLoop(opts: LoopOptions): LoopResult {
         status: 'blocked',
         iterations,
         reason: `story ${story.id} failed: ${result.summary}`,
+        finalProgress: progress(stories),
+      }
+    }
+
+    const verdict = opts.verify(opts.targetDir)
+    if (!verdict.passed) {
+      return {
+        status: 'blocked',
+        iterations,
+        reason: `story ${story.id} did not verify: ${verdict.summary}`,
         finalProgress: progress(stories),
       }
     }
