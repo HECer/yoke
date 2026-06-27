@@ -26,7 +26,13 @@ export function applyActions(actions: Action[], targetDir: string, opts: ApplyOp
       const current = readFileSync(dest, 'utf8')
 
       if (action.merge) {
-        const merged = JSON.stringify(mergeJson(JSON.parse(current), JSON.parse(action.content)), null, 2) + '\n'
+        let parsedCurrent: unknown
+        try {
+          parsedCurrent = JSON.parse(current)
+        } catch {
+          throw new Error(`forge: cannot merge ${action.target} — existing file is not valid JSON. Fix or delete it and re-run.`)
+        }
+        const merged = JSON.stringify(mergeJson(parsedCurrent, JSON.parse(action.content)), null, 2) + '\n'
         if (merged === current) {
           results.push({ target: action.target, status: 'unchanged', reason: action.reason })
           continue

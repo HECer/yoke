@@ -40,9 +40,14 @@ describe('forge retrofit (integration, Claude)', () => {
   it('is idempotent on a second run', () => {
     runRetrofit(target, { loop: false })
     const agentsBefore = readFileSync(join(target, 'AGENTS.md'), 'utf8')
+    const settingsPath = join(target, '.claude/settings.json')
+    const settingsBefore = existsSync(settingsPath) ? readFileSync(settingsPath, 'utf8') : null
     const code = runRetrofit(target, { loop: false })
     expect(code).toBe(0)
     expect(readFileSync(join(target, 'AGENTS.md'), 'utf8')).toBe(agentsBefore)
+    if (settingsBefore !== null) {
+      expect(readFileSync(settingsPath, 'utf8')).toBe(settingsBefore)
+    }
   })
 
   it('retrofits all three agents when --agent all is selected', () => {

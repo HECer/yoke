@@ -65,4 +65,13 @@ describe('applyActions', () => {
     expect(res[0].status).toBe('created')
     expect(JSON.parse(readFileSync(join(target, 'fresh.json'), 'utf8'))).toEqual({ a: 1 })
   })
+
+  it('throws a clear error when the existing file to merge is not valid JSON', () => {
+    writeFileSync(join(target, 'settings.json'), '{ not json')
+    const mergeAction: Action = {
+      kind: 'write', target: 'settings.json', merge: true,
+      content: JSON.stringify({ a: 1 }), reason: 'settings',
+    }
+    expect(() => applyActions([mergeAction], target, { backupDir: backupDir() })).toThrow(/not valid JSON/)
+  })
 })

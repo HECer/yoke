@@ -21,4 +21,15 @@ describe('mergeJson', () => {
   it('incoming wins when types mismatch', () => {
     expect(mergeJson({ a: { p: 1 } }, { a: 5 })).toEqual({ a: 5 })
   })
+
+  it('de-dupes array items regardless of key order', () => {
+    const out = mergeJson({ h: [{ a: 1, b: 2 }] }, { h: [{ b: 2, a: 1 }] }) as { h: unknown[] }
+    expect(out.h).toHaveLength(1)
+    expect(out).toEqual({ h: [{ a: 1, b: 2 }] })
+  })
+
+  it('does not pollute Object.prototype via __proto__', () => {
+    mergeJson({}, JSON.parse('{"__proto__":{"polluted":true}}'))
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+  })
 })
