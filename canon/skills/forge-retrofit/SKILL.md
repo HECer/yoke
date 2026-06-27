@@ -7,8 +7,9 @@ description: Use when asked to "retrofit", "forge this project", or set up the F
 
 Set up (or update) the Forge harness in the current project.
 
-1. Run `forge retrofit .` to generate the Claude Code artifacts (`.claude/skills/`, `AGENTS.md`, `CLAUDE.md`). This is non-destructive — existing files are backed up under `.forge/backup/` before any overwrite.
-2. **Ask the user whether to enable the autonomous Loop** (default: off). If yes, re-run with `forge retrofit . --loop`. The choice is recorded in `.forge/config.yaml` and can be changed any time with `forge loop on|off` (Baustein C).
-3. Show the user the printed report (what was created/overwritten/unchanged) and where backups went.
-
-Never overwrite the user's existing instructions without surfacing the backup location in your summary.
+1. Run `forge retrofit .` to generate artifacts for the agents detected in the project, or `forge retrofit . --agent=all` for Claude + Codex + Gemini. This is non-destructive — existing files are backed up under `.forge/backup/` before any overwrite. Generated per agent:
+   - Claude: `.claude/skills/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json` (+ rtk hook when WSL is available).
+   - Codex: `AGENTS.md`, `.codex/config.toml` (MCP), `RTK.md`.
+   - Gemini: `GEMINI.md`, `.gemini/commands/*.toml`, `.gemini/settings.json`.
+2. **Ask the user whether to enable the autonomous Loop** (default off). If yes, add `--loop`. Recorded in `.forge/config.yaml`; toggle any time with `forge loop on|off`.
+3. Show the printed report (created/overwritten/unchanged + detected agents) and where backups went. Note that MCP launch commands in the generated configs may need adjusting to the user's local tool installs.
