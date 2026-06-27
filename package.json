@@ -2,7 +2,9 @@
   "name": "forge",
   "version": "0.1.0",
   "type": "module",
-  "bin": { "forge": "./dist/cli.js" },
+  "bin": {
+    "forge": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
@@ -14,6 +16,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.7.0",
+    "smol-toml": "^1.7.0",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",
     "vitest": "^2.1.1"

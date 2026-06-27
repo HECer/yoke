@@ -2,7 +2,8 @@
 import { pathToFileURL } from 'node:url'
 import { validateCanon } from './canon/validate.js'
 import { resolveCanonDir } from './retrofit/canon-dir.js'
-import { planClaudeRetrofit } from './retrofit/plan.js'
+import { planRetrofit } from './retrofit/plan.js'
+import type { Agent } from './retrofit/config.js'
 import { applyActions } from './retrofit/apply.js'
 import { formatReport } from './retrofit/report.js'
 import { detectProject } from './retrofit/detect.js'
@@ -27,22 +28,26 @@ export function runValidate(canonDir: string): number {
   return 1
 }
 
-export function runRetrofit(targetDir: string, opts: { loop: boolean }): number {
-  const detection = detectProject(targetDir)
+export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: Agent[] }): number {
   const canonDir = resolveCanonDir()
   const canonVersion = loadManifest(join(canonDir, 'manifest.yaml')).version
 
-  const actions = planClaudeRetrofit(canonDir, targetDir)
+  const detection = detectProject(targetDir)
+  const agents: Agent[] = opts.agents && opts.agents.length > 0
+    ? opts.agents
+    : (detection.agents.length > 0 ? detection.agents : ['claude'])
+
+  const actions = planRetrofit(canonDir, targetDir, agents)
   const backupDir = join(targetDir, '.forge', 'backup', String(Date.now()))
   const applied = applyActions(actions, targetDir, { backupDir })
 
   const existing = loadConfig(targetDir)
   const priorAgents = existing?.agents ?? []
-  const agents = [...new Set([...priorAgents, 'claude' as const])]
+  const mergedAgents = [...new Set([...priorAgents, ...agents])]
   const config: ForgeConfig = {
     ...(existing ?? defaultConfig(canonVersion)),
     canonVersion,
-    agents,
+    agents: mergedAgents,
     loop: { enabled: opts.loop },
   }
   saveConfig(targetDir, config)
@@ -59,7 +64,15 @@ function main(argv: string[]): number {
     case 'retrofit': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
       const loop = rest.includes('--loop')
-      return runRetrofit(targetDir, { loop })
+      const agentArg = rest.find(a => a.startsWith('--agent='))?.slice('--agent='.length)
+      const all: Agent[] = ['claude', 'codex', 'gemini']
+      const agents = !agentArg || agentArg === 'all'
+        ? (agentArg === 'all' ? all : undefined)
+        : agentArg.split(',').filter((a): a is Agent => (all as string[]).includes(a))
+      if (agentArg && agentArg !== 'all' && agents !== undefined && agents.length === 0) {
+        console.warn('Unknown agent(s) in --agent; falling back to detection')
+      }
+      return runRetrofit(targetDir, { loop, agents })
     }
     case 'loop': {
       const sub = rest[0]
@@ -81,7 +94,7 @@ function main(argv: string[]): number {
       return 1
     }
     default:
-      console.log('usage: forge <validate [canonDir] | retrofit [targetDir] [--loop] | loop <on|off|status|run>>')
+      console.log('usage: forge <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--loop] | loop <on|off|status|run>>')
       return cmd ? 1 : 0
   }
 }

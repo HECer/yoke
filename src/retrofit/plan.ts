@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { loadManifest } from '../canon/manifest.js'
+import { planClaude } from './planners/claude.js'
+import { planCodex } from './planners/codex.js'
+import { planGemini } from './planners/gemini.js'
+import type { Agent } from './config.js'
 
 export interface Action {
   kind: 'write'
@@ -9,40 +10,27 @@ export interface Action {
   reason: string
 }
 
-const CLAUDE_MD = `# Project Instructions
+export function planClaudeRetrofit(canonDir: string, targetDir: string): Action[] {
+  return planClaude(canonDir, targetDir)
+}
 
-This project uses the Forge harness. Baseline instructions:
+export type AgentPlanner = (canonDir: string, targetDir: string) => Action[]
 
-@AGENTS.md
-`
+export const PLANNERS: Record<Agent, AgentPlanner> = {
+  claude: planClaude,
+  codex: planCodex,
+  gemini: planGemini,
+}
 
-export function planClaudeRetrofit(canonDir: string, _targetDir: string): Action[] {
-  const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
-  const actions: Action[] = []
-
-  for (const skill of manifest.skills) {
-    const content = readFileSync(join(canonDir, skill.path, 'SKILL.md'), 'utf8')
-    actions.push({
-      kind: 'write',
-      target: `.claude/skills/${skill.id}/SKILL.md`,
-      content,
-      reason: `skill: ${skill.id}`,
-    })
+export function planRetrofit(canonDir: string, targetDir: string, agents: Agent[]): Action[] {
+  const seen = new Set<string>()
+  const merged: Action[] = []
+  for (const agent of agents) {
+    for (const action of PLANNERS[agent](canonDir, targetDir)) {
+      if (seen.has(action.target)) continue
+      seen.add(action.target)
+      merged.push(action)
+    }
   }
-
-  actions.push({
-    kind: 'write',
-    target: 'AGENTS.md',
-    content: readFileSync(join(canonDir, 'AGENTS.md'), 'utf8'),
-    reason: 'baseline instructions',
-  })
-
-  actions.push({
-    kind: 'write',
-    target: 'CLAUDE.md',
-    content: CLAUDE_MD,
-    reason: 'Claude entry importing AGENTS.md',
-  })
-
-  return actions
+  return merged
 }
