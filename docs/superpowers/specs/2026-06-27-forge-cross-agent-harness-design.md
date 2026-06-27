@@ -25,6 +25,7 @@ Both need an autonomous **Loop** variant (Ralph-loop pattern, per video `xBygL_f
 | Generation | At runtime inside the skill (no Make; Windows-native) |
 | Loop autonomy | Aggressive-autonomous with hard mechanical gates |
 | Loop driver | Spec/PRD file with `passes:true` stories (Ralph standard) |
+| **Loop opt-in** | **Loop (C) is OPTIONAL & configurable.** Retrofit asks whether to enable it; toggle on/off any time via one simple command/flag. Default: OFF until explicitly enabled. |
 
 ## Stack Decisions (researched, adversarially verified 2026-06-27)
 
@@ -78,8 +79,8 @@ The Canon contains NO agent-specific paths — those are produced only in B.
 
 ### Baustein B — Retrofit-Skill (5 phases)
 
-1. **detect** — scan target project: which agents (`.claude/`, `.codex/`, `.gemini/`, `AGENTS.md`/`CLAUDE.md`/`GEMINI.md`), existing skills, hooks, MCP configs. Also detect rtk WSL availability on Windows.
-2. **plan** — propose an **additive, non-destructive** retrofit (never overwrite without backup + consent); show diff preview.
+1. **detect** — scan target project: which agents (`.claude/`, `.codex/`, `.gemini/`, `AGENTS.md`/`CLAUDE.md`/`GEMINI.md`), existing skills, hooks, MCP configs. Also detect rtk WSL availability on Windows. Read existing `.forge/config.yaml` if present (preserve prior loop choice).
+2. **plan** — propose an **additive, non-destructive** retrofit (never overwrite without backup + consent); show diff preview. **Ask whether to enable the autonomous Loop (C)** — default OFF; the answer is recorded in `.forge/config.yaml`. The Canon's skills/policy install regardless; loop artifacts are only wired when enabled.
 3. **generate** — emit idiomatic per detected agent from the Canon:
    - **Claude**: `.claude/skills/`, `settings.json` hooks (rtk PreToolUse), MCP servers, `CLAUDE.md`→`AGENTS.md` symlink
    - **Codex**: `AGENTS.md`, `config.toml` (MCP), `RTK.md`, skills dir
@@ -87,9 +88,16 @@ The Canon contains NO agent-specific paths — those are produced only in B.
 4. **wire** — connect cross-agent tools with caveats handled (see Cross-Agent section).
 5. **report** — summary + diff; everything reversible (backup directory).
 
-### Baustein C — Loop-Engine (aggressive-autonomous, hard gates)
+### Baustein C — Loop-Engine (aggressive-autonomous, hard gates) — OPTIONAL
 
-Thin driver starting **fresh context per iteration**:
+**Opt-in & toggle-able.** The loop is a separable layer: the harness (Canon skills/policy/tools) is fully usable without it. Enablement is a single config flag plus a one-word command.
+
+- **Config:** `.forge/config.yaml` → `loop.enabled: true|false` (default `false`). Set by the retrofit `plan` prompt, or any time later.
+- **Toggle command:** `forge loop on` / `forge loop off` (also exposed as a slash-command per agent, e.g. `/forge-loop on|off`). `on` wires the loop artifacts (driver, PRD scaffolding, gate hooks) for every detected agent; `off` unwires them and disables the driver — both non-destructive and reversible (no Canon/skill changes, only loop wiring).
+- **`forge loop status`** reports enabled/disabled + current PRD progress.
+- When disabled, no loop artifacts are active and no autonomous runs can start; re-enabling restores them without re-running a full retrofit.
+
+When enabled, the thin driver starts **fresh context per iteration**:
 
 ```
 while not (all PRD stories passes:true):
