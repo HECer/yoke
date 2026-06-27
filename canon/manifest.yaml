@@ -4,6 +4,7 @@ agents: [claude, codex, gemini]
 skills:
   - { id: tdd, path: skills/tdd, kind: methodology }
   - { id: eng-review, path: skills/eng-review, kind: role }
+  - { id: forge-retrofit, path: skills/forge-retrofit, kind: methodology }
 policy:
   - { path: policy/gates.md }
   - { path: policy/roles.md }
