@@ -1,11 +1,12 @@
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
-import { loadConfig, saveConfig, defaultConfig } from '../retrofit/config.js'
+import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand } from '../retrofit/config.js'
 import { loadPrd, progress } from './prd.js'
 import { runLoop } from './loop.js'
 import { realGitOps } from './git.js'
 import { claudeRunner, type AgentRunner } from './runner.js'
 import type { GitOps } from './gates.js'
+import { commandVerifier, type Verifier } from './verify.js'
 
 export function prdPath(targetDir: string): string {
   return join(targetDir, '.forge', 'prd.yaml')
@@ -34,6 +35,7 @@ export interface RunLoopCommandOptions {
   maxIterations: number
   runner?: AgentRunner
   git?: GitOps
+  verify?: Verifier
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -47,14 +49,27 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     console.error(`No PRD found at ${path}. Create one (see canon loop/prd.schema.md).`)
     return 2
   }
+  let verify = opts.verify
+  if (!verify) {
+    const command = resolveVerifyCommand(targetDir, config)
+    if (!command) {
+      console.error('No verify command configured. Set verify.command in .forge/config.yaml (e.g. "npm test") so the loop can confirm tests pass before marking work done.')
+      return 2
+    }
+    verify = commandVerifier(command)
+  }
   const result = runLoop({
     prdPath: path,
     targetDir,
     runner: opts.runner ?? claudeRunner,
     git: opts.git ?? realGitOps,
+    verify,
     maxIterations: opts.maxIterations,
   })
   console.log(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
   if (result.reason) console.log(`Reason: ${result.reason}`)
+  if (result.reason && /invalid api key|please run \/login|not logged in/i.test(result.reason)) {
+    console.log('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY or log the agent in for headless use.')
+  }
   return result.status === 'complete' ? 0 : 1
 }
