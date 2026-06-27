@@ -40,4 +40,29 @@ describe('applyActions', () => {
     expect(readFileSync(agents.backedUp!, 'utf8')).toBe('OLD')
     expect(readFileSync(join(target, 'AGENTS.md'), 'utf8')).toBe('NEW')
   })
+
+  it('merges a merge-flagged JSON action into an existing file, preserving user keys', () => {
+    writeFileSync(join(target, 'settings.json'), JSON.stringify({ model: 'opus', hooks: { A: [1] } }))
+    const mergeAction: Action = {
+      kind: 'write', target: 'settings.json', merge: true,
+      content: JSON.stringify({ hooks: { A: [1], B: [2] } }), reason: 'settings',
+    }
+    const res = applyActions([mergeAction], target, { backupDir: backupDir() })
+    expect(res[0].status).toBe('merged')
+    expect(res[0].backedUp).toBeDefined()
+    const written = JSON.parse(readFileSync(join(target, 'settings.json'), 'utf8'))
+    expect(written.model).toBe('opus')          // user key preserved
+    expect(written.hooks.A).toEqual([1])         // de-duped, not [1,1]
+    expect(written.hooks.B).toEqual([2])         // ours added
+  })
+
+  it('treats a merge action as a plain create when the file does not exist', () => {
+    const mergeAction: Action = {
+      kind: 'write', target: 'fresh.json', merge: true,
+      content: JSON.stringify({ a: 1 }), reason: 'x',
+    }
+    const res = applyActions([mergeAction], target, { backupDir: backupDir() })
+    expect(res[0].status).toBe('created')
+    expect(JSON.parse(readFileSync(join(target, 'fresh.json'), 'utf8'))).toEqual({ a: 1 })
+  })
 })

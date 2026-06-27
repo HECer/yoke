@@ -8,6 +8,7 @@ export interface Action {
   target: string
   content: string
   reason: string
+  merge?: boolean
 }
 
 export function planClaudeRetrofit(canonDir: string, targetDir: string): Action[] {

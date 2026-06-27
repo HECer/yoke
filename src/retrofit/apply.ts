@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import type { Action } from './plan.js'
+import { mergeJson } from './merge-json.js'
 
 export interface AppliedAction {
   target: string
-  status: 'created' | 'overwritten' | 'unchanged'
+  status: 'created' | 'overwritten' | 'unchanged' | 'merged'
   backedUp?: string
   reason: string
 }
@@ -23,6 +24,22 @@ export function applyActions(actions: Action[], targetDir: string, opts: ApplyOp
 
     if (existsSync(dest)) {
       const current = readFileSync(dest, 'utf8')
+
+      if (action.merge) {
+        const merged = JSON.stringify(mergeJson(JSON.parse(current), JSON.parse(action.content)), null, 2) + '\n'
+        if (merged === current) {
+          results.push({ target: action.target, status: 'unchanged', reason: action.reason })
+          continue
+        }
+        backedUp = join(opts.backupDir, action.target)
+        mkdirSync(dirname(backedUp), { recursive: true })
+        copyFileSync(dest, backedUp)
+        mkdirSync(dirname(dest), { recursive: true })
+        writeFileSync(dest, merged)
+        results.push({ target: action.target, status: 'merged', backedUp, reason: action.reason })
+        continue
+      }
+
       if (current === action.content) {
         results.push({ target: action.target, status: 'unchanged', reason: action.reason })
         continue
