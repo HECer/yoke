@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { runRetrofit } from '../../src/cli.js'
 import { loadConfig, saveConfig } from '../../src/retrofit/config.js'
 
+
 let target: string
 beforeEach(() => { target = mkdtempSync(join(tmpdir(), 'forge-retro-')) })
 afterEach(() => { rmSync(target, { recursive: true, force: true }) })
@@ -42,5 +43,21 @@ describe('forge retrofit (integration, Claude)', () => {
     const code = runRetrofit(target, { loop: false })
     expect(code).toBe(0)
     expect(readFileSync(join(target, 'AGENTS.md'), 'utf8')).toBe(agentsBefore)
+  })
+
+  it('retrofits all three agents when --agent all is selected', () => {
+    const code = runRetrofit(target, { loop: false, agents: ['claude', 'codex', 'gemini'] })
+    expect(code).toBe(0)
+    expect(existsSync(join(target, '.claude/skills/tdd/SKILL.md'))).toBe(true)
+    expect(existsSync(join(target, '.codex/config.toml'))).toBe(true)
+    expect(existsSync(join(target, '.gemini/settings.json'))).toBe(true)
+    const cfg = loadConfig(target)!
+    expect(cfg.agents).toEqual(expect.arrayContaining(['claude', 'codex', 'gemini']))
+  })
+
+  it('retrofits only the selected agent', () => {
+    runRetrofit(target, { loop: false, agents: ['gemini'] })
+    expect(existsSync(join(target, '.gemini/settings.json'))).toBe(true)
+    expect(existsSync(join(target, '.codex/config.toml'))).toBe(false)
   })
 })
