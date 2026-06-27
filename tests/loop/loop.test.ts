@@ -62,4 +62,23 @@ describe('runLoop', () => {
     expect(res.status).toBe('blocked')
     expect(res.reason).toMatch(/acceptance/i)
   })
+
+  it('blocks and reverts the PRD when the commit fails', () => {
+    const throwingGit: GitOps = {
+      isClean: () => true,
+      commitAll: () => { throw new Error('nothing to commit after agent run') },
+    }
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: throwingGit, maxIterations: 10 })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/commit failed/)
+    // PRD must be reverted: the story stays passes:false, never persisted without a commit.
+    expect(loadPrd(prd()).find(s => s.id === 'S1')?.passes).toBe(false)
+  })
+
+  it('blocks when the PRD has no stories', () => {
+    writeFileSync(prd(), `[]`)
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), maxIterations: 10 })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/no stories/)
+  })
 })

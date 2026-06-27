@@ -31,6 +31,8 @@ export function buildClaudePrompt(story: Story): string {
 export function claudeRunner(ctx: AgentContext): AgentResult {
   const prompt = buildClaudePrompt(ctx.story)
   try {
+    // NOTE: The loop trusts claude's exit code as a proxy for "tests green".
+    // There is no independent test run here. Full verification is deferred to C2.
     execFileSync('claude', ['-p', prompt], { cwd: ctx.targetDir, stdio: 'inherit' })
     return { success: true, summary: `claude implemented ${ctx.story.id}` }
   } catch (e) {

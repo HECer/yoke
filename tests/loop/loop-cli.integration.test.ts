@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runLoopCommand } from '../../src/loop/run-command.js'
@@ -51,5 +51,18 @@ describe('forge loop CLI', () => {
     const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit })
     expect(code).toBe(0)
     expect(loadPrd(join(dir, '.forge', 'prd.yaml'))[0].passes).toBe(true)
+  })
+
+  it('run returns 2 when the loop is enabled but the PRD file is missing', () => {
+    saveConfig(dir, cfg())
+    rmSync(join(dir, '.forge', 'prd.yaml'))
+    const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit })
+    expect(code).toBe(2)
+  })
+
+  it('setLoopEnabled creates a config when none exists yet', () => {
+    expect(existsSync(join(dir, '.forge', 'config.yaml'))).toBe(false)
+    setLoopEnabled(dir, true)
+    expect(loadConfig(dir)!.loop.enabled).toBe(true)
   })
 })

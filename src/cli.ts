@@ -69,7 +69,12 @@ function main(argv: string[]): number {
       if (sub === 'status') { console.log(loopStatus(targetDir)); return 0 }
       if (sub === 'run') {
         const maxArg = rest.find(a => a.startsWith('--max='))
-        const maxIterations = maxArg ? Number(maxArg.slice('--max='.length)) : 25
+        const rawMax = maxArg ? Number(maxArg.slice('--max='.length)) : 25
+        if (!Number.isFinite(rawMax) || rawMax <= 0) {
+          console.error(`Invalid --max value: ${maxArg}`)
+          return 1
+        }
+        const maxIterations = rawMax
         return runLoopCommand(targetDir, { maxIterations })
       }
       console.log('usage: forge loop <on|off|status|run [--max=N]> [targetDir]')

@@ -12,6 +12,7 @@ export function prdPath(targetDir: string): string {
 }
 
 export function setLoopEnabled(targetDir: string, enabled: boolean): void {
+  // TODO(C2): resolve bundled canon version instead of placeholder
   const config = loadConfig(targetDir) ?? defaultConfig('0.0.0')
   config.loop = { enabled }
   saveConfig(targetDir, config)

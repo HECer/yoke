@@ -20,6 +20,11 @@ export interface LoopResult {
 export function runLoop(opts: LoopOptions): LoopResult {
   let iterations = 0
 
+  const initial = loadPrd(opts.prdPath)
+  if (initial.length === 0) {
+    return { status: 'blocked', iterations: 0, reason: 'PRD has no stories', finalProgress: { passed: 0, total: 0 } }
+  }
+
   for (;;) {
     const stories = loadPrd(opts.prdPath)
 
@@ -57,8 +62,18 @@ export function runLoop(opts: LoopOptions): LoopResult {
       }
     }
 
-    const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
-    savePrd(opts.prdPath, updated)
-    opts.git.commitAll(opts.targetDir, `forge: complete ${story.id} ${story.title}`)
+    try {
+      const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
+      savePrd(opts.prdPath, updated)
+      opts.git.commitAll(opts.targetDir, `forge: complete ${story.id} ${story.title}`)
+    } catch (e) {
+      savePrd(opts.prdPath, stories) // revert — never persist passes:true without a commit
+      return {
+        status: 'blocked',
+        iterations,
+        reason: `commit failed for ${story.id}: ${(e as Error).message}`,
+        finalProgress: progress(stories),
+      }
+    }
   }
 }

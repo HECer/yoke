@@ -35,4 +35,8 @@ describe('realGitOps', () => {
     const log = execFileSync('git', ['log', '--oneline', '-1'], { cwd: dir }).toString()
     expect(log).toContain('forge: test commit')
   })
+
+  it('commitAll throws when there is nothing to commit', () => {
+    expect(() => realGitOps.commitAll(dir, 'forge: empty commit')).toThrow(/nothing to commit/)
+  })
 })

@@ -18,3 +18,7 @@ When enabled and run, each iteration:
 
 State lives outside the model context: the PRD file + git. The agent runner is
 pluggable; Codex/Gemini runners and full per-iteration worktree isolation are Baustein C2.
+
+## C1 limitations
+- The loop trusts the agent's exit code as a proxy for "tests pass"; there is no independent test run yet (deferred to C2).
+- The agent runner is claude-only; Codex/Gemini runners and per-iteration git-worktree isolation are C2.
