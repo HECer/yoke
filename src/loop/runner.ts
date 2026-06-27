@@ -28,12 +28,41 @@ export function buildClaudePrompt(story: Story): string {
   ].join('\n')
 }
 
+export interface ClaudeInvocation {
+  command: string
+  args: string[]
+  options: {
+    cwd: string
+    input: string
+    stdio: ['pipe', 'inherit', 'inherit']
+    shell: boolean
+  }
+}
+
+// Build the cross-platform invocation for `claude -p`. The prompt is passed via
+// stdin (documented `claude -p` usage), so it needs no shell escaping. On Windows
+// `claude` is a `.cmd` shim that execFileSync cannot resolve via PATHEXT without a
+// shell, so shell mode is enabled there (the only arg is the safe literal `-p`).
+export function claudeInvocation(prompt: string, cwd: string): ClaudeInvocation {
+  return {
+    command: 'claude',
+    args: ['-p'],
+    options: {
+      cwd,
+      input: prompt,
+      stdio: ['pipe', 'inherit', 'inherit'],
+      shell: process.platform === 'win32',
+    },
+  }
+}
+
 export function claudeRunner(ctx: AgentContext): AgentResult {
   const prompt = buildClaudePrompt(ctx.story)
+  const inv = claudeInvocation(prompt, ctx.targetDir)
   try {
     // NOTE: The loop trusts claude's exit code as a proxy for "tests green".
     // There is no independent test run here. Full verification is deferred to C2.
-    execFileSync('claude', ['-p', prompt], { cwd: ctx.targetDir, stdio: 'inherit' })
+    execFileSync(inv.command, inv.args, inv.options)
     return { success: true, summary: `claude implemented ${ctx.story.id}` }
   } catch (e) {
     return { success: false, summary: `claude failed on ${ctx.story.id}: ${(e as Error).message}` }

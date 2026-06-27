@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt } from '../../src/loop/runner.js'
+import { buildClaudePrompt, claudeInvocation } from '../../src/loop/runner.js'
 import type { Story } from '../../src/loop/prd.js'
 
 const story: Story = {
@@ -20,5 +20,21 @@ describe('buildClaudePrompt', () => {
     const p = buildClaudePrompt(story)
     expect(p).toMatch(/only this story/i)
     expect(p).toMatch(/not commit/i)
+  })
+})
+
+describe('claudeInvocation', () => {
+  it('passes the prompt via stdin (input), not as a CLI arg', () => {
+    const inv = claudeInvocation('PROMPT TEXT', '/work')
+    expect(inv.command).toBe('claude')
+    expect(inv.args).toEqual(['-p'])
+    expect(inv.args).not.toContain('PROMPT TEXT')
+    expect(inv.options.input).toBe('PROMPT TEXT')
+    expect(inv.options.cwd).toBe('/work')
+  })
+
+  it('uses shell mode only on Windows (to resolve the claude.cmd shim)', () => {
+    const inv = claudeInvocation('p', '/work')
+    expect(inv.options.shell).toBe(process.platform === 'win32')
   })
 })
