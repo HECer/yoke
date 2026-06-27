@@ -4,7 +4,8 @@ import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand } from '../
 import { loadPrd, progress } from './prd.js'
 import { runLoop } from './loop.js'
 import { realGitOps } from './git.js'
-import { claudeRunner, type AgentRunner } from './runner.js'
+import { claudeRunner, makeRunner, isAgentAvailable, type AgentRunner } from './runner.js'
+import type { Agent } from '../retrofit/config.js'
 import type { GitOps } from './gates.js'
 import { commandVerifier, type Verifier } from './verify.js'
 
@@ -36,6 +37,8 @@ export interface RunLoopCommandOptions {
   runner?: AgentRunner
   git?: GitOps
   verify?: Verifier
+  agent?: Agent
+  isAvailable?: (agent: Agent) => boolean
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -58,10 +61,20 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }
     verify = commandVerifier(command)
   }
+  let runner = opts.runner
+  if (!runner) {
+    const agent: Agent = opts.agent ?? config.agents[0] ?? 'claude'
+    const available = opts.isAvailable ?? isAgentAvailable
+    if (!available(agent)) {
+      console.error(`Agent CLI "${agent}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
+      return 2
+    }
+    runner = makeRunner(agent)
+  }
   const result = runLoop({
     prdPath: path,
     targetDir,
-    runner: opts.runner ?? claudeRunner,
+    runner,
     git: opts.git ?? realGitOps,
     verify,
     maxIterations: opts.maxIterations,
@@ -73,3 +86,6 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   }
   return result.status === 'complete' ? 0 : 1
 }
+
+// claudeRunner is still exported for back-compat consumers
+export { claudeRunner }

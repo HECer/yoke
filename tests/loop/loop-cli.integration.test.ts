@@ -81,4 +81,29 @@ describe('forge loop CLI', () => {
     expect(code).toBe(0)
     expect(loadPrd(join(dir, '.forge', 'prd.yaml'))[0].passes).toBe(true)
   })
+
+  it('refuses to run when the selected agent CLI is unavailable', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    const code = runLoopCommand(dir, {
+      maxIterations: 5,
+      git: stubGit,
+      verify: verifyOk,
+      agent: 'codex',
+      isAvailable: () => false,
+    })
+    expect(code).toBe(2)
+    expect(loadPrd(join(dir, '.forge', 'prd.yaml'))[0].passes).toBe(false)
+  })
+
+  it('does not run the readiness gate when a runner is injected', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    const code = runLoopCommand(dir, {
+      maxIterations: 5,
+      runner: passRunner,
+      git: stubGit,
+      verify: verifyOk,
+      isAvailable: () => false, // ignored because runner is injected
+    })
+    expect(code).toBe(0)
+  })
 })
