@@ -43,4 +43,9 @@ describe('forge config', () => {
   it('resolveVerifyCommand returns null when nothing is configured or detectable', () => {
     expect(resolveVerifyCommand(dir, { canonVersion: '0', agents: [], loop: { enabled: true } })).toBeNull()
   })
+
+  it('resolveVerifyCommand returns null when package.json has only the npm default test stub', () => {
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'echo "Error: no test specified" && exit 1' } }))
+    expect(resolveVerifyCommand(dir, { canonVersion: '0', agents: [], loop: { enabled: true } })).toBeNull()
+  })
 })

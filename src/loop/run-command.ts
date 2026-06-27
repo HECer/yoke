@@ -68,7 +68,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   })
   console.log(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
   if (result.reason) console.log(`Reason: ${result.reason}`)
-  if (result.reason && /invalid api key|please run \/login|not logged in/i.test(result.reason)) {
+  if (result.reason && /api key|please run \/login|not logged in/i.test(result.reason)) {
     console.log('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY or log the agent in for headless use.')
   }
   return result.status === 'complete' ? 0 : 1

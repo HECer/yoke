@@ -49,7 +49,10 @@ export function resolveVerifyCommand(targetDir: string, config: ForgeConfig): st
   if (existsSync(pkgPath)) {
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-      if (pkg?.scripts?.test) return 'npm test'
+      const testScript: unknown = pkg?.scripts?.test
+      if (typeof testScript === 'string' && testScript.trim() !== '' && !testScript.includes('no test specified')) {
+        return 'npm test'
+      }
     } catch {
       // ignore malformed package.json
     }
