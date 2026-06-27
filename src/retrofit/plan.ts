@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { loadManifest } from '../canon/manifest.js'
 import { planClaude } from './planners/claude.js'
 import { planCodex } from './planners/codex.js'
 import { planGemini } from './planners/gemini.js'

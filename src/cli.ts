@@ -69,6 +69,9 @@ function main(argv: string[]): number {
       const agents = !agentArg || agentArg === 'all'
         ? (agentArg === 'all' ? all : undefined)
         : agentArg.split(',').filter((a): a is Agent => (all as string[]).includes(a))
+      if (agentArg && agentArg !== 'all' && agents !== undefined && agents.length === 0) {
+        console.warn('Unknown agent(s) in --agent; falling back to detection')
+      }
       return runRetrofit(targetDir, { loop, agents })
     }
     case 'loop': {

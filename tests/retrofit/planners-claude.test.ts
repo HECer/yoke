@@ -37,4 +37,18 @@ describe('planClaude', () => {
     expect(mcp.content).toContain('graphify')
     expect(mcp.content).toContain('playwright')
   })
+
+  it('with WSL available, emits .claude/settings.json wiring the rtk hook', () => {
+    const actions = planClaude(canon, '/t', true)
+    const settings = actions.find(a => a.target === '.claude/settings.json')
+    expect(settings).toBeDefined()
+    expect(settings!.content).toContain('rtk')
+  })
+
+  it('without WSL, falls back to the rtk instruction in CLAUDE.md and no settings.json', () => {
+    const actions = planClaude(canon, '/t', false)
+    expect(actions.find(a => a.target === '.claude/settings.json')).toBeUndefined()
+    const claudeMd = actions.find(a => a.target === 'CLAUDE.md')!
+    expect(claudeMd.content).toMatch(/rtk/i)
+  })
 })

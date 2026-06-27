@@ -6,7 +6,7 @@ import type { Action } from '../plan.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
 
 function tomlString(s: string): string {
-  return '"""\n' + s.replace(/"""/g, '\\"\\"\\"') + '\n"""'
+  return '"""\n' + s.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"') + '\n"""'
 }
 
 export function planGemini(canonDir: string, _targetDir: string): Action[] {
@@ -31,7 +31,7 @@ export function planGemini(canonDir: string, _targetDir: string): Action[] {
     actions.push({
       kind: 'write',
       target: `.gemini/commands/${skill.id}.toml`,
-      content: `description = "${description.replace(/"/g, '\\"')}"\nprompt = ${tomlString(prompt)}\n`,
+      content: `description = "${description.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"\nprompt = ${tomlString(prompt)}\n`,
       reason: `gemini command: ${skill.id}`,
     })
   }

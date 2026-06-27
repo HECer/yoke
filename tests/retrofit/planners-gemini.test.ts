@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { parse } from 'yaml'
+import { parse as parseToml } from 'smol-toml'
 import { planGemini } from '../../src/retrofit/planners/gemini.js'
 
 let canon: string
@@ -44,5 +44,15 @@ describe('planGemini', () => {
     expect(cmd.content).toContain('description')
     expect(cmd.content).toContain('prompt')
     expect(cmd.content).toContain('Test-driven development')
+  })
+
+  it('generates valid TOML even when the description has backslashes and quotes', () => {
+    const desc = 'path C:\\Users\\ and a "quote"'
+    writeFileSync(join(canon, 'skills/tdd/SKILL.md'), `---\nname: tdd\ndescription: '${desc.replace(/'/g, "''")}'\n---\nbody`)
+    const cmd = planGemini(canon, '/t').find(a => a.target === '.gemini/commands/tdd.toml')!
+    // The whole guarantee: substring asserts can't catch invalid TOML; parsing can.
+    const parsed = parseToml(cmd.content) as { description: string; prompt: string }
+    expect(parsed.description).toBe(desc)
+    expect(parsed.prompt).toContain(desc)
   })
 })
