@@ -32,4 +32,12 @@ describe('formatReport', () => {
     const out = formatReport(applied, { loopEnabled: false, detectedAgents: [] })
     expect(out).toContain('Detected agents: none')
   })
+
+  it('counts merged actions in the summary', () => {
+    const out = formatReport(
+      [{ target: '.claude/settings.json', status: 'merged', backedUp: '/b', reason: 'settings' }],
+      { loopEnabled: false, detectedAgents: [] },
+    )
+    expect(out).toContain('1 merged')
+  })
 })

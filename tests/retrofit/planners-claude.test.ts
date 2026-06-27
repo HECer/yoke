@@ -51,4 +51,9 @@ describe('planClaude', () => {
     const claudeMd = actions.find(a => a.target === 'CLAUDE.md')!
     expect(claudeMd.content).toMatch(/rtk/i)
   })
+
+  it('marks .claude/settings.json as a merge action', () => {
+    const settings = planClaude(canon, '/t', true).find(a => a.target === '.claude/settings.json')!
+    expect(settings.merge).toBe(true)
+  })
 })
