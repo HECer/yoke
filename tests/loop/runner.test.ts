@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable } from '../../src/loop/runner.js'
+import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner } from '../../src/loop/runner.js'
 import type { Story } from '../../src/loop/prd.js'
 
 const story: Story = {
@@ -71,5 +71,26 @@ describe('makeRunner / isAgentAvailable', () => {
 
   it('isAgentAvailable returns a boolean and never throws', () => {
     expect(typeof isAgentAvailable('claude')).toBe('boolean')
+  })
+})
+
+describe('buildReviewPrompt', () => {
+  it('frames a reviewer role distinct from the implementer and lists acceptance criteria', () => {
+    const p = buildReviewPrompt(story)
+    expect(p).toMatch(/review/i)
+    expect(p).toMatch(/did NOT implement|independent reviewer/i)
+    expect(p).toContain('returns 200 for valid creds')
+  })
+
+  it('instructs the reviewer to reject (non-zero exit) on blocking issues and not to modify files', () => {
+    const p = buildReviewPrompt(story)
+    expect(p).toMatch(/exit non-zero|reject/i)
+    expect(p).toMatch(/do not modify|do not commit/i)
+  })
+})
+
+describe('makeReviewRunner', () => {
+  it('returns a callable AgentRunner', () => {
+    expect(typeof makeReviewRunner('claude')).toBe('function')
   })
 })
