@@ -22,15 +22,13 @@ A cross-agent coding **harness** that installs a curated set of skills, safety p
 
 You curate **one source of truth** — skills, policy, and tool wiring. Yoke generates the **idiomatic, native artifacts** each agent expects (Claude skills + hooks, Codex `AGENTS.md` + config, Gemini commands + settings) — non-destructively, into any repo. Then, when you want it, the same harness can run an **autonomous loop** that picks the next story, implements it, runs your real tests, has an independent agent review it, and commits — never touching your working tree unless the work is green.
 
-```text
-   ┌─────────────┐      yoke retrofit       ┌──────────────────────────────┐
-   │   CANON     │ ───────────────────────▶  │  Claude · Codex · Gemini     │
-   │ (one truth) │   idiomatic per agent     │  skills · MCP · instructions │
-   └─────────────┘                           └──────────────────────────────┘
-                                                          │
-                                              yoke loop run --isolate
-                                                          ▼
-                                       implement → test → review → commit
+```mermaid
+flowchart LR
+    Canon["📦 one CANON<br/><i>source of truth</i>"]
+    Agents["🤝 Claude · Codex · Gemini<br/>skills · MCP · instructions"]
+    Done["✅ implement → test<br/>→ review → commit"]
+    Canon -->|yoke retrofit| Agents
+    Agents -->|yoke loop run --isolate| Done
 ```
 
 ## ✨ Highlights
