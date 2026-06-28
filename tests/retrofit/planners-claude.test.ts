@@ -42,7 +42,7 @@ describe('planClaude', () => {
     const actions = planClaude(canon, '/t', true)
     const settings = actions.find(a => a.target === '.claude/settings.json')
     expect(settings).toBeDefined()
-    expect(settings!.content).toContain('rtk')
+    expect(settings!.content).toContain('rtk hook claude')
   })
 
   it('without WSL, falls back to the rtk instruction in CLAUDE.md and no settings.json', () => {
