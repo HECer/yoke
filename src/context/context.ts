@@ -33,6 +33,8 @@ function boundTail(s: string, max: number): string {
   return s.length <= max ? s : '… (truncated)\n' + s.slice(s.length - max)
 }
 
+// `max` bounds the body of each file (after trimming), not the rendered section —
+// the `###` sub-heading and truncation marker add a small fixed overhead on top.
 export function formatForPrompt(ctx: ProjectContext, max: number = MAX_CONTEXT_CHARS): string {
   const parts: string[] = []
   if (ctx.project.trim()) parts.push(`### North star (PROJECT.md)\n${boundHead(ctx.project.trim(), max)}`)
