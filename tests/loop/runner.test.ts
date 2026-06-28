@@ -12,7 +12,7 @@ const story: Story = {
 
 describe('buildClaudePrompt', () => {
   it('includes the story id, title, and every acceptance criterion', () => {
-    const p = buildClaudePrompt(story)
+    const p = buildClaudePrompt(story, '')
     expect(p).toContain('S1')
     expect(p).toContain('Add login')
     expect(p).toContain('returns 200 for valid creds')
@@ -20,7 +20,7 @@ describe('buildClaudePrompt', () => {
   })
 
   it('instructs the agent to implement only this story and not commit', () => {
-    const p = buildClaudePrompt(story)
+    const p = buildClaudePrompt(story, '')
     expect(p).toMatch(/only this story/i)
     expect(p).toMatch(/not commit/i)
   })
@@ -74,14 +74,14 @@ describe('makeRunner / isAgentAvailable', () => {
 
 describe('buildReviewPrompt', () => {
   it('frames a reviewer role distinct from the implementer and lists acceptance criteria', () => {
-    const p = buildReviewPrompt(story)
+    const p = buildReviewPrompt(story, '')
     expect(p).toMatch(/review/i)
     expect(p).toMatch(/did NOT implement|independent reviewer/i)
     expect(p).toContain('returns 200 for valid creds')
   })
 
   it('instructs the reviewer to reject (non-zero exit) on blocking issues and not to modify files', () => {
-    const p = buildReviewPrompt(story)
+    const p = buildReviewPrompt(story, '')
     expect(p).toMatch(/exit non-zero|reject/i)
     expect(p).toMatch(/do not modify|do not commit/i)
   })
@@ -97,7 +97,7 @@ const ctxStory = { id: 'S1', title: 'First', priority: 1, acceptance: ['x'], pas
 
 describe('prompt context injection', () => {
   it('buildClaudePrompt omits the context section when no context is given', () => {
-    const p = buildClaudePrompt(ctxStory)
+    const p = buildClaudePrompt(ctxStory, '')
     expect(p).not.toContain('Project context')
     expect(p).toContain('Story S1: First')
   })

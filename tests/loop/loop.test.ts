@@ -142,10 +142,14 @@ describe('runLoop', () => {
   })
 
   it('reverts the decision append when the commit fails', () => {
+    // Seed a prior DECISIONS.md so the assertion distinguishes "appended then
+    // rolled back to prior bytes" from "never appended at all".
+    mkdirSync(contextDir(dir), { recursive: true })
+    writeFileSync(decisionsFile(), 'PRIOR\n')
     const failingGit: GitOps = { isClean: () => true, commitAll: () => { throw new Error('commit boom') }, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: failingGit, verify: verifyOk, maxIterations: 10 })
     expect(res.status).toBe('blocked')
-    expect(existsSync(decisionsFile())).toBe(false)
+    expect(readFileSync(decisionsFile(), 'utf8')).toBe('PRIOR\n')
     expect(loadPrd(prd()).every(s => !s.passes)).toBe(true)
   })
 })

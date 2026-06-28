@@ -19,7 +19,7 @@ export function contextBlockFor(targetDir: string): string {
   return formatForPrompt(loadContext(contextDir(targetDir)))
 }
 
-export function buildClaudePrompt(story: Story, context = ''): string {
+export function buildClaudePrompt(story: Story, context: string): string {
   const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
   const lines = [
     'You are an autonomous coding agent running inside the Yoke loop.',
@@ -38,7 +38,7 @@ export function buildClaudePrompt(story: Story, context = ''): string {
   return lines.join('\n')
 }
 
-export function buildReviewPrompt(story: Story, context = ''): string {
+export function buildReviewPrompt(story: Story, context: string): string {
   const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
   const lines = [
     'You are an independent reviewer inside the Yoke loop. You did NOT implement this change.',
