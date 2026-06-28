@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, copyFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runLoop } from '../../src/loop/loop.js'
@@ -104,5 +104,54 @@ describe('runLoop', () => {
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git, verify: verifyOk, maxIterations: 10 })
     expect(res.status).toBe('complete')
     expect(commits).toHaveLength(2)
+  })
+})
+
+function fsWorktreeGit(repo: string, removed: string[]): GitOps {
+  return {
+    isClean: () => true,
+    commitAll: () => {},
+    addWorktree: (_r, wt) => {
+      mkdirSync(join(wt, '.forge'), { recursive: true })
+      copyFileSync(join(repo, '.forge', 'prd.yaml'), join(wt, '.forge', 'prd.yaml'))
+    },
+    integrate: (r, wt) => { copyFileSync(join(wt, '.forge', 'prd.yaml'), join(r, '.forge', 'prd.yaml')) },
+    removeWorktree: (_r, wt) => { removed.push(wt); rmSync(wt, { recursive: true, force: true }) },
+  }
+}
+
+describe('runLoop with isolation', () => {
+  let isoDir: string
+  const isoPrd = () => join(isoDir, '.forge', 'prd.yaml')
+  beforeEach(() => {
+    isoDir = mkdtempSync(join(tmpdir(), 'forge-iso-'))
+    mkdirSync(join(isoDir, '.forge'), { recursive: true })
+    writeFileSync(isoPrd(), `
+- { id: S1, title: First, priority: 1, acceptance: ["x"], passes: false }
+`)
+  })
+  afterEach(() => { rmSync(isoDir, { recursive: true, force: true }) })
+
+  it('completes a story through an isolated worktree and integrates it back', () => {
+    const removed: string[] = []
+    const res = runLoop({
+      prdPath: isoPrd(), targetDir: isoDir, runner: alwaysPass, git: fsWorktreeGit(isoDir, removed),
+      verify: verifyOk, isolate: true, maxIterations: 5,
+    })
+    expect(res.status).toBe('complete')
+    expect(loadPrd(isoPrd())[0].passes).toBe(true)   // integrated back into main
+    expect(removed.length).toBe(1)                    // worktree cleaned up
+  })
+
+  it('discards the worktree and leaves the main PRD untouched when verify fails', () => {
+    const removed: string[] = []
+    const verifyRed: Verifier = () => ({ passed: false, summary: 'red' })
+    const res = runLoop({
+      prdPath: isoPrd(), targetDir: isoDir, runner: alwaysPass, git: fsWorktreeGit(isoDir, removed),
+      verify: verifyRed, isolate: true, maxIterations: 5,
+    })
+    expect(res.status).toBe('blocked')
+    expect(loadPrd(isoPrd())[0].passes).toBe(false)  // main tree untouched
+    expect(removed.length).toBe(1)                    // worktree still cleaned up
   })
 })
