@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
@@ -38,5 +38,25 @@ describe('realGitOps', () => {
 
   it('commitAll throws when there is nothing to commit', () => {
     expect(() => realGitOps.commitAll(dir, 'forge: empty commit')).toThrow(/nothing to commit/)
+  })
+
+  it('addWorktree creates a working copy, integrate brings its commit back, removeWorktree cleans up', () => {
+    const wt = join(dir, '.forge', 'worktrees', 'S1')
+    realGitOps.addWorktree(dir, wt)
+    expect(existsSync(join(wt, 'a.txt'))).toBe(true)        // checked out from HEAD
+
+    // make + commit a change inside the worktree
+    writeFileSync(join(wt, 'a.txt'), 'changed in worktree')
+    realGitOps.commitAll(wt, 'forge: worktree change')
+
+    // integrate fast-forwards the main repo to the worktree commit
+    realGitOps.integrate(dir, wt)
+    expect(readFileSync(join(dir, 'a.txt'), 'utf8')).toBe('changed in worktree')
+
+    // removeWorktree must happen before isClean: on Windows the worktree dir at
+    // .forge/worktrees/S1 shows as an untracked path until it is removed.
+    realGitOps.removeWorktree(dir, wt)
+    expect(existsSync(wt)).toBe(false)
+    expect(realGitOps.isClean(dir)).toBe(true)
   })
 })

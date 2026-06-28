@@ -13,7 +13,13 @@ import type { Verifier } from '../../src/loop/verify.js'
 
 let dir: string
 const cfg = () => ({ canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true } })
-const stubGit: GitOps = { isClean: () => true, commitAll: () => {} }
+const stubGit: GitOps = {
+  isClean: () => true,
+  commitAll: () => {},
+  addWorktree: () => {},
+  removeWorktree: () => {},
+  integrate: () => {},
+}
 const passRunner: AgentRunner = () => ({ success: true, summary: 'ok' })
 const verifyOk: Verifier = () => ({ passed: true, summary: 'ok' })
 

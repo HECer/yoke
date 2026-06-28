@@ -10,7 +10,7 @@ import type { Verifier } from '../../src/loop/verify.js'
 
 let dir: string
 const prd = () => join(dir, 'prd.yaml')
-const cleanGit = (): GitOps => ({ isClean: () => true, commitAll: () => {} })
+const cleanGit = (): GitOps => ({ isClean: () => true, commitAll: () => {}, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} })
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'forge-loop-'))
@@ -27,7 +27,7 @@ const verifyOk: Verifier = () => ({ passed: true, summary: 'green' })
 describe('runLoop', () => {
   it('completes all stories with a passing runner', () => {
     const commits: string[] = []
-    const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m) }
+    const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m), addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git, verify: verifyOk, maxIterations: 10 })
     expect(res.status).toBe('complete')
     expect(res.iterations).toBe(2)
@@ -51,7 +51,7 @@ describe('runLoop', () => {
   })
 
   it('blocks via pre-dispatch gate on a dirty worktree', () => {
-    const dirtyGit: GitOps = { isClean: () => false, commitAll: () => {} }
+    const dirtyGit: GitOps = { isClean: () => false, commitAll: () => {}, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: dirtyGit, verify: verifyOk, maxIterations: 10 })
     expect(res.status).toBe('blocked')
     expect(res.reason).toMatch(/worktree/i)
@@ -69,6 +69,9 @@ describe('runLoop', () => {
     const throwingGit: GitOps = {
       isClean: () => true,
       commitAll: () => { throw new Error('nothing to commit after agent run') },
+      addWorktree: () => {},
+      removeWorktree: () => {},
+      integrate: () => {},
     }
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: throwingGit, verify: verifyOk, maxIterations: 10 })
     expect(res.status).toBe('blocked')
@@ -87,7 +90,7 @@ describe('runLoop', () => {
   it('does NOT mark a story passed when verification fails after a successful runner', () => {
     const verifyRed: Verifier = () => ({ passed: false, summary: 'tests red' })
     const commits: string[] = []
-    const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m) }
+    const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m), addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git, verify: verifyRed, maxIterations: 10 })
     expect(res.status).toBe('blocked')
     expect(res.reason).toMatch(/verif/i)
@@ -97,7 +100,7 @@ describe('runLoop', () => {
 
   it('marks passed and commits only when runner AND verify both succeed', () => {
     const commits: string[] = []
-    const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m) }
+    const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m), addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git, verify: verifyOk, maxIterations: 10 })
     expect(res.status).toBe('complete')
     expect(commits).toHaveLength(2)

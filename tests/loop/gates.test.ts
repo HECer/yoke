@@ -10,6 +10,9 @@ const story = (over: Partial<Story> = {}): Story => ({
 const git = (clean: boolean): GitOps => ({
   isClean: () => clean,
   commitAll: () => {},
+  addWorktree: () => {},
+  removeWorktree: () => {},
+  integrate: () => {},
 })
 
 describe('gates', () => {
