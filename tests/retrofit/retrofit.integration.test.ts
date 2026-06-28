@@ -65,4 +65,21 @@ describe('forge retrofit (integration, Claude)', () => {
     expect(existsSync(join(target, '.gemini/settings.json'))).toBe(true)
     expect(existsSync(join(target, '.codex/config.toml'))).toBe(false)
   })
+
+  it('defaults codeGraph to graphify and records it', () => {
+    runRetrofit(target, { loop: false, agents: ['claude'] })
+    expect(loadConfig(target)!.codeGraph).toBe('graphify')
+  })
+
+  it('honors an explicit codeGraph and persists it', () => {
+    runRetrofit(target, { loop: false, agents: ['claude'], codeGraph: 'serena' })
+    expect(loadConfig(target)!.codeGraph).toBe('serena')
+    expect(existsSync(join(target, '.mcp.json'))).toBe(true)
+  })
+
+  it('keeps a previously-chosen codeGraph on a later run that does not specify one', () => {
+    runRetrofit(target, { loop: false, agents: ['claude'], codeGraph: 'serena' })
+    runRetrofit(target, { loop: false, agents: ['claude'] })
+    expect(loadConfig(target)!.codeGraph).toBe('serena')
+  })
 })
