@@ -29,6 +29,22 @@ export function buildClaudePrompt(story: Story): string {
   ].join('\n')
 }
 
+export function buildReviewPrompt(story: Story): string {
+  const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
+  return [
+    'You are an independent reviewer inside the Forge loop. You did NOT implement this change.',
+    'Review the current uncommitted working-tree changes against the story below.',
+    '',
+    `Story ${story.id}: ${story.title}`,
+    'Acceptance criteria:',
+    criteria,
+    '',
+    'Approve by exiting 0 ONLY if every acceptance criterion is met and the change is sound.',
+    'If you find ANY blocking issue (an unmet criterion, a bug, a missing test), exit non-zero to reject.',
+    'Do not modify files. Do not commit.',
+  ].join('\n')
+}
+
 export interface Invocation {
   command: string
   args: string[]
@@ -82,6 +98,18 @@ export function makeRunner(agent: Agent): AgentRunner {
 }
 
 export const claudeRunner: AgentRunner = makeRunner('claude')
+
+export function makeReviewRunner(agent: Agent): AgentRunner {
+  return (ctx: AgentContext): AgentResult => {
+    const inv = agentInvocation(agent, buildReviewPrompt(ctx.story), ctx.targetDir)
+    try {
+      execFileSync(inv.command, inv.args, inv.options)
+      return { success: true, summary: `${agent} approved ${ctx.story.id}` }
+    } catch (e) {
+      return { success: false, summary: `${agent} rejected ${ctx.story.id}: ${(e as Error).message}` }
+    }
+  }
+}
 
 // Probe whether the agent's CLI is on PATH (so the loop can refuse upfront with a
 // clear message instead of failing mid-run with spawn ENOENT). Never throws.

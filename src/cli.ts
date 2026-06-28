@@ -95,9 +95,19 @@ function main(argv: string[]): number {
           return 1
         }
         const isolate = rest.includes('--isolate')
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate })
+        const reviewerArg = rest.find(a => a.startsWith('--reviewer='))?.slice('--reviewer='.length)
+        let reviewer: Agent | undefined
+        if (reviewerArg) {
+          if (!valid.includes(reviewerArg)) {
+            console.error(`Invalid --reviewer value: ${reviewerArg} (expected claude|codex|gemini)`)
+            return 1
+          }
+          reviewer = reviewerArg as Agent
+        }
+        const review = rest.includes('--review')
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review })
       }
-      console.log('usage: forge loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>] [--isolate]> [targetDir]')
+      console.log('usage: forge loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate]> [targetDir]')
       return 1
     }
     default:

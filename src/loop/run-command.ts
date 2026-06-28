@@ -4,7 +4,7 @@ import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand } from '../
 import { loadPrd, progress } from './prd.js'
 import { runLoop } from './loop.js'
 import { realGitOps } from './git.js'
-import { makeRunner, isAgentAvailable, type AgentRunner } from './runner.js'
+import { makeRunner, makeReviewRunner, isAgentAvailable, type AgentRunner } from './runner.js'
 import type { Agent } from '../retrofit/config.js'
 import type { GitOps } from './gates.js'
 import { commandVerifier, type Verifier } from './verify.js'
@@ -40,6 +40,9 @@ export interface RunLoopCommandOptions {
   agent?: Agent
   isAvailable?: (agent: Agent) => boolean
   isolate?: boolean
+  reviewRunner?: AgentRunner
+  reviewer?: Agent
+  review?: boolean
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -62,16 +65,28 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }
     verify = commandVerifier(command)
   }
+  const available = opts.isAvailable ?? isAgentAvailable
+  const runnerAgent: Agent = opts.agent ?? config.agents[0] ?? 'claude'
+
   let runner = opts.runner
   if (!runner) {
-    const agent: Agent = opts.agent ?? config.agents[0] ?? 'claude'
-    const available = opts.isAvailable ?? isAgentAvailable
-    if (!available(agent)) {
-      console.error(`Agent CLI "${agent}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
+    if (!available(runnerAgent)) {
+      console.error(`Agent CLI "${runnerAgent}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
       return 2
     }
-    runner = makeRunner(agent)
+    runner = makeRunner(runnerAgent)
   }
+
+  let review = opts.reviewRunner
+  if (!review && (opts.review || opts.reviewer)) {
+    const reviewerAgent: Agent = opts.reviewer ?? runnerAgent
+    if (!available(reviewerAgent)) {
+      console.error(`Reviewer agent CLI "${reviewerAgent}" was not found on PATH. Install it, or pick another with --reviewer=<claude|codex|gemini>.`)
+      return 2
+    }
+    review = makeReviewRunner(reviewerAgent)
+  }
+
   const result = runLoop({
     prdPath: path,
     targetDir,
@@ -80,6 +95,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     verify,
     maxIterations: opts.maxIterations,
     isolate: opts.isolate ?? false,
+    review,
   })
   console.log(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
   if (result.reason) console.log(`Reason: ${result.reason}`)

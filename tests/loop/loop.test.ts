@@ -23,6 +23,8 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 const alwaysPass: AgentRunner = () => ({ success: true, summary: 'done' })
 const verifyOk: Verifier = () => ({ passed: true, summary: 'green' })
+const reviewOk: AgentRunner = () => ({ success: true, summary: 'approved' })
+const reviewReject: AgentRunner = () => ({ success: false, summary: 'rejected: criterion unmet' })
 
 describe('runLoop', () => {
   it('completes all stories with a passing runner', () => {
@@ -105,6 +107,21 @@ describe('runLoop', () => {
     expect(res.status).toBe('complete')
     expect(commits).toHaveLength(2)
   })
+
+  it('blocks when the reviewer rejects after verify passes (no commit, story stays open)', () => {
+    const commits: string[] = []
+    const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m), addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git, verify: verifyOk, review: reviewReject, maxIterations: 10 })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/rejected in review/i)
+    expect(loadPrd(prd()).every(s => !s.passes)).toBe(true)
+    expect(commits).toHaveLength(0)
+  })
+
+  it('completes when the reviewer approves', () => {
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, review: reviewOk, maxIterations: 10 })
+    expect(res.status).toBe('complete')
+  })
 })
 
 function fsWorktreeGit(repo: string, removed: string[]): GitOps {
@@ -153,6 +170,18 @@ describe('runLoop with isolation', () => {
     expect(res.status).toBe('blocked')
     expect(loadPrd(isoPrd())[0].passes).toBe(false)  // main tree untouched
     expect(removed.length).toBe(1)                    // worktree still cleaned up
+  })
+
+  it('blocks in isolated mode when the reviewer rejects, leaving the main PRD untouched', () => {
+    const removed: string[] = []
+    const res = runLoop({
+      prdPath: isoPrd(), targetDir: isoDir, runner: alwaysPass, git: fsWorktreeGit(isoDir, removed),
+      verify: verifyOk, review: reviewReject, isolate: true, maxIterations: 5,
+    })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/rejected in review/i)
+    expect(loadPrd(isoPrd())[0].passes).toBe(false)
+    expect(removed.length).toBe(1) // worktree still cleaned up
   })
 
   it('blocks (does not crash) when addWorktree throws, leaving the main PRD untouched', () => {
