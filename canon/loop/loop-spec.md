@@ -8,6 +8,8 @@ The autonomous loop is OPTIONAL and toggle-able:
 
 Pass `--isolate` to run each iteration in a fresh git worktree: the agent works on a throwaway checkout, and only a verified, committed story is fast-forwarded back into the main tree. A failed iteration never touches your working tree. Requires `.forge/prd.yaml` to be committed to git, since the worktree is a checkout of HEAD.
 
+Pass `--review` (or `--reviewer=<claude|codex|gemini>` for a different agent) to add a role-separated review step: after the tests pass, an independent reviewer agent must approve the change before the story is committed and marked done. A rejection blocks the story (no commit). The reviewer is a fresh agent pass — the implementer never reviews its own work.
+
 When enabled and run, each iteration:
 
 1. Pre-dispatch gate: the git worktree must be clean, else `blocked`.
@@ -20,5 +22,4 @@ When enabled and run, each iteration:
 State lives outside the model context: the PRD file + git. The agent runner is pluggable.
 
 ## Limitations
-- Review-iteration with role separation (a second agent reviews before a story is marked done) is Baustein C5.
-- The loop verifies via the project's test command, not a per-agent semantic review.
+- The loop verifies via the project's test command and an optional agent review; it has no formal merge-queue or multi-reviewer quorum.
