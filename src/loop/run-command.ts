@@ -39,6 +39,7 @@ export interface RunLoopCommandOptions {
   verify?: Verifier
   agent?: Agent
   isAvailable?: (agent: Agent) => boolean
+  isolate?: boolean
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -78,6 +79,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     git: opts.git ?? realGitOps,
     verify,
     maxIterations: opts.maxIterations,
+    isolate: opts.isolate ?? false,
   })
   console.log(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
   if (result.reason) console.log(`Reason: ${result.reason}`)

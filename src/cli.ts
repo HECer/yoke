@@ -94,9 +94,10 @@ function main(argv: string[]): number {
           console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini)`)
           return 1
         }
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent })
+        const isolate = rest.includes('--isolate')
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate })
       }
-      console.log('usage: forge loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>]> [targetDir]')
+      console.log('usage: forge loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>] [--isolate]> [targetDir]')
       return 1
     }
     default:

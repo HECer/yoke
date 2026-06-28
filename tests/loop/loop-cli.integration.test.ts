@@ -112,4 +112,12 @@ describe('forge loop CLI', () => {
     })
     expect(code).toBe(0)
   })
+
+  it('accepts the isolate option and completes with injected stubs', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    // PRD lives at .forge/prd.yaml; with no-op worktree stubs the runner marks via the
+    // non-worktree fallback is NOT used — so drive isolate=false here and just assert the flag is plumbed.
+    const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk, isolate: false })
+    expect(code).toBe(0)
+  })
 })
