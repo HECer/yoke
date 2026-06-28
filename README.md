@@ -77,7 +77,7 @@ flowchart TD
     Gemini -. drives .-> Loop
 ```
 
-Three layers, three commands: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) → **Loop** (`yoke loop`).
+Three layers: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) → **Loop** (`yoke loop`), with a durable **Context layer** (`yoke context init|status`) underneath.
 
 ## 🔌 What gets generated per agent
 
@@ -131,6 +131,19 @@ yoke loop off .                 # disable
 ```
 
 The loop stops when every story is `passes: true`. State lives **outside the model context** — the PRD file plus git — so each iteration is fresh.
+
+## Context layer (`.yoke/context/`)
+
+Yoke keeps durable, cross-session context so a fresh-context agent is never blind:
+
+- `PROJECT.md` — the north star (goal, constraints, non-goals, success criteria).
+- `DECISIONS.md` — an append-only ledger. The loop adds an entry per completed story; you and agents add the *why*.
+- `KNOWLEDGE.md` — reusable gotchas and conventions.
+
+`yoke retrofit` scaffolds these files (non-destructively — your edits are never overwritten).
+The loop reads them into every agent + reviewer prompt and logs decisions back on each story's
+commit. Manage them directly with `yoke context init` and `yoke context status`. The
+`maintaining-context` skill teaches agents to honour the same files during interactive work.
 
 ## 🛡️ Safety model
 
