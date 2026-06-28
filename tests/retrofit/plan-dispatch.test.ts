@@ -67,4 +67,9 @@ describe('planRetrofit', () => {
   it('baseContextActions are all ifAbsent', () => {
     expect(baseContextActions(canon).every(a => a.ifAbsent)).toBe(true)
   })
+
+  it('baseContextActions throws a framed error when a template is missing', () => {
+    rmSync(join(canon, 'context/PROJECT.md'))
+    expect(() => baseContextActions(canon)).toThrow(/yoke: missing context template PROJECT\.md/)
+  })
 })

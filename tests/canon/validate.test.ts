@@ -30,6 +30,9 @@ tools:
   write('loop/loop-spec.md', 'loop')
   write('loop/prd.schema.md', 'prd')
   write('tools/rtk.md', 'rtk')
+  write('context/PROJECT.md', 'project')
+  write('context/DECISIONS.md', 'decisions')
+  write('context/KNOWLEDGE.md', 'knowledge')
 }
 
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-canon-')) })
@@ -93,6 +96,12 @@ tools:
   - { id: rtk, path: tools/rtk.md }
 `)
     expect(validateCanon(dir).some(i => i.message.includes('duplicate tool id'))).toBe(true)
+  })
+
+  it('flags a missing context template', () => {
+    seedValidCanon()
+    rmSync(join(dir, 'context/PROJECT.md'))
+    expect(validateCanon(dir).some(i => i.level === 'error' && i.message.includes('context/PROJECT.md'))).toBe(true)
   })
 
   it('flags duplicate skill ids', () => {

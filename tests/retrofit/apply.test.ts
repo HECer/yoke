@@ -100,4 +100,18 @@ describe('applyActions', () => {
     expect(readFileSync(dest, 'utf8')).toBe('USER CONTENT')
     rmSync(d, { recursive: true, force: true })
   })
+
+  it('ifAbsent action preserves a user edit across a re-run (cross-run idempotency)', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-apply-'))
+    const dest = join(d, '.yoke/context/PROJECT.md')
+    const action: Action = { kind: 'write', target: '.yoke/context/PROJECT.md', content: 'TEMPLATE', reason: 'scaffold', ifAbsent: true }
+    const first = applyActions([action], d, { backupDir: join(d, '.yoke', 'backup', 'x') })
+    expect(first[0].status).toBe('created')
+    expect(readFileSync(dest, 'utf8')).toBe('TEMPLATE')
+    writeFileSync(dest, 'USER EDIT')
+    const second = applyActions([action], d, { backupDir: join(d, '.yoke', 'backup', 'y') })
+    expect(second[0].status).toBe('unchanged')
+    expect(readFileSync(dest, 'utf8')).toBe('USER EDIT')
+    rmSync(d, { recursive: true, force: true })
+  })
 })
