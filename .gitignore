@@ -3,3 +3,17 @@ dist/
 *.log
 .forge/worktrees/
 .forge/backup/
+
+# Forge's own retrofit output when dogfooding `forge retrofit .` against this
+# repo — these are generated artifacts, not source. Root-anchored so the canon's
+# own files (canon/AGENTS.md, etc.) are unaffected.
+/.claude/
+/.codex/
+/.gemini/
+/.mcp.json
+/AGENTS.md
+/CLAUDE.md
+/GEMINI.md
+/RTK.md
+/.forge/config.yaml
+/.forge/prd.yaml
