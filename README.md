@@ -1,147 +1,202 @@
-# Forge
+<div align="center">
 
-A cross-agent coding **harness** — one source-of-truth set of skills, policy, and tooling that you can install into any project for **Claude Code, OpenAI Codex CLI, and Gemini CLI**, with an optional autonomous **loop** that implements a spec story-by-story behind mechanical safety gates.
+# 🔨 Forge
 
-Forge has three parts:
+### One harness, every agent. Forge it once — run it autonomously.
 
-1. **Canon** — a harness-agnostic source-of-truth (`canon/`): skills, policy gates, loop spec, and tool wiring.
-2. **Retrofit** — `forge retrofit` reads the Canon and generates idiomatic, native artifacts for each agent in a target project — non-destructively.
-3. **Loop** — `forge loop` runs an optional, opt-in Ralph-style autonomous loop that completes a PRD, marking a story done only when the agent **and** the project's tests both pass.
+A cross-agent coding **harness** that installs a curated set of skills, safety policy, and tooling into **any project** for **Claude Code, OpenAI Codex CLI, and Gemini CLI** — plus an opt-in autonomous **loop** that ships a spec story-by-story behind hard, mechanical safety gates.
 
-## Requirements
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
+![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen.svg)
+![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
+![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
-- Node.js ≥ 20 (developed on 24)
-- Git
-- Optional, wired but installed separately: [rtk](https://github.com/rtk-ai/rtk) (token compression), a code-graph tool — [graphify](https://github.com/safishamsi/graphify) or [Serena](https://github.com/oraios/serena) (chosen at retrofit) — and [Playwright MCP](https://github.com/microsoft/playwright-mcp) (browser). Forge writes their config; it does not install them.
+</div>
 
-## Install
+---
+
+## What is Forge?
+
+You curate **one source of truth** — skills, policy, and tool wiring. Forge generates the **idiomatic, native artifacts** each agent expects (Claude skills + hooks, Codex `AGENTS.md` + config, Gemini commands + settings) — non-destructively, into any repo. Then, when you want it, the same harness can run an **autonomous loop** that picks the next story, implements it, runs your real tests, has an independent agent review it, and commits — never touching your working tree unless the work is green.
+
+```text
+   ┌─────────────┐      forge retrofit       ┌──────────────────────────────┐
+   │   CANON     │ ───────────────────────▶  │  Claude · Codex · Gemini     │
+   │ (one truth) │   idiomatic per agent     │  skills · MCP · instructions │
+   └─────────────┘                           └──────────────────────────────┘
+                                                          │
+                                              forge loop run --isolate
+                                                          ▼
+                                       implement → test → review → commit
+```
+
+## ✨ Highlights
+
+- 🤝 **Truly cross-agent** — Claude Code, Codex CLI, and Gemini CLI, generated from one canon. No copy-paste drift.
+- 🧩 **Non-destructive retrofit** — every file is backed up before a change; re-runs are idempotent; `.claude/settings.json` is *merged*, never clobbered.
+- 🤖 **Optional autonomous loop** — a Ralph-style loop that completes a PRD, gated by your real test suite and an independent agent review.
+- 🛡️ **Mechanical safety gates** — clean-worktree, acceptance-criteria, green-tests, and role-separated review. Enforced in code, not by agent goodwill.
+- 🧪 **Worktree isolation** — run each story in a throwaway git worktree; only verified, committed work is fast-forwarded back.
+- 🧠 **Choose your code-graph** — graphify (fast, multimodal) or Serena (LSP-accurate) per project, with a recommendation at retrofit time.
+- 🪙 **Token-aware** — wires rtk for command-output compression and ships a `minimal-code` skill that nudges every agent to write less.
+- ✅ **140 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
+
+## 🚀 Quickstart
 
 ```bash
-git clone <this-repo>
-cd MyHarnessSkill
+git clone <this-repo> && cd forge
 npm install
-```
 
-Run the CLI with `npm run forge -- <command>` (or `npm run build` then `node dist/cli.js <command>`).
-
-## Commands
-
-### `forge validate [canonDir]`
-
-Lints the Canon: manifest parses, every referenced skill/policy/loop/tool exists, each `SKILL.md` has valid frontmatter.
-
-```bash
+# 1) sanity-check the canon
 npm run forge -- validate canon
-# ✓ canon valid (canon)
+
+# 2) retrofit a project (asks/chooses code-graph; non-destructive)
+npm run forge -- retrofit /path/to/your/project --agent=all --code-graph=serena
+
+# 3) (optional) run the autonomous loop on a PRD
+npm run forge -- loop on  /path/to/your/project
+npm run forge -- loop run /path/to/your/project --isolate --reviewer=claude --max=20
 ```
 
-### `forge retrofit [targetDir] [--agent=...] [--code-graph=...] [--loop]`
+> Requires Node ≥ 20 and git. The MCP tools (rtk, graphify/Serena, Playwright MCP) are wired by Forge but installed separately — the generated config is a clearly-labelled, adjustable template.
 
-Generates harness artifacts into `targetDir` (default `.`) from the Canon. **Non-destructive**: any file it would overwrite is first copied to `.forge/backup/<timestamp>/`; re-running is idempotent (`unchanged`); `.claude/settings.json` is **deep-merged**, never replaced.
+## 🏗️ Architecture
 
-- `--agent=all` — generate for Claude + Codex + Gemini.
-- `--agent=claude,gemini` — comma-separated subset.
-- *(omitted)* — auto-detect from the project, falling back to Claude.
-- `--code-graph=graphify|serena` — choose the code-graph MCP tool (default `graphify`, recorded in `.forge/config.yaml` and sticky across runs). **graphify**: fast, multimodal (code + PDFs + images), ~70x token reduction on large mixed repos — best for rapid exploration/migration. **serena**: LSP-accurate, symbol-exact cross-file refactoring, no stale index — best for large strongly-typed codebases doing systematic refactoring. The `forge-retrofit` skill asks and recommends per project.
-- `--loop` — record the autonomous loop as enabled in `.forge/config.yaml` (default: disabled).
-
-```bash
-npm run forge -- retrofit . --agent=all
+```mermaid
+flowchart TD
+    Canon["📦 CANON — single source of truth<br/>skills · policy · loop spec · tool wiring"]
+    Skill["🛠️ forge retrofit<br/>detect → plan → apply (backup) → report"]
+    Canon --> Skill
+    Skill --> Claude["Claude Code<br/>.claude/skills · .mcp.json · hook"]
+    Skill --> Codex["Codex CLI<br/>AGENTS.md · config.toml · RTK.md"]
+    Skill --> Gemini["Gemini CLI<br/>GEMINI.md · commands · settings.json"]
+    Loop["🤖 forge loop — autonomous Ralph loop<br/>gates · verify · review · worktree isolation"]
+    Claude -. drives .-> Loop
+    Codex -. drives .-> Loop
+    Gemini -. drives .-> Loop
 ```
 
-What gets generated per agent:
+Three layers, three commands: **Canon** (`forge validate`) → **Retrofit** (`forge retrofit`) → **Loop** (`forge loop`).
+
+## 🔌 What gets generated per agent
 
 | Agent | Artifacts |
 |---|---|
-| **Claude** | `.claude/skills/`, `AGENTS.md`, `CLAUDE.md` (imports `AGENTS.md`), `.mcp.json` (graphify + Playwright), and — when WSL is available — a `.claude/settings.json` rtk `PreToolUse` hook |
-| **Codex** | `AGENTS.md`, `.codex/config.toml` (MCP servers), `RTK.md` |
-| **Gemini** | `GEMINI.md`, `.gemini/commands/*.toml` (one slash-command per skill), `.gemini/settings.json` (MCP + `AGENTS.md` context) |
+| **Claude** | `.claude/skills/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json` (code-graph + Playwright), and an rtk `PreToolUse` hook when WSL is available |
+| **Codex** | `AGENTS.md` (native), `.codex/config.toml` (MCP servers), `RTK.md` |
+| **Gemini** | `GEMINI.md`, `.gemini/commands/*.toml` (one per skill), `.gemini/settings.json` (MCP + `AGENTS.md` context) |
 
-> **rtk asymmetry:** Claude can rewrite commands transparently via a hook (needs WSL on Windows). Codex and Gemini have no such hook, so they receive an instruction to prefix commands with `rtk` instead. The generated MCP launch commands are best-effort templates — adjust them to your local installs.
+> **rtk asymmetry, handled:** Claude can rewrite commands transparently via a hook (needs WSL on Windows); Codex and Gemini have no such hook, so they get an instruction to prefix commands with `rtk` instead.
 
-### `forge loop <on|off|status|run> [targetDir] [--max=N]`
+## 🤖 The autonomous loop
 
-The optional autonomous loop. Off by default; toggling is config-only and reversible.
+Opt-in and off by default. Each iteration starts a **fresh agent** and passes through hard gates before anything is committed:
 
-```bash
-npm run forge -- loop on .         # enable in .forge/config.yaml
-npm run forge -- loop status .     # show enabled state + PRD progress
-npm run forge -- loop run . --max=10
-npm run forge -- loop off .
+```mermaid
+flowchart LR
+    A[pick next PRD story] --> B{clean worktree?}
+    B -- no --> X[blocked]
+    B -- yes --> C{acceptance<br/>criteria?}
+    C -- no --> X
+    C -- yes --> D[agent implements<br/>one story]
+    D --> E{tests green?}
+    E -- no --> X
+    E -- yes --> F{reviewer<br/>approves?}
+    F -- no --> X
+    F -- yes --> G[commit + mark passes:true]
+    G --> A
 ```
 
-**How a run works** — each iteration starts a fresh agent and:
+```bash
+forge loop on  .                 # enable (recorded in .forge/config.yaml)
+forge loop status .              # show state + PRD progress
+forge loop run . \
+  --runner=codex \               # implement with Codex…
+  --reviewer=claude \            # …review with Claude (role separation)
+  --isolate \                    # each story in a throwaway git worktree
+  --max=20
+forge loop off .                 # disable
+```
 
-1. **Pre-dispatch gate** — the git worktree must be clean, else `blocked` (0 iterations).
-2. Pick the highest-priority unfinished story from `.forge/prd.yaml`.
-3. **Stop-the-Line gate** — the story must have acceptance criteria, else `blocked`.
-4. Run the agent (`claude -p`) to implement **one** story.
-5. **Verify** — run the project's test command (`verify.command` in config, or a detected `npm test`). The story is marked `passes: true` and committed **only if the agent succeeded AND the tests pass**. If tests are red: `blocked` (no commit, story stays open).
-6. Stop when all stories pass (`complete`) or the iteration cap is reached (`cap-reached`).
-
-State lives outside the model context — the PRD file plus git. The loop **refuses to start** if no verify command is configured or detectable, so it never marks work done without a green test run.
-
-#### PRD format (`.forge/prd.yaml`)
+**PRD format** (`.forge/prd.yaml`):
 
 ```yaml
 - id: STORY-1
-  title: Short imperative description
-  priority: 1            # lower = higher priority
-  acceptance:            # Definition of Done (required, else blocked)
-    - The endpoint returns 200 for a valid request.
-  passes: false          # the loop sets this true only on green tests
+  title: Add a health endpoint
+  priority: 1                    # lower = higher priority
+  acceptance:                    # Definition of Done (required, else blocked)
+    - GET /health returns 200
+  passes: false                  # the loop sets this true only on green tests
 ```
 
-#### Verify command (`.forge/config.yaml`)
+The loop stops when every story is `passes: true`. State lives **outside the model context** — the PRD file plus git — so each iteration is fresh.
 
-```yaml
-verify:
-  command: npm test      # optional; npm test is auto-detected if a real test script exists
+## 🛡️ Safety model
+
+Forge's guardrails are **mechanical, not advisory** — the loop blocks on a dirty worktree, missing acceptance criteria, red tests, or a reviewer rejection, and **none of them rely on the agent choosing to behave**.
+
+- **Commit integrity** — a story is never recorded `passes: true` without a corresponding commit; a failed commit reverts the PRD.
+- **Role separation** — the implementer never reviews its own work; `--reviewer` can even be a different agent.
+- **Isolation** — with `--isolate`, failed or partial work is discarded with the worktree and never reaches your main tree.
+- **Non-destructive retrofit** — existing files are backed up before any change; settings are merged, not replaced.
+- **Independent verification** — "done" means *your test command exits 0*, not "the agent said so".
+
+## 🧠 Choose your code-graph
+
+`forge retrofit --code-graph=graphify|serena` (default `graphify`, remembered per project). The `forge-retrofit` skill asks and recommends based on the project.
+
+| | **graphify** | **Serena** |
+|---|---|---|
+| Engine | tree-sitter AST + graph | real language servers (LSP) |
+| Strength | fast, multimodal (code + PDFs + images) | symbol-exact cross-file refactoring |
+| Token efficiency | ~70× reduction on large mixed repos | standard, no index to go stale |
+| Best for | rapid exploration / migration / onboarding | systematic refactoring in typed codebases |
+| Caveat | heuristic edges; static index can go stale | one language server per language |
+
+## 🪙 Token efficiency
+
+Forge attacks tokens on two complementary surfaces:
+
+- **rtk** compresses noisy command/tool output before it enters context (wired as a hook/instruction per agent).
+- The **`minimal-code`** skill installs a YAGNI / "lazy senior dev" ladder so agents write the least code that solves the task — fewer output tokens, smaller review surface. *(Adapted from the MIT-licensed [ponytail](https://github.com/DietrichGebert/ponytail) ruleset.)*
+
+## 🧩 How it's built
+
+```text
+canon/            # the source of truth — harness-agnostic
+  AGENTS.md  skills/  policy/  loop/  tools/  manifest.yaml
+src/
+  canon/          # manifest schema + validator (forge validate)
+  retrofit/       # detect · plan · apply · planners (claude/codex/gemini) · tools
+  loop/           # prd · gates · runner · verify · git/worktree · loop · run-command
+docs/superpowers/ # the spec and every component's implementation plan
 ```
 
-## The Canon (`canon/`)
+Forge was built incrementally, **test-first**, one component at a time (Canon → retrofit → loop → verification → multi-agent → isolation → review). Every component went through a fresh implementer plus a **two-stage review** (spec compliance, then code quality) before merge — the design docs and plans live in [`docs/superpowers/`](docs/superpowers/).
 
-```
-canon/
-  AGENTS.md              # portable baseline instructions
-  skills/<id>/SKILL.md   # harness-agnostic skills (methodology + roles)
-  policy/                # gates.md (Stop-the-Line), roles.md (role separation)
-  loop/                  # loop-spec.md, prd.schema.md
-  tools/                 # rtk.md, graphify.md, playwright-mcp.md
-  manifest.yaml          # declares everything above; validated by `forge validate`
-```
+## 🗺️ Roadmap
 
-The Canon is the single source of truth. To extend the harness, add to the Canon and `forge validate` it; `forge retrofit` then propagates it to every agent.
+- **Multi-reviewer quorum** — N independent reviewers with distinct lenses (correctness / security / acceptance) instead of one.
+- **Merge queue** — re-test against the latest main before integrating, for parallel/multi-agent loops.
 
-## Safety model
-
-- **Mechanical gates, not agent goodwill** — the loop blocks on a dirty worktree, missing acceptance criteria, or red tests; none rely on the agent choosing to behave.
-- **Commit integrity** — a story is never recorded `passes: true` without a corresponding commit (a failed commit reverts the PRD).
-- **Non-destructive retrofit** — existing files are backed up before any change; `.claude/settings.json` is merged, not replaced.
-
-## Development
+## 🧪 Development
 
 ```bash
 npm test          # vitest (140 tests)
 npm run build     # tsc, no emit errors
+npm run forge -- validate canon
 ```
 
-Design specs and per-component implementation plans live in `docs/superpowers/specs/` and `docs/superpowers/plans/`. Each component (`A` Canon, `B1` Claude retrofit, `B2` Codex/Gemini + tools, `C1` loop, `C2` verify, `B3` settings merge) was built test-first and reviewed.
+## 🙏 Credits & inspiration
 
-## Status
+Forge stands on the shoulders of a great ecosystem: methodology ideas from [superpowers](https://github.com/obra/superpowers) and [gstack](https://github.com/garrytan/gstack); the [AGENTS.md](https://agents.md/) standard; the generator pattern from [wshobson/agents](https://github.com/wshobson/agents); the Ralph autonomous-loop pattern; safety-gate thinking from safe-agentic-workflow; and the wired tools [rtk](https://github.com/rtk-ai/rtk), [graphify](https://github.com/safishamsi/graphify), [Serena](https://github.com/oraios/serena), and [Playwright MCP](https://github.com/microsoft/playwright-mcp). The `minimal-code` skill adapts the MIT-licensed [ponytail](https://github.com/DietrichGebert/ponytail) ruleset.
 
-| Component | State |
-|---|---|
-| Canon + `forge validate` | ✅ |
-| Retrofit — Claude | ✅ |
-| Retrofit — Codex + Gemini + tool wiring | ✅ |
-| Autonomous loop (gates, PRD, toggle) | ✅ |
-| Loop verification (independent test run) | ✅ |
-| Non-destructive settings merge | ✅ |
-| **Deferred (C3):** Codex/Gemini loop runners, per-iteration worktree isolation, review-iteration with role separation | ⏳ |
+## 📄 License
 
-### Known limitations
+MIT — see [`LICENSE`](LICENSE).
 
-- The loop's agent runner is `claude -p` only; running it needs the `claude` CLI authenticated for headless use (`ANTHROPIC_API_KEY` or a logged-in CLI). Codex/Gemini runners are C3.
-- WSL detection for the rtk Claude hook is best-effort; without WSL, Claude falls back to instruction-mode rtk.
-- Generated MCP launch commands (graphify, Playwright, Codex config) are templates that may need adjusting to your local tool installation.
+<div align="center">
+<sub>Built with a disciplined loop: brainstorm → spec → plan → TDD → two-stage review → merge.</sub>
+</div>
