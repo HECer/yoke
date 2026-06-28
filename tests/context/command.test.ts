@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runContextInit, runContextStatus } from '../../src/context/command.js'
@@ -27,6 +27,18 @@ describe('runContextStatus', () => {
     log.mockClear()
     runContextStatus(dir)
     expect(log.mock.calls.flat().join('\n')).toContain('PROJECT.md')
+    log.mockRestore()
+  })
+
+  it('marks an individual file (missing) when only some files are present', () => {
+    const ctxDir = join(dir, '.yoke', 'context')
+    mkdirSync(ctxDir, { recursive: true })
+    writeFileSync(join(ctxDir, 'DECISIONS.md'), '# Decisions\n')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    expect(runContextStatus(dir)).toBe(0)
+    const out = log.mock.calls.flat().join('\n')
+    expect(out).toContain('DECISIONS.md')
+    expect(out).toMatch(/PROJECT\.md\s+\(missing\)/)
     log.mockRestore()
   })
 })

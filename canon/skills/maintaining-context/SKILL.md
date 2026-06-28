@@ -19,9 +19,11 @@ starting with a fresh context window is never blind.
 - When you make a **non-obvious decision** (a trade-off, an architectural choice, a rejected alternative), append it to `.yoke/context/DECISIONS.md`:
 
   ```
-  ## <YYYY-MM-DD> — <short title>
+  ## <YYYY-MM-DD> — <area-or-story>: <short title>
   What you chose and why, in one or two lines.
   ```
+
+  (This mirrors the heading the loop writes for completed stories, so loop-authored and hand-authored entries share one shape.)
 
 - When you learn a **reusable fact or gotcha** (a non-obvious build step, an API quirk, a convention), append a bullet to `.yoke/context/KNOWLEDGE.md`.
 

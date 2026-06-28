@@ -145,6 +145,9 @@ The loop reads them into every agent + reviewer prompt and logs decisions back o
 commit. Manage them directly with `yoke context init` and `yoke context status`. The
 `maintaining-context` skill teaches agents to honour the same files during interactive work.
 
+> Commit `.yoke/context/` to git. The `--isolate` loop runs each iteration in a worktree
+> checked out from HEAD, so it only sees committed context.
+
 ## 🛡️ Safety model
 
 Yoke's guardrails are **mechanical, not advisory** — the loop blocks on a dirty worktree, missing acceptance criteria, red tests, or a reviewer rejection, and **none of them rely on the agent choosing to behave**.
