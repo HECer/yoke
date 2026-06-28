@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner } from '../../src/loop/runner.js'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner, contextBlockFor } from '../../src/loop/runner.js'
 import type { Story } from '../../src/loop/prd.js'
 
 const story: Story = {
@@ -87,6 +90,35 @@ describe('buildReviewPrompt', () => {
 describe('makeReviewRunner', () => {
   it('returns a callable AgentRunner', () => {
     expect(typeof makeReviewRunner('claude')).toBe('function')
+  })
+})
+
+const ctxStory = { id: 'S1', title: 'First', priority: 1, acceptance: ['x'], passes: false }
+
+describe('prompt context injection', () => {
+  it('buildClaudePrompt omits the context section when no context is given', () => {
+    const p = buildClaudePrompt(ctxStory)
+    expect(p).not.toContain('Project context')
+    expect(p).toContain('Story S1: First')
+  })
+  it('buildClaudePrompt includes the context block when provided', () => {
+    const p = buildClaudePrompt(ctxStory, '## Project context\nGOAL')
+    expect(p).toContain('## Project context')
+    expect(p).toContain('GOAL')
+    expect(p.indexOf('GOAL')).toBeLessThan(p.indexOf('Story S1'))
+  })
+  it('buildReviewPrompt includes the context block when provided', () => {
+    expect(buildReviewPrompt(ctxStory, '## Project context\nGOAL')).toContain('GOAL')
+  })
+  it('contextBlockFor reads .yoke/context under the target dir', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-cbf-'))
+    mkdirSync(join(d, '.yoke', 'context'), { recursive: true })
+    writeFileSync(join(d, '.yoke', 'context', 'PROJECT.md'), 'NORTHSTAR')
+    expect(contextBlockFor(d)).toContain('NORTHSTAR')
+    const empty = mkdtempSync(join(tmpdir(), 'yoke-empty-'))
+    expect(contextBlockFor(empty)).toBe('')
+    rmSync(d, { recursive: true, force: true })
+    rmSync(empty, { recursive: true, force: true })
   })
 })
 
