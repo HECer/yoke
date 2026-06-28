@@ -154,4 +154,21 @@ describe('runLoop with isolation', () => {
     expect(loadPrd(isoPrd())[0].passes).toBe(false)  // main tree untouched
     expect(removed.length).toBe(1)                    // worktree still cleaned up
   })
+
+  it('blocks (does not crash) when addWorktree throws, leaving the main PRD untouched', () => {
+    const throwingWorktreeGit: GitOps = {
+      isClean: () => true,
+      commitAll: () => {},
+      addWorktree: () => { throw new Error('git worktree add failed') },
+      integrate: () => {},
+      removeWorktree: () => {},
+    }
+    const res = runLoop({
+      prdPath: isoPrd(), targetDir: isoDir, runner: alwaysPass, git: throwingWorktreeGit,
+      verify: verifyOk, isolate: true, maxIterations: 5,
+    })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/isolated iteration failed/)
+    expect(loadPrd(isoPrd())[0].passes).toBe(false)  // main tree untouched
+  })
 })

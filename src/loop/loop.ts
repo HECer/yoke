@@ -57,8 +57,8 @@ export function runLoop(opts: LoopOptions): LoopResult {
     if (opts.isolate) {
       const wt = join(opts.targetDir, '.forge', 'worktrees', story.id)
       const wtPrd = join(wt, relative(opts.targetDir, opts.prdPath))
-      opts.git.addWorktree(opts.targetDir, wt)
       try {
+        opts.git.addWorktree(opts.targetDir, wt)
         const result = opts.runner({ targetDir: wt, story })
         iterations++
         if (!result.success) {
@@ -75,7 +75,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
       } catch (e) {
         return { status: 'blocked', iterations, reason: `isolated iteration failed for ${story.id}: ${(e as Error).message}`, finalProgress: progress(stories) }
       } finally {
-        opts.git.removeWorktree(opts.targetDir, wt)
+        try { opts.git.removeWorktree(opts.targetDir, wt) } catch { /* cleanup is best-effort */ }
       }
       continue
     }

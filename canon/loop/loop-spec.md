@@ -6,7 +6,7 @@ The autonomous loop is OPTIONAL and toggle-able:
 - `forge loop status` — show enabled state + PRD progress.
 - `forge loop run [--max=N] [--isolate]` — run the loop (default cap 25 iterations).
 
-Pass `--isolate` to run each iteration in a fresh git worktree: the agent works on a throwaway checkout, and only a verified, committed story is fast-forwarded back into the main tree. A failed iteration never touches your working tree.
+Pass `--isolate` to run each iteration in a fresh git worktree: the agent works on a throwaway checkout, and only a verified, committed story is fast-forwarded back into the main tree. A failed iteration never touches your working tree. Requires `.forge/prd.yaml` to be committed to git, since the worktree is a checkout of HEAD.
 
 When enabled and run, each iteration:
 
