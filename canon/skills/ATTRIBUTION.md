@@ -9,9 +9,8 @@ Their content is used under the terms of the MIT License reproduced below.
 
 **Source:** https://github.com/garrytan/gstack
 
-**Skills ported:** review, ship, health, retro, document-release, cso, plan-ceo-review,
-plan-eng-review, plan-design-review, plan-devex-review, devex-review, land-and-deploy,
-setup-deploy, codex
+**Skills ported:** review, ship, health, retro, document-release, plan-ceo-review,
+plan-eng-review
 
 ---
 

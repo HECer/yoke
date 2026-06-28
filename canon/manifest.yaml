@@ -25,15 +25,8 @@ skills:
   - { id: health, path: skills/health, kind: role }
   - { id: retro, path: skills/retro, kind: role }
   - { id: document-release, path: skills/document-release, kind: role }
-  - { id: cso, path: skills/cso, kind: role }
   - { id: plan-ceo-review, path: skills/plan-ceo-review, kind: role }
   - { id: plan-eng-review, path: skills/plan-eng-review, kind: role }
-  - { id: plan-design-review, path: skills/plan-design-review, kind: role }
-  - { id: plan-devex-review, path: skills/plan-devex-review, kind: role }
-  - { id: devex-review, path: skills/devex-review, kind: role }
-  - { id: land-and-deploy, path: skills/land-and-deploy, kind: role }
-  - { id: setup-deploy, path: skills/setup-deploy, kind: role }
-  - { id: codex, path: skills/codex, kind: role }
   # authored workflow skill (kind: methodology)
   - { id: workflow, path: skills/workflow, kind: methodology }
 policy:
