@@ -24,43 +24,38 @@ describe('buildClaudePrompt', () => {
 })
 
 describe('claudeInvocation', () => {
-  it('passes the prompt via stdin (input), not as a CLI arg', () => {
+  it('passes the prompt as input, not as a CLI arg', () => {
     const inv = claudeInvocation('PROMPT TEXT', '/work')
     expect(inv.command).toBe('claude')
     expect(inv.args).toEqual(['-p'])
+    expect(inv.input).toBe('PROMPT TEXT')
     expect(inv.args).not.toContain('PROMPT TEXT')
-    expect(inv.options.input).toBe('PROMPT TEXT')
-    expect(inv.options.cwd).toBe('/work')
-  })
-
-  it('uses shell mode only on Windows (to resolve the claude.cmd shim)', () => {
-    const inv = claudeInvocation('p', '/work')
-    expect(inv.options.shell).toBe(process.platform === 'win32')
+    expect((inv as Record<string, unknown>).shell).toBeUndefined()
   })
 })
 
 describe('agentInvocation', () => {
-  it('maps codex to `codex exec` with the prompt on stdin', () => {
+  it('maps codex to `codex exec` with the prompt as input', () => {
     const inv = agentInvocation('codex', 'P', '/w')
     expect(inv.command).toBe('codex')
     expect(inv.args).toEqual(['exec'])
-    expect(inv.options.input).toBe('P')
+    expect(inv.input).toBe('P')
     expect(inv.args).not.toContain('P')
   })
 
-  it('maps gemini to `gemini -p` with the prompt on stdin', () => {
+  it('maps gemini to `gemini -p` with the prompt as input', () => {
     const inv = agentInvocation('gemini', 'P', '/w')
     expect(inv.command).toBe('gemini')
     expect(inv.args).toEqual(['-p'])
-    expect(inv.options.input).toBe('P')
+    expect(inv.input).toBe('P')
   })
 
   it('claude back-compat: claudeInvocation equals agentInvocation(claude)', () => {
     expect(claudeInvocation('P', '/w')).toEqual(agentInvocation('claude', 'P', '/w'))
   })
 
-  it('uses shell mode only on Windows for every agent', () => {
-    expect(agentInvocation('gemini', 'P', '/w').options.shell).toBe(process.platform === 'win32')
+  it('carries the cwd', () => {
+    expect(agentInvocation('claude', 'P', '/w').cwd).toBe('/w')
   })
 })
 
@@ -92,5 +87,20 @@ describe('buildReviewPrompt', () => {
 describe('makeReviewRunner', () => {
   it('returns a callable AgentRunner', () => {
     expect(typeof makeReviewRunner('claude')).toBe('function')
+  })
+})
+
+describe('no DEP0190', () => {
+  it('isAgentAvailable does not emit a DEP0190 deprecation warning', () => {
+    const warnings: string[] = []
+    const onWarn = (w: Error) => warnings.push(String(w))
+    process.on('warning', onWarn)
+    try {
+      // a definitely-absent command — returns false, must not warn
+      isAgentAvailable('claude')
+    } finally {
+      process.off('warning', onWarn)
+    }
+    expect(warnings.some(w => w.includes('DEP0190'))).toBe(false)
   })
 })
