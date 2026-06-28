@@ -5,6 +5,7 @@ skills:
   - { id: tdd, path: skills/tdd, kind: methodology }
   - { id: eng-review, path: skills/eng-review, kind: role }
   - { id: forge-retrofit, path: skills/forge-retrofit, kind: methodology }
+  - { id: minimal-code, path: skills/minimal-code, kind: methodology }
 policy:
   - { path: policy/gates.md }
   - { path: policy/roles.md }
@@ -15,3 +16,4 @@ tools:
   - { id: rtk, path: tools/rtk.md }
   - { id: graphify, path: tools/graphify.md }
   - { id: playwright-mcp, path: tools/playwright-mcp.md }
+  - { id: serena, path: tools/serena.md }
