@@ -6,6 +6,7 @@
 
 A cross-agent coding **harness** that installs a curated set of skills, safety policy, and tooling into **any project** for **Claude Code, OpenAI Codex CLI, and Gemini CLI** — plus an opt-in autonomous **loop** that ships a spec story-by-story behind hard, mechanical safety gates.
 
+[![CI](https://github.com/HECer/yoke/actions/workflows/ci.yml/badge.svg)](https://github.com/HECer/yoke/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
@@ -46,7 +47,7 @@ You curate **one source of truth** — skills, policy, and tool wiring. Yoke gen
 ## 🚀 Quickstart
 
 ```bash
-git clone <this-repo> && cd yoke
+git clone https://github.com/HECer/yoke.git && cd yoke
 npm install
 
 # 1) sanity-check the canon
