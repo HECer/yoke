@@ -22,6 +22,7 @@ const stubGit: GitOps = {
 }
 const passRunner: AgentRunner = () => ({ success: true, summary: 'ok' })
 const verifyOk: Verifier = () => ({ passed: true, summary: 'ok' })
+const reviewReject: AgentRunner = () => ({ success: false, summary: 'nope' })
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'forge-loopcli-'))
@@ -111,6 +112,22 @@ describe('forge loop CLI', () => {
       isAvailable: () => false, // ignored because runner is injected
     })
     expect(code).toBe(0)
+  })
+
+  it('blocks when an injected review runner rejects', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk, reviewRunner: reviewReject })
+    expect(code).toBe(1)
+    expect(loadPrd(join(dir, '.forge', 'prd.yaml'))[0].passes).toBe(false)
+  })
+
+  it('refuses to run when the reviewer agent CLI is unavailable', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    const code = runLoopCommand(dir, {
+      maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk,
+      reviewer: 'codex', isAvailable: (a) => a !== 'codex',
+    })
+    expect(code).toBe(2)
   })
 
   it('passes isolate:true through to runLoop (addWorktree is called)', () => {
