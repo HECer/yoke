@@ -3,13 +3,14 @@ import { join } from 'node:path'
 import { loadManifest } from '../../canon/manifest.js'
 import { parseFrontmatter } from '../../canon/frontmatter.js'
 import type { Action } from '../plan.js'
+import type { CodeGraph } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
 
 function tomlString(s: string): string {
   return '"""\n' + s.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"') + '\n"""'
 }
 
-export function planGemini(canonDir: string, _targetDir: string): Action[] {
+export function planGemini(canonDir: string, _targetDir: string, codeGraph: CodeGraph = 'graphify'): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const actions: Action[] = []
 
@@ -41,7 +42,7 @@ export function planGemini(canonDir: string, _targetDir: string): Action[] {
     kind: 'write',
     target: '.gemini/settings.json',
     content: JSON.stringify({
-      mcpServers: mcpServers(),
+      mcpServers: mcpServers(codeGraph),
       context: { fileName: ['AGENTS.md', 'GEMINI.md'] },
     }, null, 2) + '\n',
     reason: 'MCP servers + AGENTS.md context',

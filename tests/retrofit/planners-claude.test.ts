@@ -56,4 +56,10 @@ describe('planClaude', () => {
     const settings = planClaude(canon, '/t', true).find(a => a.target === '.claude/settings.json')!
     expect(settings.merge).toBe(true)
   })
+
+  it('wires the chosen code-graph into .mcp.json', () => {
+    const mcp = planClaude(canon, '/t', false, 'serena').find(a => a.target === '.mcp.json')!
+    expect(mcp.content).toContain('serena')
+    expect(mcp.content).not.toContain('graphify')
+  })
 })
