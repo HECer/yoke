@@ -6,7 +6,7 @@ export interface McpServerConfig {
 }
 
 // Best-effort launch commands per code-graph tool. Users may need to adjust these
-// to match their local install (graphify: `uv tool install graphifyy`; serena: `uv`,
+// to match their local install (graphify: `uv tool install graphify`; serena: `uv`,
 // e.g. `uvx --from git+https://github.com/oraios/serena serena-mcp-server`).
 const CODE_GRAPH_SERVERS: Record<CodeGraph, McpServerConfig> = {
   graphify: { command: 'graphify', args: ['serve'] },
