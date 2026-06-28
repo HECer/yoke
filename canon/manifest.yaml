@@ -6,6 +6,36 @@ skills:
   - { id: eng-review, path: skills/eng-review, kind: role }
   - { id: yoke-retrofit, path: skills/yoke-retrofit, kind: methodology }
   - { id: minimal-code, path: skills/minimal-code, kind: methodology }
+  # superpowers skills (kind: methodology)
+  - { id: brainstorming, path: skills/brainstorming, kind: methodology }
+  - { id: writing-plans, path: skills/writing-plans, kind: methodology }
+  - { id: executing-plans, path: skills/executing-plans, kind: methodology }
+  - { id: subagent-driven-development, path: skills/subagent-driven-development, kind: methodology }
+  - { id: systematic-debugging, path: skills/systematic-debugging, kind: methodology }
+  - { id: verification-before-completion, path: skills/verification-before-completion, kind: methodology }
+  - { id: using-git-worktrees, path: skills/using-git-worktrees, kind: methodology }
+  - { id: requesting-code-review, path: skills/requesting-code-review, kind: methodology }
+  - { id: receiving-code-review, path: skills/receiving-code-review, kind: methodology }
+  - { id: dispatching-parallel-agents, path: skills/dispatching-parallel-agents, kind: methodology }
+  - { id: finishing-a-development-branch, path: skills/finishing-a-development-branch, kind: methodology }
+  - { id: writing-skills, path: skills/writing-skills, kind: methodology }
+  # gstack skills (kind: role)
+  - { id: review, path: skills/review, kind: role }
+  - { id: ship, path: skills/ship, kind: role }
+  - { id: health, path: skills/health, kind: role }
+  - { id: retro, path: skills/retro, kind: role }
+  - { id: document-release, path: skills/document-release, kind: role }
+  - { id: cso, path: skills/cso, kind: role }
+  - { id: plan-ceo-review, path: skills/plan-ceo-review, kind: role }
+  - { id: plan-eng-review, path: skills/plan-eng-review, kind: role }
+  - { id: plan-design-review, path: skills/plan-design-review, kind: role }
+  - { id: plan-devex-review, path: skills/plan-devex-review, kind: role }
+  - { id: devex-review, path: skills/devex-review, kind: role }
+  - { id: land-and-deploy, path: skills/land-and-deploy, kind: role }
+  - { id: setup-deploy, path: skills/setup-deploy, kind: role }
+  - { id: codex, path: skills/codex, kind: role }
+  # authored workflow skill (kind: methodology)
+  - { id: workflow, path: skills/workflow, kind: methodology }
 policy:
   - { path: policy/gates.md }
   - { path: policy/roles.md }
