@@ -12,6 +12,7 @@ export interface LoopOptions {
   verify: Verifier
   maxIterations: number
   isolate?: boolean
+  review?: AgentRunner
 }
 
 export interface LoopResult {
@@ -68,6 +69,12 @@ export function runLoop(opts: LoopOptions): LoopResult {
         if (!verdict.passed) {
           return { status: 'blocked', iterations, reason: `story ${story.id} did not verify: ${verdict.summary}`, finalProgress: progress(stories) }
         }
+        if (opts.review) {
+          const reviewResult = opts.review({ targetDir: wt, story })
+          if (!reviewResult.success) {
+            return { status: 'blocked', iterations, reason: `story ${story.id} rejected in review: ${reviewResult.summary}`, finalProgress: progress(stories) }
+          }
+        }
         const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
         savePrd(wtPrd, updated)
         opts.git.commitAll(wt, `forge: complete ${story.id} ${story.title}`)
@@ -99,6 +106,18 @@ export function runLoop(opts: LoopOptions): LoopResult {
         iterations,
         reason: `story ${story.id} did not verify: ${verdict.summary}`,
         finalProgress: progress(stories),
+      }
+    }
+
+    if (opts.review) {
+      const reviewResult = opts.review({ targetDir: opts.targetDir, story })
+      if (!reviewResult.success) {
+        return {
+          status: 'blocked',
+          iterations,
+          reason: `story ${story.id} rejected in review: ${reviewResult.summary}`,
+          finalProgress: progress(stories),
+        }
       }
     }
 
