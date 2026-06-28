@@ -161,7 +161,15 @@ Yoke attacks tokens on two complementary surfaces:
 - **rtk** compresses noisy command/tool output before it enters context (wired as a hook/instruction per agent).
 - The **`minimal-code`** skill installs a YAGNI / "lazy senior dev" ladder so agents write the least code that solves the task — fewer output tokens, smaller review surface. *(Adapted from the MIT-licensed [ponytail](https://github.com/DietrichGebert/ponytail) ruleset.)*
 
-## 🧩 How it's built
+## 🌱 Why & how it was built
+
+**The problem.** Coding agents are powerful, but each speaks its own dialect — Claude has skills and hooks, Codex reads `AGENTS.md` and a TOML config, Gemini wants commands and a settings file. Keeping the same skills, safety policy, and tool wiring consistent across all of them means copy-paste drift and three things to maintain. Yoke exists to keep **one** source of truth, generate the right native artifacts for each agent, and let that harness run **autonomously and safely** when you want to hand it a spec and walk away.
+
+**The inspiration.** Yoke is a synthesis of ideas already proven across the ecosystem: composable-skills methodology ([superpowers](https://github.com/obra/superpowers), [gstack](https://github.com/garrytan/gstack)); the portable [AGENTS.md](https://agents.md/) standard; the *"one source-of-truth → idiomatic per-harness artifacts"* generation pattern ([wshobson/agents](https://github.com/wshobson/agents)); spec-driven autonomous orchestration (GSD); mechanical safety gates and role separation (safe-agentic-workflow); and the **Ralph loop** (Geoff Huntley) — keep handing a *fresh* agent the next task until the spec is done. Token efficiency comes from [rtk](https://github.com/rtk-ai/rtk) and the write-less-code idea behind [ponytail](https://github.com/DietrichGebert/ponytail).
+
+**How it was built.** Yoke was built the way it's meant to be *used* — agent-driven, incremental, and test-first. The stack was chosen by **researching alternatives first** (which is how `jcodemunch` was dropped for its license and Serena was added as an option). Then every component shipped one small piece at a time through a disciplined loop: **brainstorm → spec → plan → TDD implementation → an independent two-stage review** (does it match the spec? is it well-built?) **→ merge**. Those reviews caught real bugs before they shipped — a Windows `.cmd` spawn failure, a commit-integrity hole, a missing infinite-loop guard, a TOML-escaping bug, a hook-duplication bug. Yoke was even **dogfooded on its own repo**, which surfaced (and fixed) a genuine Windows bug. Every spec and plan lives in [`docs/superpowers/`](docs/superpowers/).
+
+## 🗂️ Project layout
 
 ```text
 canon/            # the source of truth — harness-agnostic
@@ -172,8 +180,6 @@ src/
   loop/           # prd · gates · runner · verify · git/worktree · loop · run-command
 docs/superpowers/ # the spec and every component's implementation plan
 ```
-
-Yoke was built incrementally, **test-first**, one component at a time (Canon → retrofit → loop → verification → multi-agent → isolation → review). Every component went through a fresh implementer plus a **two-stage review** (spec compliance, then code quality) before merge — the design docs and plans live in [`docs/superpowers/`](docs/superpowers/).
 
 ## 🗺️ Roadmap
 
