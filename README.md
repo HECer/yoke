@@ -12,7 +12,7 @@ Forge has three parts:
 
 - Node.js ≥ 20 (developed on 24)
 - Git
-- Optional, wired but installed separately: [rtk](https://github.com/rtk-ai/rtk) (token compression), [graphify](https://github.com/safishamsi/graphify) (code graph), [Playwright MCP](https://github.com/microsoft/playwright-mcp) (browser). Forge writes their config; it does not install them.
+- Optional, wired but installed separately: [rtk](https://github.com/rtk-ai/rtk) (token compression), a code-graph tool — [graphify](https://github.com/safishamsi/graphify) or [Serena](https://github.com/oraios/serena) (chosen at retrofit) — and [Playwright MCP](https://github.com/microsoft/playwright-mcp) (browser). Forge writes their config; it does not install them.
 
 ## Install
 
@@ -35,13 +35,14 @@ npm run forge -- validate canon
 # ✓ canon valid (canon)
 ```
 
-### `forge retrofit [targetDir] [--agent=...] [--loop]`
+### `forge retrofit [targetDir] [--agent=...] [--code-graph=...] [--loop]`
 
 Generates harness artifacts into `targetDir` (default `.`) from the Canon. **Non-destructive**: any file it would overwrite is first copied to `.forge/backup/<timestamp>/`; re-running is idempotent (`unchanged`); `.claude/settings.json` is **deep-merged**, never replaced.
 
 - `--agent=all` — generate for Claude + Codex + Gemini.
 - `--agent=claude,gemini` — comma-separated subset.
 - *(omitted)* — auto-detect from the project, falling back to Claude.
+- `--code-graph=graphify|serena` — choose the code-graph MCP tool (default `graphify`, recorded in `.forge/config.yaml` and sticky across runs). **graphify**: fast, multimodal (code + PDFs + images), ~70x token reduction on large mixed repos — best for rapid exploration/migration. **serena**: LSP-accurate, symbol-exact cross-file refactoring, no stale index — best for large strongly-typed codebases doing systematic refactoring. The `forge-retrofit` skill asks and recommends per project.
 - `--loop` — record the autonomous loop as enabled in `.forge/config.yaml` (default: disabled).
 
 ```bash
@@ -121,7 +122,7 @@ The Canon is the single source of truth. To extend the harness, add to the Canon
 ## Development
 
 ```bash
-npm test          # vitest (112 tests)
+npm test          # vitest (140 tests)
 npm run build     # tsc, no emit errors
 ```
 
