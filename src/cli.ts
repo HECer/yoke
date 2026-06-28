@@ -7,7 +7,7 @@ import type { Agent } from './retrofit/config.js'
 import { applyActions } from './retrofit/apply.js'
 import { formatReport } from './retrofit/report.js'
 import { detectProject } from './retrofit/detect.js'
-import { loadConfig, saveConfig, defaultConfig, type ForgeConfig } from './retrofit/config.js'
+import { loadConfig, saveConfig, defaultConfig, type ForgeConfig, type CodeGraph } from './retrofit/config.js'
 import { loadManifest } from './canon/manifest.js'
 import { join } from 'node:path'
 import { setLoopEnabled, loopStatus, runLoopCommand } from './loop/run-command.js'
@@ -28,7 +28,7 @@ export function runValidate(canonDir: string): number {
   return 1
 }
 
-export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: Agent[] }): number {
+export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: Agent[]; codeGraph?: CodeGraph }): number {
   const canonDir = resolveCanonDir()
   const canonVersion = loadManifest(join(canonDir, 'manifest.yaml')).version
 
@@ -37,11 +37,13 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: A
     ? opts.agents
     : (detection.agents.length > 0 ? detection.agents : ['claude'])
 
-  const actions = planRetrofit(canonDir, targetDir, agents)
+  const existing = loadConfig(targetDir)
+  const codeGraph: CodeGraph = opts.codeGraph ?? existing?.codeGraph ?? 'graphify'
+
+  const actions = planRetrofit(canonDir, targetDir, agents, codeGraph)
   const backupDir = join(targetDir, '.forge', 'backup', String(Date.now()))
   const applied = applyActions(actions, targetDir, { backupDir })
 
-  const existing = loadConfig(targetDir)
   const priorAgents = existing?.agents ?? []
   const mergedAgents = [...new Set([...priorAgents, ...agents])]
   const config: ForgeConfig = {
@@ -49,6 +51,7 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: A
     canonVersion,
     agents: mergedAgents,
     loop: { enabled: opts.loop },
+    codeGraph,
   }
   saveConfig(targetDir, config)
 
@@ -72,7 +75,13 @@ function main(argv: string[]): number {
       if (agentArg && agentArg !== 'all' && agents !== undefined && agents.length === 0) {
         console.warn('Unknown agent(s) in --agent; falling back to detection')
       }
-      return runRetrofit(targetDir, { loop, agents })
+      const cgArg = rest.find(a => a.startsWith('--code-graph='))?.slice('--code-graph='.length)
+      const codeGraph = cgArg === 'serena' || cgArg === 'graphify' ? cgArg : undefined
+      if (cgArg && !codeGraph) {
+        console.error(`Invalid --code-graph value: ${cgArg} (expected graphify|serena)`)
+        return 1
+      }
+      return runRetrofit(targetDir, { loop, agents, codeGraph })
     }
     case 'loop': {
       const sub = rest[0]
@@ -111,7 +120,7 @@ function main(argv: string[]): number {
       return 1
     }
     default:
-      console.log('usage: forge <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--loop] | loop <on|off|status|run>>')
+      console.log('usage: forge <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | loop <on|off|status|run>>')
       return cmd ? 1 : 0
   }
 }

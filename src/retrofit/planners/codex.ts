@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Action } from '../plan.js'
+import type { CodeGraph } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
 
-function tomlMcp(): string {
-  const servers = mcpServers()
+function tomlMcp(codeGraph: CodeGraph): string {
+  const servers = mcpServers(codeGraph)
   // Codex reads MCP servers from ~/.codex/config.toml. This project-level file is a
   // ready-to-merge snippet; users append these blocks to their global config.
   return Object.entries(servers)
@@ -15,7 +16,7 @@ function tomlMcp(): string {
     .join('\n')
 }
 
-export function planCodex(canonDir: string, _targetDir: string): Action[] {
+export function planCodex(canonDir: string, _targetDir: string, codeGraph: CodeGraph = 'graphify'): Action[] {
   return [
     {
       kind: 'write',
@@ -26,8 +27,8 @@ export function planCodex(canonDir: string, _targetDir: string): Action[] {
     {
       kind: 'write',
       target: '.codex/config.toml',
-      content: `# Forge: MCP servers for Codex. Merge into ~/.codex/config.toml.\n\n${tomlMcp()}`,
-      reason: 'MCP servers (graphify, playwright)',
+      content: `# Forge: MCP servers for Codex. Merge into ~/.codex/config.toml.\n\n${tomlMcp(codeGraph)}`,
+      reason: 'MCP servers (code-graph + playwright)',
     },
     {
       kind: 'write',

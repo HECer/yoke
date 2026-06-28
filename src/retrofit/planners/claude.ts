@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadManifest } from '../../canon/manifest.js'
 import type { Action } from '../plan.js'
+import type { CodeGraph } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
 import { hasWsl } from '../wsl.js'
 
@@ -12,7 +13,7 @@ This project uses the Forge harness. Baseline instructions:
 @AGENTS.md
 ${rtkNote ? `\n${rtkNote}\n` : ''}`
 
-export function planClaude(canonDir: string, _targetDir: string, wslAvailable: boolean = hasWsl()): Action[] {
+export function planClaude(canonDir: string, _targetDir: string, wslAvailable: boolean = hasWsl(), codeGraph: CodeGraph = 'graphify'): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const actions: Action[] = []
 
@@ -44,8 +45,8 @@ export function planClaude(canonDir: string, _targetDir: string, wslAvailable: b
   actions.push({
     kind: 'write',
     target: '.mcp.json',
-    content: JSON.stringify({ mcpServers: mcpServers() }, null, 2) + '\n',
-    reason: 'MCP servers (graphify, playwright)',
+    content: JSON.stringify({ mcpServers: mcpServers(codeGraph) }, null, 2) + '\n',
+    reason: 'MCP servers (code-graph + playwright)',
   })
 
   if (rtkHookable) {

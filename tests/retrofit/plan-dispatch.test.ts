@@ -38,4 +38,14 @@ describe('planRetrofit', () => {
     expect(targets).toContain('.gemini/commands/tdd.toml')
     expect(targets.filter(t => t === 'AGENTS.md')).toHaveLength(1)
   })
+
+  it('passes the code-graph choice to every planner', () => {
+    const actions = planRetrofit(canon, '/t', ['claude', 'codex', 'gemini'], 'serena')
+    const claudeMcp = actions.find(a => a.target === '.mcp.json')!
+    const codexToml = actions.find(a => a.target === '.codex/config.toml')!
+    const geminiSettings = actions.find(a => a.target === '.gemini/settings.json')!
+    expect(claudeMcp.content).toContain('serena')
+    expect(codexToml.content).toContain('mcp_servers.serena')
+    expect(geminiSettings.content).toContain('serena')
+  })
 })

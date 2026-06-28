@@ -1,15 +1,18 @@
 ---
 name: forge-retrofit
-description: Use when asked to "retrofit", "forge this project", or set up the Forge harness in a project — runs forge retrofit and asks whether to enable the autonomous loop.
+description: Use when asked to "retrofit", "forge this project", or set up the Forge harness in a project — runs forge retrofit, picks a code-graph tool, and asks whether to enable the autonomous loop.
 ---
 
 # Forge Retrofit
 
 Set up (or update) the Forge harness in the current project.
 
-1. Run `forge retrofit .` to generate artifacts for the agents detected in the project, or `forge retrofit . --agent=all` for Claude + Codex + Gemini. This is non-destructive — existing files are backed up under `.forge/backup/` before any overwrite. Generated per agent:
-   - Claude: `.claude/skills/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json` (+ rtk hook when WSL is available).
-   - Codex: `AGENTS.md`, `.codex/config.toml` (MCP), `RTK.md`.
-   - Gemini: `GEMINI.md`, `.gemini/commands/*.toml`, `.gemini/settings.json`.
-2. **Ask the user whether to enable the autonomous Loop** (default off). If yes, add `--loop`. Recorded in `.forge/config.yaml`; toggle any time with `forge loop on|off`.
-3. Show the printed report (created/overwritten/unchanged + detected agents) and where backups went. Note that MCP launch commands in the generated configs may need adjusting to the user's local tool installs.
+1. **Choose the code-graph tool.** Ask the user which to wire, and recommend based on the project:
+   - **Serena** (LSP-accurate, symbol-exact refactoring, no stale index) — recommend for large, strongly-typed codebases (TypeScript, Python, Go) doing systematic refactoring, where missing a reference is costly. Needs one language server per language.
+   - **graphify** (fast, multimodal: code + PDFs + diagrams + images; ~70x token reduction on large mixed repos; honest INFERRED/AMBIGUOUS edges) — recommend for rapid exploration / migration / onboarding of large or unfamiliar repos, or repos with mixed non-code content.
+   Make a direct recommendation for THIS project, then run with `--code-graph=serena` or `--code-graph=graphify` (default graphify if the user has no preference). The choice is saved in `.forge/config.yaml`.
+2. Run `forge retrofit . --agent=all --code-graph=<choice>` (or a subset of agents). Non-destructive — existing files are backed up under `.forge/backup/` before any overwrite; `.claude/settings.json` is merged, not replaced. Generated per agent: Claude (`.claude/skills/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`, rtk hook when WSL is available); Codex (`AGENTS.md`, `.codex/config.toml`, `RTK.md`); Gemini (`GEMINI.md`, `.gemini/commands/*.toml`, `.gemini/settings.json`).
+3. **Ask whether to enable the autonomous Loop** (default off). If yes, add `--loop`. Toggle any time with `forge loop on|off`.
+4. Show the printed report (created/overwritten/unchanged/merged + detected agents) and where backups went. Note that the generated MCP launch commands may need adjusting to the user's local tool installs.
+
+The harness includes a `minimal-code` skill (YAGNI / lazy-senior-dev) that nudges every agent to write the least code that solves the task — saving tokens and reducing maintenance.
