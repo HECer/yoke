@@ -1,13 +1,21 @@
+import type { CodeGraph } from './config.js'
+
 export interface McpServerConfig {
   command: string
   args: string[]
 }
 
-// Best-effort default launch commands. Users may need to adjust these to match
-// their local install (e.g. graphify installed via `uv tool install graphifyy`).
-export function mcpServers(): Record<string, McpServerConfig> {
+// Best-effort launch commands per code-graph tool. Users may need to adjust these
+// to match their local install (graphify: `uv tool install graphifyy`; serena: `uv`,
+// e.g. `uvx --from git+https://github.com/oraios/serena serena-mcp-server`).
+const CODE_GRAPH_SERVERS: Record<CodeGraph, McpServerConfig> = {
+  graphify: { command: 'graphify', args: ['serve'] },
+  serena: { command: 'serena', args: ['start-mcp-server'] },
+}
+
+export function mcpServers(codeGraph: CodeGraph = 'graphify'): Record<string, McpServerConfig> {
   return {
-    graphify: { command: 'graphify', args: ['serve'] },
+    [codeGraph]: CODE_GRAPH_SERVERS[codeGraph],
     playwright: { command: 'npx', args: ['@playwright/mcp@latest'] },
   }
 }
