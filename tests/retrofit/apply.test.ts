@@ -74,4 +74,30 @@ describe('applyActions', () => {
     }
     expect(() => applyActions([mergeAction], target, { backupDir: backupDir() })).toThrow(/not valid JSON/)
   })
+
+  it('ifAbsent action creates the file when missing', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-apply-'))
+    const res = applyActions(
+      [{ kind: 'write', target: '.yoke/context/PROJECT.md', content: 'TEMPLATE', reason: 'scaffold', ifAbsent: true }],
+      d, { backupDir: join(d, '.yoke', 'backup', 'x') },
+    )
+    expect(res[0].status).toBe('created')
+    expect(readFileSync(join(d, '.yoke/context/PROJECT.md'), 'utf8')).toBe('TEMPLATE')
+    rmSync(d, { recursive: true, force: true })
+  })
+
+  it('ifAbsent action leaves an existing file untouched and takes no backup', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-apply-'))
+    const dest = join(d, '.yoke/context/PROJECT.md')
+    mkdirSync(join(d, '.yoke/context'), { recursive: true })
+    writeFileSync(dest, 'USER CONTENT')
+    const res = applyActions(
+      [{ kind: 'write', target: '.yoke/context/PROJECT.md', content: 'TEMPLATE', reason: 'scaffold', ifAbsent: true }],
+      d, { backupDir: join(d, '.yoke', 'backup', 'x') },
+    )
+    expect(res[0].status).toBe('unchanged')
+    expect(res[0].backedUp).toBeUndefined()
+    expect(readFileSync(dest, 'utf8')).toBe('USER CONTENT')
+    rmSync(d, { recursive: true, force: true })
+  })
 })

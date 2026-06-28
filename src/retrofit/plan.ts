@@ -1,6 +1,7 @@
 import { planClaude } from './planners/claude.js'
 import { planCodex } from './planners/codex.js'
 import { planGemini } from './planners/gemini.js'
+import { baseContextActions } from './context-actions.js'
 import type { Agent, CodeGraph } from './config.js'
 
 export interface Action {
@@ -9,6 +10,7 @@ export interface Action {
   content: string
   reason: string
   merge?: boolean
+  ifAbsent?: boolean
 }
 
 export function planClaudeRetrofit(canonDir: string, targetDir: string): Action[] {
@@ -26,6 +28,10 @@ export const PLANNERS: Record<Agent, AgentPlanner> = {
 export function planRetrofit(canonDir: string, targetDir: string, agents: Agent[], codeGraph: CodeGraph = 'graphify'): Action[] {
   const seen = new Set<string>()
   const merged: Action[] = []
+  for (const action of baseContextActions(canonDir)) {
+    seen.add(action.target)
+    merged.push(action)
+  }
   for (const agent of agents) {
     for (const action of PLANNERS[agent](canonDir, targetDir, codeGraph)) {
       if (seen.has(action.target)) continue
