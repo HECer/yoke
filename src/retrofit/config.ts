@@ -4,14 +4,17 @@ import { parse, stringify } from 'yaml'
 import { z } from 'zod'
 
 export type Agent = 'claude' | 'codex' | 'gemini'
+export type CodeGraph = 'graphify' | 'serena'
 
 const AgentSchema = z.enum(['claude', 'codex', 'gemini'])
+const CodeGraphSchema = z.enum(['graphify', 'serena'])
 
 const ForgeConfigSchema = z.object({
   canonVersion: z.string().min(1),
   agents: z.array(AgentSchema),
   loop: z.object({ enabled: z.boolean() }),
   verify: z.object({ command: z.string().min(1) }).optional(),
+  codeGraph: CodeGraphSchema.optional(),
 })
 
 export interface ForgeConfig {
@@ -19,6 +22,7 @@ export interface ForgeConfig {
   agents: Agent[]
   loop: { enabled: boolean }
   verify?: { command: string }
+  codeGraph?: CodeGraph
 }
 
 export function defaultConfig(canonVersion: string): ForgeConfig {

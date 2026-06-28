@@ -48,4 +48,10 @@ describe('forge config', () => {
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'echo "Error: no test specified" && exit 1' } }))
     expect(resolveVerifyCommand(dir, { canonVersion: '0', agents: [], loop: { enabled: true } })).toBeNull()
   })
+
+  it('round-trips an optional codeGraph choice', () => {
+    const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: false }, codeGraph: 'serena' as const }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)).toEqual(cfg)
+  })
 })
