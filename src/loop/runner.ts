@@ -1,5 +1,5 @@
 import type { Story } from './prd.js'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import type { Agent } from '../retrofit/config.js'
 
 export interface AgentContext {
@@ -48,12 +48,8 @@ export function buildReviewPrompt(story: Story): string {
 export interface Invocation {
   command: string
   args: string[]
-  options: {
-    cwd: string
-    input: string
-    stdio: ['pipe', 'inherit', 'inherit']
-    shell: boolean
-  }
+  input: string
+  cwd: string
 }
 
 const AGENT_SPECS: Record<Agent, { command: string; baseArgs: string[] }> = {
@@ -62,34 +58,59 @@ const AGENT_SPECS: Record<Agent, { command: string; baseArgs: string[] }> = {
   gemini: { command: 'gemini', baseArgs: ['-p'] },
 }
 
-// Build a cross-platform headless invocation for an agent. The prompt goes via
-// stdin (so it needs no shell escaping); shell mode is enabled on Windows so the
-// agent's `.cmd` shim resolves via PATHEXT (the only args are safe literal flags).
 export function agentInvocation(agent: Agent, prompt: string, cwd: string): Invocation {
   const spec = AGENT_SPECS[agent]
-  return {
-    command: spec.command,
-    args: spec.baseArgs,
-    options: {
-      cwd,
-      input: prompt,
-      stdio: ['pipe', 'inherit', 'inherit'],
-      shell: process.platform === 'win32',
-    },
-  }
+  return { command: spec.command, args: spec.baseArgs, input: prompt, cwd }
 }
 
 export function claudeInvocation(prompt: string, cwd: string): Invocation {
   return agentInvocation('claude', prompt, cwd)
 }
 
+// Execute a CLI invocation. On Windows the agent CLIs are `.cmd` shims that
+// execFileSync cannot resolve without a shell; but passing an args array with
+// shell:true triggers DEP0190. So on win32 we run a single command string via
+// execSync (our args are literal flags, never user data — the prompt is piped via
+// stdin), which avoids the warning. On other platforms execFileSync with no shell
+// is already warning-free. Throws on a non-zero exit (caller catches).
+function runCli(inv: Invocation): void {
+  if (process.platform === 'win32') {
+    execSync([inv.command, ...inv.args].join(' '), {
+      cwd: inv.cwd,
+      input: inv.input,
+      stdio: ['pipe', 'inherit', 'inherit'],
+    })
+  } else {
+    execFileSync(inv.command, inv.args, {
+      cwd: inv.cwd,
+      input: inv.input,
+      stdio: ['pipe', 'inherit', 'inherit'],
+    })
+  }
+}
+
+// Probe whether a CLI is on PATH via `<command> --version`. Same win32/other split
+// as runCli to stay DEP0190-free. Never throws.
+function probeVersion(command: string): boolean {
+  try {
+    if (process.platform === 'win32') {
+      execSync(`${command} --version`, { stdio: 'pipe', timeout: 5000 })
+    } else {
+      execFileSync(command, ['--version'], { stdio: 'pipe', timeout: 5000 })
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function makeRunner(agent: Agent): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
     const inv = agentInvocation(agent, buildClaudePrompt(ctx.story), ctx.targetDir)
     try {
-      // NOTE: The loop trusts the agent's exit code as a proxy for "it ran".
-      // Independent test verification happens in the loop (Baustein C2), not here.
-      execFileSync(inv.command, inv.args, inv.options)
+      // NOTE: the loop trusts the agent's exit code as a proxy for "it ran".
+      // Independent verification happens in the loop (Baustein C2), not here.
+      runCli(inv)
       return { success: true, summary: `${agent} implemented ${ctx.story.id}` }
     } catch (e) {
       return { success: false, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}` }
@@ -103,7 +124,7 @@ export function makeReviewRunner(agent: Agent): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
     const inv = agentInvocation(agent, buildReviewPrompt(ctx.story), ctx.targetDir)
     try {
-      execFileSync(inv.command, inv.args, inv.options)
+      runCli(inv)
       return { success: true, summary: `${agent} approved ${ctx.story.id}` }
     } catch (e) {
       return { success: false, summary: `${agent} rejected ${ctx.story.id}: ${(e as Error).message}` }
@@ -114,17 +135,5 @@ export function makeReviewRunner(agent: Agent): AgentRunner {
 // Probe whether the agent's CLI is on PATH (so the loop can refuse upfront with a
 // clear message instead of failing mid-run with spawn ENOENT). Never throws.
 export function isAgentAvailable(agent: Agent): boolean {
-  const spec = AGENT_SPECS[agent]
-  try {
-    // Assumes the agent CLI supports `--version`; if not, the probe returns false
-    // (refuse-to-start) rather than a mid-run crash — an acceptable failure mode.
-    execFileSync(spec.command, ['--version'], {
-      stdio: 'pipe',
-      shell: process.platform === 'win32',
-      timeout: 5000,
-    })
-    return true
-  } catch {
-    return false
-  }
+  return probeVersion(AGENT_SPECS[agent].command)
 }
