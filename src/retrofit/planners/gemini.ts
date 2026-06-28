@@ -27,7 +27,9 @@ export function planGemini(canonDir: string, _targetDir: string, codeGraph: Code
   for (const skill of manifest.skills) {
     const body = readFileSync(join(canonDir, skill.path, 'SKILL.md'), 'utf8')
     const fm = parseFrontmatter(body) ?? {}
-    const description = String(fm.description ?? skill.id)
+    // Collapse any newlines so the single-line TOML `description = "..."` stays valid
+    // even for ported skills whose frontmatter description spans multiple lines.
+    const description = String(fm.description ?? skill.id).replace(/\s*\r?\n\s*/g, ' ').trim()
     const prompt = `You are using the "${skill.id}" skill.\n\n${description}\n\nFollow it for the current task.`
     actions.push({
       kind: 'write',

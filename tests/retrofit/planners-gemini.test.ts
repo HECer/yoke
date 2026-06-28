@@ -55,4 +55,14 @@ describe('planGemini', () => {
     expect(parsed.description).toBe(desc)
     expect(parsed.prompt).toContain(desc)
   })
+
+  it('collapses a multi-line description into valid single-line TOML', () => {
+    writeFileSync(join(canon, 'skills/tdd/SKILL.md'),
+      '---\nname: tdd\ndescription: |\n  Line one of the description.\n  Line two continues here.\n---\nbody')
+    const cmd = planGemini(canon, '/t').find(a => a.target === '.gemini/commands/tdd.toml')!
+    const parsed = parseToml(cmd.content) as { description: string }
+    expect(parsed.description).not.toContain('\n')
+    expect(parsed.description).toContain('Line one of the description.')
+    expect(parsed.description).toContain('Line two continues here.')
+  })
 })
