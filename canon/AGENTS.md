@@ -1,6 +1,6 @@
-# Forge Harness — Agent Baseline
+# Yoke Harness — Agent Baseline
 
-You are operating in a project retrofitted by Forge. Follow these always:
+You are operating in a project retrofitted by Yoke. Follow these always:
 
 - **Quality first:** Test-driven development is the default. No production code without a failing test first. See skill `tdd`.
 - **Stop-the-Line:** Do not start implementation until Definition of Done / Acceptance Criteria are written. See `policy/gates.md`.

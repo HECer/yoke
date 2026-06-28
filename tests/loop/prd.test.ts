@@ -6,7 +6,7 @@ import { loadPrd, savePrd, selectNextStory, allPass, progress } from '../../src/
 
 let dir: string
 const prd = () => join(dir, 'prd.yaml')
-beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'forge-prd-')) })
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-prd-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 const sample = `

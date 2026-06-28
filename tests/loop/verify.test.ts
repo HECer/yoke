@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { commandVerifier } from '../../src/loop/verify.js'
 
 let dir: string
-beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'forge-verify-')) })
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-verify-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('commandVerifier', () => {

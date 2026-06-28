@@ -13,7 +13,7 @@ const prd = () => join(dir, 'prd.yaml')
 const cleanGit = (): GitOps => ({ isClean: () => true, commitAll: () => {}, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} })
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'forge-loop-'))
+  dir = mkdtempSync(join(tmpdir(), 'yoke-loop-'))
   writeFileSync(prd(), `
 - { id: S1, title: First, priority: 1, acceptance: ["x"], passes: false }
 - { id: S2, title: Second, priority: 2, acceptance: ["y"], passes: false }
@@ -129,20 +129,20 @@ function fsWorktreeGit(repo: string, removed: string[]): GitOps {
     isClean: () => true,
     commitAll: () => {},
     addWorktree: (_r, wt) => {
-      mkdirSync(join(wt, '.forge'), { recursive: true })
-      copyFileSync(join(repo, '.forge', 'prd.yaml'), join(wt, '.forge', 'prd.yaml'))
+      mkdirSync(join(wt, '.yoke'), { recursive: true })
+      copyFileSync(join(repo, '.yoke', 'prd.yaml'), join(wt, '.yoke', 'prd.yaml'))
     },
-    integrate: (r, wt) => { copyFileSync(join(wt, '.forge', 'prd.yaml'), join(r, '.forge', 'prd.yaml')) },
+    integrate: (r, wt) => { copyFileSync(join(wt, '.yoke', 'prd.yaml'), join(r, '.yoke', 'prd.yaml')) },
     removeWorktree: (_r, wt) => { removed.push(wt); rmSync(wt, { recursive: true, force: true }) },
   }
 }
 
 describe('runLoop with isolation', () => {
   let isoDir: string
-  const isoPrd = () => join(isoDir, '.forge', 'prd.yaml')
+  const isoPrd = () => join(isoDir, '.yoke', 'prd.yaml')
   beforeEach(() => {
-    isoDir = mkdtempSync(join(tmpdir(), 'forge-iso-'))
-    mkdirSync(join(isoDir, '.forge'), { recursive: true })
+    isoDir = mkdtempSync(join(tmpdir(), 'yoke-iso-'))
+    mkdirSync(join(isoDir, '.yoke'), { recursive: true })
     writeFileSync(isoPrd(), `
 - { id: S1, title: First, priority: 1, acceptance: ["x"], passes: false }
 `)

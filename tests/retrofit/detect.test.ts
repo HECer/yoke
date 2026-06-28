@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { detectProject } from '../../src/retrofit/detect.js'
 
 let dir: string
-beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'forge-detect-')) })
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-detect-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('detectProject', () => {
@@ -13,7 +13,7 @@ describe('detectProject', () => {
     const d = detectProject(dir)
     expect(d.agents).toEqual([])
     expect(d.hasAgentsMd).toBe(false)
-    expect(d.hasForgeConfig).toBe(false)
+    expect(d.hasYokeConfig).toBe(false)
   })
 
   it('detects claude via .claude/ and a CLAUDE.md', () => {
@@ -30,12 +30,12 @@ describe('detectProject', () => {
     expect(d.agents).toContain('gemini')
   })
 
-  it('flags an existing AGENTS.md and .forge config', () => {
+  it('flags an existing AGENTS.md and .yoke config', () => {
     writeFileSync(join(dir, 'AGENTS.md'), 'x')
-    mkdirSync(join(dir, '.forge'), { recursive: true })
-    writeFileSync(join(dir, '.forge', 'config.yaml'), 'x')
+    mkdirSync(join(dir, '.yoke'), { recursive: true })
+    writeFileSync(join(dir, '.yoke', 'config.yaml'), 'x')
     const d = detectProject(dir)
     expect(d.hasAgentsMd).toBe(true)
-    expect(d.hasForgeConfig).toBe(true)
+    expect(d.hasYokeConfig).toBe(true)
   })
 })

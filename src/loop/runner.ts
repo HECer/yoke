@@ -17,7 +17,7 @@ export type AgentRunner = (ctx: AgentContext) => AgentResult
 export function buildClaudePrompt(story: Story): string {
   const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
   return [
-    'You are an autonomous coding agent running inside the Forge loop.',
+    'You are an autonomous coding agent running inside the Yoke loop.',
     'Implement ONLY this story and nothing else. Follow test-driven development.',
     '',
     `Story ${story.id}: ${story.title}`,
@@ -32,7 +32,7 @@ export function buildClaudePrompt(story: Story): string {
 export function buildReviewPrompt(story: Story): string {
   const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
   return [
-    'You are an independent reviewer inside the Forge loop. You did NOT implement this change.',
+    'You are an independent reviewer inside the Yoke loop. You did NOT implement this change.',
     'Review the current uncommitted working-tree changes against the story below.',
     '',
     `Story ${story.id}: ${story.title}`,

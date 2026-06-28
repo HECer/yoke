@@ -6,14 +6,14 @@ import { applyActions } from '../../src/retrofit/apply.js'
 import type { Action } from '../../src/retrofit/plan.js'
 
 let target: string
-const backupDir = () => join(target, '.forge', 'backup', 'test')
+const backupDir = () => join(target, '.yoke', 'backup', 'test')
 
 const actions: Action[] = [
   { kind: 'write', target: 'AGENTS.md', content: 'NEW', reason: 'baseline' },
   { kind: 'write', target: '.claude/skills/tdd/SKILL.md', content: 'SKILL', reason: 'skill: tdd' },
 ]
 
-beforeEach(() => { target = mkdtempSync(join(tmpdir(), 'forge-apply-')) })
+beforeEach(() => { target = mkdtempSync(join(tmpdir(), 'yoke-apply-')) })
 afterEach(() => { rmSync(target, { recursive: true, force: true }) })
 
 describe('applyActions', () => {

@@ -1,6 +1,6 @@
 # Tool: Serena (code-graph, LSP-accurate)
 
-MIT, MCP-first. The alternative to graphify, selected via `forge retrofit --code-graph=serena`. Serena uses real language servers (LSP) for symbol-accurate, cross-file retrieval and refactoring (`find_symbol`, `find_referencing_symbols`, rename/move) — no static index that goes stale, so it will not miss a reference.
+MIT, MCP-first. The alternative to graphify, selected via `yoke retrofit --code-graph=serena`. Serena uses real language servers (LSP) for symbol-accurate, cross-file retrieval and refactoring (`find_symbol`, `find_referencing_symbols`, rename/move) — no static index that goes stale, so it will not miss a reference.
 
 Wired as an MCP server for all three agents. Best for large, strongly-typed codebases (TypeScript, Python, Go) doing systematic refactoring, where missing a caller is costly.
 

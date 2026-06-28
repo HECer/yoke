@@ -9,7 +9,7 @@ export interface ReportMeta {
 export function formatReport(applied: AppliedAction[], meta: ReportMeta): string {
   const count = (s: AppliedAction['status']) => applied.filter(a => a.status === s).length
   const lines: string[] = []
-  lines.push('Forge retrofit (Claude Code):')
+  lines.push('Yoke retrofit (Claude Code):')
   for (const a of applied) {
     const note = a.backedUp ? ` (backup: ${a.backedUp})` : ''
     lines.push(`  ${a.status.padEnd(11)} ${a.target}${note}`)

@@ -12,7 +12,7 @@ export function resolveCanonDir(): string {
       if (existsSync(join(canon, 'manifest.yaml'))) {
         return canon
       }
-      throw new Error(`forge installation incomplete — canon/ missing at ${canon}`)
+      throw new Error(`yoke installation incomplete — canon/ missing at ${canon}`)
     }
     const parent = dirname(dir)
     if (parent === dir) break
