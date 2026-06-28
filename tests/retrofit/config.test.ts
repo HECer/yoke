@@ -6,10 +6,10 @@ import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand } from '../
 import { writeFileSync } from 'node:fs'
 
 let dir: string
-beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'forge-cfg-')) })
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-cfg-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-describe('forge config', () => {
+describe('yoke config', () => {
   it('returns null when no config exists', () => {
     expect(loadConfig(dir)).toBeNull()
   })
@@ -17,7 +17,7 @@ describe('forge config', () => {
   it('saves and reloads a config round-trip', () => {
     const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true } }
     saveConfig(dir, cfg)
-    expect(existsSync(join(dir, '.forge', 'config.yaml'))).toBe(true)
+    expect(existsSync(join(dir, '.yoke', 'config.yaml'))).toBe(true)
     expect(loadConfig(dir)).toEqual(cfg)
   })
 

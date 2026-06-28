@@ -7,10 +7,10 @@ import { planGemini } from '../../src/retrofit/planners/gemini.js'
 
 let canon: string
 beforeEach(() => {
-  canon = mkdtempSync(join(tmpdir(), 'forge-canon-'))
+  canon = mkdtempSync(join(tmpdir(), 'yoke-canon-'))
   const w = (rel: string, c: string) => { mkdirSync(join(canon, rel, '..'), { recursive: true }); writeFileSync(join(canon, rel), c) }
   w('manifest.yaml', `
-name: forge-canon
+name: yoke-canon
 version: 0.1.0
 agents: [gemini]
 skills:

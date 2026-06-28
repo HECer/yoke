@@ -7,10 +7,10 @@ import { loadConfig, saveConfig } from '../../src/retrofit/config.js'
 
 
 let target: string
-beforeEach(() => { target = mkdtempSync(join(tmpdir(), 'forge-retro-')) })
+beforeEach(() => { target = mkdtempSync(join(tmpdir(), 'yoke-retro-')) })
 afterEach(() => { rmSync(target, { recursive: true, force: true }) })
 
-describe('forge retrofit (integration, Claude)', () => {
+describe('yoke retrofit (integration, Claude)', () => {
   it('generates Claude artifacts and writes config with loop disabled by default', () => {
     const code = runRetrofit(target, { loop: false })
     expect(code).toBe(0)
@@ -18,7 +18,7 @@ describe('forge retrofit (integration, Claude)', () => {
     expect(existsSync(join(target, 'CLAUDE.md'))).toBe(true)
     expect(existsSync(join(target, '.claude/skills/tdd/SKILL.md'))).toBe(true)
     expect(existsSync(join(target, '.claude/skills/eng-review/SKILL.md'))).toBe(true)
-    expect(existsSync(join(target, '.claude/skills/forge-retrofit/SKILL.md'))).toBe(true)
+    expect(existsSync(join(target, '.claude/skills/yoke-retrofit/SKILL.md'))).toBe(true)
     const cfg = loadConfig(target)!
     expect(cfg.agents).toContain('claude')
     expect(cfg.loop.enabled).toBe(false)

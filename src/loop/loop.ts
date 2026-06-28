@@ -56,7 +56,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
     }
 
     if (opts.isolate) {
-      const wt = join(opts.targetDir, '.forge', 'worktrees', story.id)
+      const wt = join(opts.targetDir, '.yoke', 'worktrees', story.id)
       const wtPrd = join(wt, relative(opts.targetDir, opts.prdPath))
       try {
         opts.git.addWorktree(opts.targetDir, wt)
@@ -77,7 +77,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         }
         const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
         savePrd(wtPrd, updated)
-        opts.git.commitAll(wt, `forge: complete ${story.id} ${story.title}`)
+        opts.git.commitAll(wt, `yoke: complete ${story.id} ${story.title}`)
         opts.git.integrate(opts.targetDir, wt)
       } catch (e) {
         return { status: 'blocked', iterations, reason: `isolated iteration failed for ${story.id}: ${(e as Error).message}`, finalProgress: progress(stories) }
@@ -124,7 +124,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
     try {
       const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
       savePrd(opts.prdPath, updated)
-      opts.git.commitAll(opts.targetDir, `forge: complete ${story.id} ${story.title}`)
+      opts.git.commitAll(opts.targetDir, `yoke: complete ${story.id} ${story.title}`)
     } catch (e) {
       savePrd(opts.prdPath, stories) // revert — never persist passes:true without a commit
       return {

@@ -10,7 +10,7 @@ import type { GitOps } from './gates.js'
 import { commandVerifier, type Verifier } from './verify.js'
 
 export function prdPath(targetDir: string): string {
-  return join(targetDir, '.forge', 'prd.yaml')
+  return join(targetDir, '.yoke', 'prd.yaml')
 }
 
 export function setLoopEnabled(targetDir: string, enabled: boolean): void {
@@ -48,7 +48,7 @@ export interface RunLoopCommandOptions {
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
   const config = loadConfig(targetDir)
   if (!config?.loop.enabled) {
-    console.error('Loop is disabled. Enable it with: forge loop on')
+    console.error('Loop is disabled. Enable it with: yoke loop on')
     return 2
   }
   const path = prdPath(targetDir)
@@ -60,7 +60,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   if (!verify) {
     const command = resolveVerifyCommand(targetDir, config)
     if (!command) {
-      console.error('No verify command configured. Set verify.command in .forge/config.yaml (e.g. "npm test") so the loop can confirm tests pass before marking work done.')
+      console.error('No verify command configured. Set verify.command in .yoke/config.yaml (e.g. "npm test") so the loop can confirm tests pass before marking work done.')
       return 2
     }
     verify = commandVerifier(command)

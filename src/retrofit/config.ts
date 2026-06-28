@@ -9,7 +9,7 @@ export type CodeGraph = 'graphify' | 'serena'
 const AgentSchema = z.enum(['claude', 'codex', 'gemini'])
 const CodeGraphSchema = z.enum(['graphify', 'serena'])
 
-const ForgeConfigSchema = z.object({
+const YokeConfigSchema = z.object({
   canonVersion: z.string().min(1),
   agents: z.array(AgentSchema),
   loop: z.object({ enabled: z.boolean() }),
@@ -17,7 +17,7 @@ const ForgeConfigSchema = z.object({
   codeGraph: CodeGraphSchema.optional(),
 })
 
-export interface ForgeConfig {
+export interface YokeConfig {
   canonVersion: string
   agents: Agent[]
   loop: { enabled: boolean }
@@ -25,21 +25,21 @@ export interface ForgeConfig {
   codeGraph?: CodeGraph
 }
 
-export function defaultConfig(canonVersion: string): ForgeConfig {
+export function defaultConfig(canonVersion: string): YokeConfig {
   return { canonVersion, agents: [], loop: { enabled: false } }
 }
 
 export function configPath(targetDir: string): string {
-  return join(targetDir, '.forge', 'config.yaml')
+  return join(targetDir, '.yoke', 'config.yaml')
 }
 
-export function loadConfig(targetDir: string): ForgeConfig | null {
+export function loadConfig(targetDir: string): YokeConfig | null {
   const file = configPath(targetDir)
   if (!existsSync(file)) return null
-  return ForgeConfigSchema.parse(parse(readFileSync(file, 'utf8')))
+  return YokeConfigSchema.parse(parse(readFileSync(file, 'utf8')))
 }
 
-export function saveConfig(targetDir: string, config: ForgeConfig): void {
+export function saveConfig(targetDir: string, config: YokeConfig): void {
   const file = configPath(targetDir)
   mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, stringify(config))
@@ -47,7 +47,7 @@ export function saveConfig(targetDir: string, config: ForgeConfig): void {
 
 // Decide which command verifies a story is done: explicit config wins; otherwise
 // detect an npm test script; otherwise null (caller must refuse to run blindly).
-export function resolveVerifyCommand(targetDir: string, config: ForgeConfig): string | null {
+export function resolveVerifyCommand(targetDir: string, config: YokeConfig): string | null {
   if (config.verify?.command) return config.verify.command
   const pkgPath = join(targetDir, 'package.json')
   if (existsSync(pkgPath)) {

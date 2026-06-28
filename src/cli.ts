@@ -7,7 +7,7 @@ import type { Agent } from './retrofit/config.js'
 import { applyActions } from './retrofit/apply.js'
 import { formatReport } from './retrofit/report.js'
 import { detectProject } from './retrofit/detect.js'
-import { loadConfig, saveConfig, defaultConfig, type ForgeConfig, type CodeGraph } from './retrofit/config.js'
+import { loadConfig, saveConfig, defaultConfig, type YokeConfig, type CodeGraph } from './retrofit/config.js'
 import { loadManifest } from './canon/manifest.js'
 import { join } from 'node:path'
 import { setLoopEnabled, loopStatus, runLoopCommand } from './loop/run-command.js'
@@ -41,12 +41,12 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: A
   const codeGraph: CodeGraph = opts.codeGraph ?? existing?.codeGraph ?? 'graphify'
 
   const actions = planRetrofit(canonDir, targetDir, agents, codeGraph)
-  const backupDir = join(targetDir, '.forge', 'backup', String(Date.now()))
+  const backupDir = join(targetDir, '.yoke', 'backup', String(Date.now()))
   const applied = applyActions(actions, targetDir, { backupDir })
 
   const priorAgents = existing?.agents ?? []
   const mergedAgents = [...new Set([...priorAgents, ...agents])]
-  const config: ForgeConfig = {
+  const config: YokeConfig = {
     ...(existing ?? defaultConfig(canonVersion)),
     canonVersion,
     agents: mergedAgents,
@@ -116,11 +116,11 @@ function main(argv: string[]): number {
         const review = rest.includes('--review')
         return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review })
       }
-      console.log('usage: forge loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate]> [targetDir]')
       return 1
     }
     default:
-      console.log('usage: forge <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | loop <on|off|status|run>>')
+      console.log('usage: yoke <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | loop <on|off|status|run>>')
       return cmd ? 1 : 0
   }
 }

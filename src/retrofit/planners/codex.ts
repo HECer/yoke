@@ -27,7 +27,7 @@ export function planCodex(canonDir: string, _targetDir: string, codeGraph: CodeG
     {
       kind: 'write',
       target: '.codex/config.toml',
-      content: `# Forge: MCP servers for Codex. Merge into ~/.codex/config.toml.\n\n${tomlMcp(codeGraph)}`,
+      content: `# Yoke: MCP servers for Codex. Merge into ~/.codex/config.toml.\n\n${tomlMcp(codeGraph)}`,
       reason: 'MCP servers (code-graph + playwright)',
     },
     {

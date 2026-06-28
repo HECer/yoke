@@ -12,13 +12,13 @@ function withManifest(yaml: string): string {
   return file
 }
 
-beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'forge-mani-')) })
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-mani-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('loadManifest', () => {
   it('parses a valid manifest', () => {
     const file = withManifest(`
-name: forge-canon
+name: yoke-canon
 version: 0.1.0
 agents: [claude, codex, gemini]
 skills:
@@ -30,7 +30,7 @@ tools:
   - { id: rtk, path: tools/rtk.md }
 `)
     const m = loadManifest(file)
-    expect(m.name).toBe('forge-canon')
+    expect(m.name).toBe('yoke-canon')
     expect(m.agents).toEqual(['claude', 'codex', 'gemini'])
     expect(m.skills[0]).toMatchObject({ id: 'tdd', kind: 'methodology' })
   })

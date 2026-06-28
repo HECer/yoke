@@ -32,7 +32,7 @@ tools:
   write('tools/rtk.md', 'rtk')
 }
 
-beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'forge-canon-')) })
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-canon-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('validateCanon', () => {

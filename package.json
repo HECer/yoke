@@ -1,14 +1,14 @@
 {
-  "name": "forge",
+  "name": "yoke",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "forge": "./dist/cli.js"
+    "yoke": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "forge": "tsx src/cli.ts"
+    "yoke": "tsx src/cli.ts"
   },
   "dependencies": {
     "yaml": "^2.5.0",

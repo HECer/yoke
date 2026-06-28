@@ -5,7 +5,7 @@ import type { Agent } from './config.js'
 export interface Detection {
   agents: Agent[]
   hasAgentsMd: boolean
-  hasForgeConfig: boolean
+  hasYokeConfig: boolean
 }
 
 export function detectProject(targetDir: string): Detection {
@@ -17,6 +17,6 @@ export function detectProject(targetDir: string): Detection {
   return {
     agents,
     hasAgentsMd: has('AGENTS.md'),
-    hasForgeConfig: has('.forge', 'config.yaml'),
+    hasYokeConfig: has('.yoke', 'config.yaml'),
   }
 }
