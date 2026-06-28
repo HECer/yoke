@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { join, dirname } from 'node:path'
 
 export const MAX_CONTEXT_CHARS = 2000
 
@@ -40,4 +40,30 @@ export function formatForPrompt(ctx: ProjectContext, max: number = MAX_CONTEXT_C
   if (ctx.decisions.trim()) parts.push(`### Recent decisions (DECISIONS.md)\n${boundTail(ctx.decisions.trim(), max)}`)
   if (parts.length === 0) return ''
   return ['## Project context (from .yoke/context — read before implementing)', ...parts].join('\n\n')
+}
+
+export interface DecisionEntry {
+  storyId: string
+  title: string
+  summary: string
+}
+
+export function appendDecision(
+  dir: string,
+  entry: DecisionEntry,
+  now: Date = new Date(),
+): { rollback: () => void } {
+  const file = join(dir, 'DECISIONS.md')
+  const existed = existsSync(file)
+  const prior = existed ? readFileSync(file, 'utf8') : ''
+  const date = now.toISOString().slice(0, 10)
+  const block = `\n## ${date} — ${entry.storyId}: ${entry.title}\n${entry.summary}\n`
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, prior + block)
+  return {
+    rollback: () => {
+      if (existed) writeFileSync(file, prior)
+      else { try { rmSync(file) } catch { /* best-effort cleanup */ } }
+    },
+  }
 }

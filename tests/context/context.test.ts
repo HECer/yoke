@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadContext, formatForPrompt, contextDir } from '../../src/context/context.js'
+import { loadContext, formatForPrompt, contextDir, appendDecision } from '../../src/context/context.js'
 
 let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-ctx-')) })
@@ -48,5 +48,35 @@ describe('formatForPrompt', () => {
     expect(out).toContain('DDDDDDDDDD')
     expect(out).not.toContain('HEADD')
     expect(out).toContain('truncated')
+  })
+})
+
+describe('appendDecision', () => {
+  const entry = { storyId: 'S1', title: 'First story', summary: 'did the thing' }
+  const fixedDate = new Date('2026-06-28T12:00:00Z')
+
+  it('creates DECISIONS.md when absent and writes a dated heading', () => {
+    appendDecision(dir, entry, fixedDate)
+    const text = readFileSync(join(dir, 'DECISIONS.md'), 'utf8')
+    expect(text).toContain('## 2026-06-28 — S1: First story')
+    expect(text).toContain('did the thing')
+  })
+  it('appends to existing content without clobbering it', () => {
+    writeFileSync(join(dir, 'DECISIONS.md'), '# Decisions\n\nold entry\n')
+    appendDecision(dir, entry, fixedDate)
+    const text = readFileSync(join(dir, 'DECISIONS.md'), 'utf8')
+    expect(text).toContain('old entry')
+    expect(text.indexOf('old entry')).toBeLessThan(text.indexOf('S1'))
+  })
+  it('rollback restores prior content', () => {
+    writeFileSync(join(dir, 'DECISIONS.md'), 'PRIOR\n')
+    const { rollback } = appendDecision(dir, entry, fixedDate)
+    rollback()
+    expect(readFileSync(join(dir, 'DECISIONS.md'), 'utf8')).toBe('PRIOR\n')
+  })
+  it('rollback removes the file when it did not exist before', () => {
+    const { rollback } = appendDecision(dir, entry, fixedDate)
+    rollback()
+    expect(existsSync(join(dir, 'DECISIONS.md'))).toBe(false)
   })
 })
