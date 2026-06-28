@@ -13,7 +13,13 @@ import type { Verifier } from '../../src/loop/verify.js'
 
 let dir: string
 const cfg = () => ({ canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true } })
-const stubGit: GitOps = { isClean: () => true, commitAll: () => {} }
+const stubGit: GitOps = {
+  isClean: () => true,
+  commitAll: () => {},
+  addWorktree: () => {},
+  removeWorktree: () => {},
+  integrate: () => {},
+}
 const passRunner: AgentRunner = () => ({ success: true, summary: 'ok' })
 const verifyOk: Verifier = () => ({ passed: true, summary: 'ok' })
 
@@ -105,5 +111,17 @@ describe('forge loop CLI', () => {
       isAvailable: () => false, // ignored because runner is injected
     })
     expect(code).toBe(0)
+  })
+
+  it('passes isolate:true through to runLoop (addWorktree is called)', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    let addWorktreeCalled = false
+    const trackingGit: GitOps = {
+      isClean: () => true, commitAll: () => {},
+      addWorktree: () => { addWorktreeCalled = true },
+      integrate: () => {}, removeWorktree: () => {},
+    }
+    runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: trackingGit, verify: verifyOk, isolate: true })
+    expect(addWorktreeCalled).toBe(true)
   })
 })

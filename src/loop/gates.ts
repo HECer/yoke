@@ -8,6 +8,9 @@ export interface GateResult {
 export interface GitOps {
   isClean(dir: string): boolean
   commitAll(dir: string, message: string): void
+  addWorktree(repoDir: string, worktreePath: string): void
+  removeWorktree(repoDir: string, worktreePath: string): void
+  integrate(repoDir: string, worktreePath: string): void
 }
 
 export function stopTheLineGate(story: Story): GateResult {

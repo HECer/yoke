@@ -1,3 +1,4 @@
+import { join, relative } from 'node:path'
 import { loadPrd, savePrd, selectNextStory, allPass, progress } from './prd.js'
 import { stopTheLineGate, preDispatchGate, type GitOps } from './gates.js'
 import type { AgentRunner } from './runner.js'
@@ -10,6 +11,7 @@ export interface LoopOptions {
   git: GitOps
   verify: Verifier
   maxIterations: number
+  isolate?: boolean
 }
 
 export interface LoopResult {
@@ -50,6 +52,32 @@ export function runLoop(opts: LoopOptions): LoopResult {
     const stl = stopTheLineGate(story)
     if (!stl.ok) {
       return { status: 'blocked', iterations, reason: stl.reason, finalProgress: progress(stories) }
+    }
+
+    if (opts.isolate) {
+      const wt = join(opts.targetDir, '.forge', 'worktrees', story.id)
+      const wtPrd = join(wt, relative(opts.targetDir, opts.prdPath))
+      try {
+        opts.git.addWorktree(opts.targetDir, wt)
+        const result = opts.runner({ targetDir: wt, story })
+        iterations++
+        if (!result.success) {
+          return { status: 'blocked', iterations, reason: `story ${story.id} failed: ${result.summary}`, finalProgress: progress(stories) }
+        }
+        const verdict = opts.verify(wt)
+        if (!verdict.passed) {
+          return { status: 'blocked', iterations, reason: `story ${story.id} did not verify: ${verdict.summary}`, finalProgress: progress(stories) }
+        }
+        const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
+        savePrd(wtPrd, updated)
+        opts.git.commitAll(wt, `forge: complete ${story.id} ${story.title}`)
+        opts.git.integrate(opts.targetDir, wt)
+      } catch (e) {
+        return { status: 'blocked', iterations, reason: `isolated iteration failed for ${story.id}: ${(e as Error).message}`, finalProgress: progress(stories) }
+      } finally {
+        try { opts.git.removeWorktree(opts.targetDir, wt) } catch { /* cleanup is best-effort */ }
+      }
+      continue
     }
 
     const result = opts.runner({ targetDir: opts.targetDir, story })

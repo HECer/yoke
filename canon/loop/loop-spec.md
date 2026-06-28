@@ -4,7 +4,9 @@ The autonomous loop is OPTIONAL and toggle-able:
 
 - `forge loop on` / `forge loop off` — enable/disable (recorded in `.forge/config.yaml`, default off).
 - `forge loop status` — show enabled state + PRD progress.
-- `forge loop run [--max=N]` — run the loop (default cap 25 iterations).
+- `forge loop run [--max=N] [--isolate]` — run the loop (default cap 25 iterations).
+
+Pass `--isolate` to run each iteration in a fresh git worktree: the agent works on a throwaway checkout, and only a verified, committed story is fast-forwarded back into the main tree. A failed iteration never touches your working tree. Requires `.forge/prd.yaml` to be committed to git, since the worktree is a checkout of HEAD.
 
 When enabled and run, each iteration:
 
@@ -18,5 +20,5 @@ When enabled and run, each iteration:
 State lives outside the model context: the PRD file + git. The agent runner is pluggable.
 
 ## Limitations
-- Each iteration runs in the working tree directly; per-iteration git-worktree isolation and a review-iteration with role separation are Baustein C4.
+- Review-iteration with role separation (a second agent reviews before a story is marked done) is Baustein C5.
 - The loop verifies via the project's test command, not a per-agent semantic review.
