@@ -49,6 +49,20 @@ describe('yoke config', () => {
     expect(resolveVerifyCommand(dir, { canonVersion: '0', agents: [], loop: { enabled: true } })).toBeNull()
   })
 
+  it('accepts an optional loop.timeoutMinutes', () => {
+    const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true, timeoutMinutes: 30 } }
+    saveConfig(dir, cfg)
+    const loaded = loadConfig(dir)!
+    expect(loaded.loop.timeoutMinutes).toBe(30)
+    expect(loaded).toEqual(cfg)
+  })
+
+  it('leaves timeoutMinutes undefined when omitted', () => {
+    const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: false } }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)!.loop.timeoutMinutes).toBeUndefined()
+  })
+
   it('round-trips an optional codeGraph choice', () => {
     const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: false }, codeGraph: 'serena' as const }
     saveConfig(dir, cfg)
