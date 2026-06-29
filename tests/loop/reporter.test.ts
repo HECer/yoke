@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, writeFileSync, readdirSync, rmSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { writeStatus, readStatus, makeReporter, noopReporter, type LoopStatus, type LoopReporter } from '../../src/loop/reporter.js'
+import { statSync } from 'node:fs'
+import { writeStatus, readStatus, makeReporter, noopReporter, appendLog, type LoopStatus, type LoopReporter } from '../../src/loop/reporter.js'
 
 let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-rep-')) })
@@ -84,5 +85,24 @@ describe('noopReporter', () => {
     noopReporter.storyStart({ id: 'S1', title: 'x' }, 1, prog)
     noopReporter.blocked('x')
     expect(existsSync(join(dir, '.yoke', 'loop-status.json'))).toBe(false)
+  })
+})
+
+describe('appendLog cap', () => {
+  it('keeps the log bounded and retains the most recent lines', () => {
+    const file = join(dir, '.yoke', 'loop.log')
+    const cap = 2000 // small cap for the test
+    for (let i = 0; i < 500; i++) appendLog(dir, `line ${i} ${'x'.repeat(40)}`, cap)
+    const size = statSync(file).size
+    expect(size).toBeLessThanOrEqual(cap + 200) // bounded (allow the truncation header)
+    const text = readFileSync(file, 'utf8')
+    expect(text).toContain('line 499')          // most recent retained
+    expect(text).not.toContain('line 0 ')        // oldest dropped
+    expect(text).toMatch(/truncated/i)           // a marker is left
+  })
+  it('creates the file and appends a single line under the cap', () => {
+    const file = join(dir, '.yoke', 'loop.log')
+    appendLog(dir, 'first line', 100000)
+    expect(readFileSync(file, 'utf8')).toBe('first line\n')
   })
 })

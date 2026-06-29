@@ -30,7 +30,8 @@ export function planGemini(canonDir: string, _targetDir: string, codeGraph: Code
     // Collapse any newlines so the single-line TOML `description = "..."` stays valid
     // even for ported skills whose frontmatter description spans multiple lines.
     const description = String(fm.description ?? skill.id).replace(/\s*\r?\n\s*/g, ' ').trim()
-    const prompt = `You are using the "${skill.id}" skill.\n\n${description}\n\nFollow it for the current task.`
+    const skillBody = body.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
+    const prompt = `You are using the "${skill.id}" skill.\n\n${skillBody}\n\nFollow it for the current task.`
     actions.push({
       kind: 'write',
       target: `.gemini/commands/${skill.id}.toml`,

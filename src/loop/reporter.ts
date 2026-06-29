@@ -1,5 +1,24 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, appendFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, appendFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+
+export const LOG_CAP_BYTES = 256 * 1024
+
+// Append a line to .yoke/loop.log, keeping the file bounded: once it exceeds
+// capBytes, truncate to the recent tail (starting at a line boundary) so the log
+// can never grow without bound across many loop runs.
+export function appendLog(dir: string, line: string, capBytes: number = LOG_CAP_BYTES): void {
+  const file = join(dir, '.yoke', 'loop.log')
+  mkdirSync(join(dir, '.yoke'), { recursive: true })
+  appendFileSync(file, line + '\n')
+  let size: number
+  try { size = statSync(file).size } catch { return }
+  if (size <= capBytes) return
+  const content = readFileSync(file, 'utf8')
+  const tail = content.slice(content.length - Math.floor(capBytes / 2))
+  const nl = tail.indexOf('\n')
+  const trimmed = nl >= 0 ? tail.slice(nl + 1) : tail
+  writeFileSync(file, `# … loop.log truncated …\n${trimmed}`)
+}
 
 export type LoopState = 'running' | 'blocked' | 'complete' | 'cap-reached'
 export type LoopPhase = 'implementing' | 'verifying' | 'reviewing' | 'committing'
@@ -67,11 +86,7 @@ export function makeReporter(
     current = next
     try {
       writeStatus(dir, next)
-      mkdirSync(join(dir, '.yoke'), { recursive: true })
-      appendFileSync(
-        join(dir, '.yoke', 'loop.log'),
-        `${next.updatedAt}  ${logLabel}  ${next.story ?? '-'}  ${next.reason ?? ''}`.trimEnd() + '\n',
-      )
+      appendLog(dir, `${next.updatedAt}  ${logLabel}  ${next.story ?? '-'}  ${next.reason ?? ''}`.trimEnd())
     } catch { /* observability must never abort the loop */ }
     emitConsole(consoleLine)
   }
