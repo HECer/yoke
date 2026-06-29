@@ -58,6 +58,11 @@ export function loopStatus(targetDir: string, now: () => Date = () => new Date()
   return lines.join('\n')
 }
 
+export function resolveIdleMs(flagMinutes: number | undefined, configMinutes: number | undefined): number {
+  const minutes = flagMinutes ?? configMinutes ?? DEFAULT_IDLE_MINUTES
+  return minutes > 0 ? minutes * 60_000 : 0
+}
+
 export interface RunLoopCommandOptions {
   maxIterations: number
   runner?: AgentRunner
@@ -96,8 +101,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   const available = opts.isAvailable ?? isAgentAvailable
   const runnerAgent: Agent = opts.agent ?? config.agents[0] ?? 'claude'
 
-  const idleMinutes = opts.timeoutMinutes ?? config.loop.timeoutMinutes ?? DEFAULT_IDLE_MINUTES
-  const idleMs = idleMinutes > 0 ? idleMinutes * 60_000 : 0
+  const idleMs = resolveIdleMs(opts.timeoutMinutes, config.loop.timeoutMinutes)
 
   let runner = opts.runner
   if (!runner) {
