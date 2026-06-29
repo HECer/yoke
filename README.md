@@ -10,7 +10,7 @@ A cross-agent coding **harness** that installs a curated set of skills, safety p
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-168%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-203%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -40,7 +40,7 @@ flowchart LR
 - 🧪 **Worktree isolation** — run each story in a throwaway git worktree; only verified, committed work is fast-forwarded back.
 - 🧠 **Choose your code-graph** — graphify (fast, multimodal) or Serena (LSP-accurate) per project, with a recommendation at retrofit time.
 - 🪙 **Token-aware** — wires rtk for command-output compression and ships a `minimal-code` skill that nudges every agent to write less.
-- ✅ **168 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
+- ✅ **203 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
 
 ## 🚀 Quickstart
 
@@ -176,6 +176,28 @@ yoke loop off .                 # disable
 
 The loop stops when every story is `passes: true`. State lives **outside the model context** — the PRD file plus git — so each iteration is fresh.
 
+### Watching a run
+
+Every iteration emits token-free, harness-side feedback (Node console + local files — **zero agent tokens**):
+
+- **Live console** — `▶ S6 (19/45) — implementing… · verifying… ✔ committed → 20/45`.
+- **`.yoke/loop-status.json`** — the current state; read it any time with `yoke loop status`:
+  ```
+  Loop: BLOCKED on S5 "Segment schemas"
+    verifying · iteration 19 · 18/45 · updated 2026-06-29T10:00:00.000Z
+    reason: story did not verify (working tree has uncommitted changes — review/clean before re-running)
+  ```
+- **`.yoke/loop.log`** — an append-only timeline of every phase transition.
+
+A per-iteration **idle timeout** guards against a genuinely hung agent: if the agent produces
+**no output at all** for `--timeout` minutes (default 20; `0` disables), the loop kills it
+(SIGTERM→SIGKILL) and marks the story blocked. A slow-but-working agent that keeps streaming
+output is **never** killed — the output stream *is* the liveness signal. Set a project default
+with `loop.timeoutMinutes` in `.yoke/config.yaml`.
+
+`.yoke/loop-status.json` and `.yoke/loop.log` are runtime artifacts; `yoke retrofit` gitignores
+them (along with `.yoke/worktrees/` and `.yoke/backup/`) so they never trip the clean-tree gate.
+
 ## Context layer (`.yoke/context/`)
 
 Yoke keeps durable, cross-session context so a fresh-context agent is never blind:
@@ -249,7 +271,7 @@ docs/superpowers/ # the spec and every component's implementation plan
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (168 tests)
+npm test          # vitest (203 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```
