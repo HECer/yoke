@@ -61,6 +61,12 @@ export function validateCanon(canonDir: string): Issue[] {
     }
   }
 
+  for (const name of ['PROJECT.md', 'DECISIONS.md', 'KNOWLEDGE.md']) {
+    if (!existsSync(join(canonDir, 'context', name))) {
+      issues.push({ level: 'error', message: `context template not found: context/${name}` })
+    }
+  }
+
   const seenTool = new Set<string>()
   for (const t of manifest.tools) {
     if (seenTool.has(t.id)) issues.push({ level: 'error', message: `duplicate tool id: ${t.id}` })

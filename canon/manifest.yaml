@@ -6,6 +6,7 @@ skills:
   - { id: eng-review, path: skills/eng-review, kind: role }
   - { id: yoke-retrofit, path: skills/yoke-retrofit, kind: methodology }
   - { id: minimal-code, path: skills/minimal-code, kind: methodology }
+  - { id: maintaining-context, path: skills/maintaining-context, kind: methodology }
   # superpowers skills (kind: methodology)
   - { id: brainstorming, path: skills/brainstorming, kind: methodology }
   - { id: writing-plans, path: skills/writing-plans, kind: methodology }

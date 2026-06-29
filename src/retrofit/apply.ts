@@ -23,6 +23,11 @@ export function applyActions(actions: Action[], targetDir: string, opts: ApplyOp
     let backedUp: string | undefined
 
     if (existsSync(dest)) {
+      if (action.ifAbsent) {
+        results.push({ target: action.target, status: 'unchanged', reason: `${action.reason} (exists, left untouched)` })
+        continue
+      }
+
       const current = readFileSync(dest, 'utf8')
 
       if (action.merge) {

@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { planRetrofit } from '../../src/retrofit/plan.js'
+import { baseContextActions } from '../../src/retrofit/context-actions.js'
 
 let canon: string
 beforeEach(() => {
@@ -20,6 +21,9 @@ tools: []
 `)
   w('AGENTS.md', '# Baseline\n')
   w('skills/tdd/SKILL.md', '---\nname: tdd\ndescription: d\n---\nbody')
+  w('context/PROJECT.md', '# Project\n')
+  w('context/DECISIONS.md', '# Decisions\n')
+  w('context/KNOWLEDGE.md', '# Knowledge\n')
 })
 afterEach(() => { rmSync(canon, { recursive: true, force: true }) })
 
@@ -47,5 +51,25 @@ describe('planRetrofit', () => {
     expect(claudeMcp.content).toContain('serena')
     expect(codexToml.content).toContain('mcp_servers.serena')
     expect(geminiSettings.content).toContain('serena')
+  })
+
+  it('scaffolds the three context files exactly once for --agent=all', () => {
+    const actions = planRetrofit(canon, '.', ['claude', 'codex', 'gemini'])
+    const ctxTargets = actions.filter(a => a.target.startsWith('.yoke/context/')).map(a => a.target)
+    expect(ctxTargets.sort()).toEqual([
+      '.yoke/context/DECISIONS.md',
+      '.yoke/context/KNOWLEDGE.md',
+      '.yoke/context/PROJECT.md',
+    ])
+    expect(actions.filter(a => a.target === '.yoke/context/PROJECT.md')).toHaveLength(1)
+  })
+
+  it('baseContextActions are all ifAbsent', () => {
+    expect(baseContextActions(canon).every(a => a.ifAbsent)).toBe(true)
+  })
+
+  it('baseContextActions throws a framed error when a template is missing', () => {
+    rmSync(join(canon, 'context/PROJECT.md'))
+    expect(() => baseContextActions(canon)).toThrow(/yoke: missing context template PROJECT\.md/)
   })
 })

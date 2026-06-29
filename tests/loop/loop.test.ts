@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync, copyFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, copyFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runLoop } from '../../src/loop/loop.js'
 import { loadPrd } from '../../src/loop/prd.js'
+import { contextDir } from '../../src/context/context.js'
 import type { GitOps } from '../../src/loop/gates.js'
 import type { AgentRunner } from '../../src/loop/runner.js'
 import type { Verifier } from '../../src/loop/verify.js'
@@ -121,6 +122,35 @@ describe('runLoop', () => {
   it('completes when the reviewer approves', () => {
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, review: reviewOk, maxIterations: 10 })
     expect(res.status).toBe('complete')
+  })
+
+  const decisionsFile = () => join(contextDir(dir), 'DECISIONS.md')
+
+  it('appends a decision per completed story, in the commit', () => {
+    const commits: string[] = []
+    const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m), addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
+    runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git, verify: verifyOk, maxIterations: 10 })
+    const text = readFileSync(decisionsFile(), 'utf8')
+    expect(text).toContain('S1: First')
+    expect(text).toContain('S2: Second')
+  })
+
+  it('does not append a decision when the story is blocked at verify', () => {
+    const verifyFail: Verifier = () => ({ passed: false, summary: 'red' })
+    runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyFail, maxIterations: 10 })
+    expect(existsSync(decisionsFile())).toBe(false)
+  })
+
+  it('reverts the decision append when the commit fails', () => {
+    // Seed a prior DECISIONS.md so the assertion distinguishes "appended then
+    // rolled back to prior bytes" from "never appended at all".
+    mkdirSync(contextDir(dir), { recursive: true })
+    writeFileSync(decisionsFile(), 'PRIOR\n')
+    const failingGit: GitOps = { isClean: () => true, commitAll: () => { throw new Error('commit boom') }, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: failingGit, verify: verifyOk, maxIterations: 10 })
+    expect(res.status).toBe('blocked')
+    expect(readFileSync(decisionsFile(), 'utf8')).toBe('PRIOR\n')
+    expect(loadPrd(prd()).every(s => !s.passes)).toBe(true)
   })
 })
 

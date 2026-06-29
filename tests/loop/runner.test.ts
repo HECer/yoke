@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner } from '../../src/loop/runner.js'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner, contextBlockFor } from '../../src/loop/runner.js'
 import type { Story } from '../../src/loop/prd.js'
 
 const story: Story = {
@@ -9,7 +12,7 @@ const story: Story = {
 
 describe('buildClaudePrompt', () => {
   it('includes the story id, title, and every acceptance criterion', () => {
-    const p = buildClaudePrompt(story)
+    const p = buildClaudePrompt(story, '')
     expect(p).toContain('S1')
     expect(p).toContain('Add login')
     expect(p).toContain('returns 200 for valid creds')
@@ -17,7 +20,7 @@ describe('buildClaudePrompt', () => {
   })
 
   it('instructs the agent to implement only this story and not commit', () => {
-    const p = buildClaudePrompt(story)
+    const p = buildClaudePrompt(story, '')
     expect(p).toMatch(/only this story/i)
     expect(p).toMatch(/not commit/i)
   })
@@ -71,14 +74,14 @@ describe('makeRunner / isAgentAvailable', () => {
 
 describe('buildReviewPrompt', () => {
   it('frames a reviewer role distinct from the implementer and lists acceptance criteria', () => {
-    const p = buildReviewPrompt(story)
+    const p = buildReviewPrompt(story, '')
     expect(p).toMatch(/review/i)
     expect(p).toMatch(/did NOT implement|independent reviewer/i)
     expect(p).toContain('returns 200 for valid creds')
   })
 
   it('instructs the reviewer to reject (non-zero exit) on blocking issues and not to modify files', () => {
-    const p = buildReviewPrompt(story)
+    const p = buildReviewPrompt(story, '')
     expect(p).toMatch(/exit non-zero|reject/i)
     expect(p).toMatch(/do not modify|do not commit/i)
   })
@@ -87,6 +90,35 @@ describe('buildReviewPrompt', () => {
 describe('makeReviewRunner', () => {
   it('returns a callable AgentRunner', () => {
     expect(typeof makeReviewRunner('claude')).toBe('function')
+  })
+})
+
+const ctxStory = { id: 'S1', title: 'First', priority: 1, acceptance: ['x'], passes: false }
+
+describe('prompt context injection', () => {
+  it('buildClaudePrompt omits the context section when no context is given', () => {
+    const p = buildClaudePrompt(ctxStory, '')
+    expect(p).not.toContain('Project context')
+    expect(p).toContain('Story S1: First')
+  })
+  it('buildClaudePrompt includes the context block when provided', () => {
+    const p = buildClaudePrompt(ctxStory, '## Project context\nGOAL')
+    expect(p).toContain('## Project context')
+    expect(p).toContain('GOAL')
+    expect(p.indexOf('GOAL')).toBeLessThan(p.indexOf('Story S1'))
+  })
+  it('buildReviewPrompt includes the context block when provided', () => {
+    expect(buildReviewPrompt(ctxStory, '## Project context\nGOAL')).toContain('GOAL')
+  })
+  it('contextBlockFor reads .yoke/context under the target dir', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-cbf-'))
+    mkdirSync(join(d, '.yoke', 'context'), { recursive: true })
+    writeFileSync(join(d, '.yoke', 'context', 'PROJECT.md'), 'NORTHSTAR')
+    expect(contextBlockFor(d)).toContain('NORTHSTAR')
+    const empty = mkdtempSync(join(tmpdir(), 'yoke-empty-'))
+    expect(contextBlockFor(empty)).toBe('')
+    rmSync(d, { recursive: true, force: true })
+    rmSync(empty, { recursive: true, force: true })
   })
 })
 

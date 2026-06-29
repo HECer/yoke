@@ -1,6 +1,7 @@
 import type { Story } from './prd.js'
 import { execFileSync, execSync } from 'node:child_process'
 import type { Agent } from '../retrofit/config.js'
+import { loadContext, formatForPrompt, contextDir } from '../context/context.js'
 
 export interface AgentContext {
   targetDir: string
@@ -14,11 +15,18 @@ export interface AgentResult {
 
 export type AgentRunner = (ctx: AgentContext) => AgentResult
 
-export function buildClaudePrompt(story: Story): string {
+export function contextBlockFor(targetDir: string): string {
+  return formatForPrompt(loadContext(contextDir(targetDir)))
+}
+
+export function buildClaudePrompt(story: Story, context: string): string {
   const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
-  return [
+  const lines = [
     'You are an autonomous coding agent running inside the Yoke loop.',
     'Implement ONLY this story and nothing else. Follow test-driven development.',
+  ]
+  if (context) lines.push('', context)
+  lines.push(
     '',
     `Story ${story.id}: ${story.title}`,
     'Acceptance criteria (Definition of Done):',
@@ -26,14 +34,18 @@ export function buildClaudePrompt(story: Story): string {
     '',
     "When done, ensure the project's full test suite passes.",
     'Do NOT commit — the loop commits on your behalf after verifying.',
-  ].join('\n')
+  )
+  return lines.join('\n')
 }
 
-export function buildReviewPrompt(story: Story): string {
+export function buildReviewPrompt(story: Story, context: string): string {
   const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
-  return [
+  const lines = [
     'You are an independent reviewer inside the Yoke loop. You did NOT implement this change.',
     'Review the current uncommitted working-tree changes against the story below.',
+  ]
+  if (context) lines.push('', context)
+  lines.push(
     '',
     `Story ${story.id}: ${story.title}`,
     'Acceptance criteria:',
@@ -42,7 +54,8 @@ export function buildReviewPrompt(story: Story): string {
     'Approve by exiting 0 ONLY if every acceptance criterion is met and the change is sound.',
     'If you find ANY blocking issue (an unmet criterion, a bug, a missing test), exit non-zero to reject.',
     'Do not modify files. Do not commit.',
-  ].join('\n')
+  )
+  return lines.join('\n')
 }
 
 export interface Invocation {
@@ -106,7 +119,7 @@ function probeVersion(command: string): boolean {
 
 export function makeRunner(agent: Agent): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
-    const inv = agentInvocation(agent, buildClaudePrompt(ctx.story), ctx.targetDir)
+    const inv = agentInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir)), ctx.targetDir)
     try {
       // NOTE: the loop trusts the agent's exit code as a proxy for "it ran".
       // Independent verification happens in the loop (Baustein C2), not here.
@@ -122,7 +135,7 @@ export const claudeRunner: AgentRunner = makeRunner('claude')
 
 export function makeReviewRunner(agent: Agent): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
-    const inv = agentInvocation(agent, buildReviewPrompt(ctx.story), ctx.targetDir)
+    const inv = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir)), ctx.targetDir)
     try {
       runCli(inv)
       return { success: true, summary: `${agent} approved ${ctx.story.id}` }

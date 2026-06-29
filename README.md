@@ -10,7 +10,7 @@ A cross-agent coding **harness** that installs a curated set of skills, safety p
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-168%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -40,7 +40,7 @@ flowchart LR
 - 🧪 **Worktree isolation** — run each story in a throwaway git worktree; only verified, committed work is fast-forwarded back.
 - 🧠 **Choose your code-graph** — graphify (fast, multimodal) or Serena (LSP-accurate) per project, with a recommendation at retrofit time.
 - 🪙 **Token-aware** — wires rtk for command-output compression and ships a `minimal-code` skill that nudges every agent to write less.
-- ✅ **140 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
+- ✅ **168 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
 
 ## 🚀 Quickstart
 
@@ -77,7 +77,7 @@ flowchart TD
     Gemini -. drives .-> Loop
 ```
 
-Three layers, three commands: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) → **Loop** (`yoke loop`).
+Three layers: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) → **Loop** (`yoke loop`), with a durable **Context layer** (`yoke context init|status`) underneath.
 
 ## 🔌 What gets generated per agent
 
@@ -131,6 +131,22 @@ yoke loop off .                 # disable
 ```
 
 The loop stops when every story is `passes: true`. State lives **outside the model context** — the PRD file plus git — so each iteration is fresh.
+
+## Context layer (`.yoke/context/`)
+
+Yoke keeps durable, cross-session context so a fresh-context agent is never blind:
+
+- `PROJECT.md` — the north star (goal, constraints, non-goals, success criteria).
+- `DECISIONS.md` — an append-only ledger. The loop adds an entry per completed story; you and agents add the *why*.
+- `KNOWLEDGE.md` — reusable gotchas and conventions.
+
+`yoke retrofit` scaffolds these files (non-destructively — your edits are never overwritten).
+The loop reads them into every agent + reviewer prompt and logs decisions back on each story's
+commit. Manage them directly with `yoke context init` and `yoke context status`. The
+`maintaining-context` skill teaches agents to honour the same files during interactive work.
+
+> Commit `.yoke/context/` to git. The `--isolate` loop runs each iteration in a worktree
+> checked out from HEAD, so it only sees committed context.
 
 ## 🛡️ Safety model
 
@@ -189,7 +205,7 @@ docs/superpowers/ # the spec and every component's implementation plan
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (140 tests)
+npm test          # vitest (168 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

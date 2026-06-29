@@ -3,6 +3,7 @@ import { loadPrd, savePrd, selectNextStory, allPass, progress } from './prd.js'
 import { stopTheLineGate, preDispatchGate, type GitOps } from './gates.js'
 import type { AgentRunner } from './runner.js'
 import type { Verifier } from './verify.js'
+import { appendDecision, contextDir } from '../context/context.js'
 
 export interface LoopOptions {
   prdPath: string
@@ -75,6 +76,14 @@ export function runLoop(opts: LoopOptions): LoopResult {
             return { status: 'blocked', iterations, reason: `story ${story.id} rejected in review: ${reviewResult.summary}`, finalProgress: progress(stories) }
           }
         }
+        // The worktree is a checkout of committed HEAD, so the agent above reads
+        // context from HEAD's .yoke/context — commit context changes for --isolate
+        // to honour them. We write the decision here so `integrate` carries it back.
+        appendDecision(contextDir(wt), {
+          storyId: story.id,
+          title: story.title,
+          summary: result.summary,
+        })
         const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
         savePrd(wtPrd, updated)
         opts.git.commitAll(wt, `yoke: complete ${story.id} ${story.title}`)
@@ -121,12 +130,18 @@ export function runLoop(opts: LoopOptions): LoopResult {
       }
     }
 
+    const dec = appendDecision(contextDir(opts.targetDir), {
+      storyId: story.id,
+      title: story.title,
+      summary: result.summary,
+    })
+    const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
+    savePrd(opts.prdPath, updated)
     try {
-      const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
-      savePrd(opts.prdPath, updated)
       opts.git.commitAll(opts.targetDir, `yoke: complete ${story.id} ${story.title}`)
     } catch (e) {
       savePrd(opts.prdPath, stories) // revert — never persist passes:true without a commit
+      dec.rollback()                 // and never leave an orphan decision
       return {
         status: 'blocked',
         iterations,

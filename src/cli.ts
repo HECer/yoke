@@ -11,6 +11,7 @@ import { loadConfig, saveConfig, defaultConfig, type YokeConfig, type CodeGraph 
 import { loadManifest } from './canon/manifest.js'
 import { join } from 'node:path'
 import { setLoopEnabled, loopStatus, runLoopCommand } from './loop/run-command.js'
+import { runContextInit, runContextStatus } from './context/command.js'
 
 export function runValidate(canonDir: string): number {
   const issues = validateCanon(canonDir)
@@ -119,8 +120,16 @@ function main(argv: string[]): number {
       console.log('usage: yoke loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate]> [targetDir]')
       return 1
     }
+    case 'context': {
+      const sub = rest[0]
+      const targetDir = rest.slice(1).find(a => !a.startsWith('-')) ?? '.'
+      if (sub === 'init') return runContextInit(targetDir)
+      if (sub === 'status') return runContextStatus(targetDir)
+      console.log('usage: yoke context <init|status> [targetDir]')
+      return 1
+    }
     default:
-      console.log('usage: yoke <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | loop <on|off|status|run>>')
+      console.log('usage: yoke <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | loop <on|off|status|run> | context <init|status>>')
       return cmd ? 1 : 0
   }
 }
