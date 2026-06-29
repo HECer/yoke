@@ -34,4 +34,12 @@ describe('ensureGitignore', () => {
     const text = readFileSync(gi(), 'utf8')
     expect(text.match(/\.yoke\/backup\//g)?.length).toBe(1)
   })
+  it('appends cleanly when the existing file has no trailing newline (no glued lines)', () => {
+    writeFileSync(gi(), 'node_modules/') // no trailing newline — the load-bearing prefix branch
+    ensureGitignore(dir)
+    const text = readFileSync(gi(), 'utf8')
+    expect(text).not.toContain('node_modules/#')          // not glued to the managed header
+    expect(text).toMatch(/node_modules\/\r?\n/)            // its own line preserved
+    expect(text).toContain('.yoke/loop.log')
+  })
 })
