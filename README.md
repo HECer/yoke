@@ -89,6 +89,50 @@ Three layers: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) →
 
 > **rtk asymmetry, handled:** Claude can rewrite commands transparently via a hook (needs WSL on Windows); Codex and Gemini have no such hook, so they get an instruction to prefix commands with `rtk` instead.
 
+## 🧰 What's in the canon — 25 skills
+
+`yoke retrofit` installs all of these into each agent natively (Claude `.claude/skills/`, Codex/Gemini command + instruction artifacts). Provenance is credited in [`canon/skills/ATTRIBUTION.md`](canon/skills/ATTRIBUTION.md).
+
+**Process / methodology** — *superpowers-derived discipline (13)*
+
+| Skill | What it does |
+|---|---|
+| `brainstorming` | Explore intent, requirements & design before any creative work |
+| `writing-plans` | Turn a spec into a bite-sized, TDD implementation plan |
+| `executing-plans` | Execute a written plan in a separate session with review checkpoints |
+| `subagent-driven-development` | Run a plan task-by-task: fresh subagent + two-stage review each |
+| `tdd` | Write the test first, watch it fail, write minimal code, refactor |
+| `systematic-debugging` | Root-cause first — no fix without a confirmed cause |
+| `verification-before-completion` | Prove it actually works before claiming done |
+| `using-git-worktrees` | Isolated worktrees for safe / parallel work |
+| `requesting-code-review` | Request a structured review before merging |
+| `receiving-code-review` | Handle review feedback with rigor, not blind agreement |
+| `dispatching-parallel-agents` | Fan out 2+ independent tasks concurrently |
+| `finishing-a-development-branch` | Merge / PR / cleanup a finished branch |
+| `writing-skills` | Author and verify new skills |
+
+**Roles** — *gstack-derived, de-gstacked to be harness-agnostic (8)*
+
+| Skill | What it does |
+|---|---|
+| `eng-review` | Engineering-manager review of a change before merge |
+| `plan-eng-review` | Architecture / edge-case review of a *plan* |
+| `plan-ceo-review` | Founder-mode scope & ambition review of a plan |
+| `review` | Pre-landing diff review (SQL safety, trust boundaries, side effects) |
+| `ship` | Ship workflow: tests → review → version → changelog → PR |
+| `health` | Code-quality dashboard with a composite score |
+| `retro` | Engineering retrospective from commit history |
+| `document-release` | Post-ship documentation sync (README / CHANGELOG / …) |
+
+**Yoke-native** — *authored or adapted for this harness (4)*
+
+| Skill | What it does |
+|---|---|
+| `yoke-retrofit` | Set up the Yoke harness in a project (detect → plan → apply) |
+| `minimal-code` | Write the least code that solves the task (YAGNI; ponytail-derived) |
+| `maintaining-context` | Keep `.yoke/context/` the durable source of truth (the Context layer) |
+| `workflow` | The default order of operations, from idea to deploy |
+
 ## 🤖 The autonomous loop
 
 Opt-in and off by default. Each iteration starts a **fresh agent** and passes through hard gates before anything is committed:
