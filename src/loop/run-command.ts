@@ -8,6 +8,9 @@ import { makeRunner, makeReviewRunner, isAgentAvailable, type AgentRunner } from
 import type { Agent } from '../retrofit/config.js'
 import type { GitOps } from './gates.js'
 import { commandVerifier, type Verifier } from './verify.js'
+import { readStatus, makeReporter, type LoopReporter } from './reporter.js'
+
+export const DEFAULT_IDLE_MINUTES = 20
 
 export function prdPath(targetDir: string): string {
   return join(targetDir, '.yoke', 'prd.yaml')
@@ -29,7 +32,14 @@ export function loopStatus(targetDir: string): string {
     const p = progress(loadPrd(path))
     prog = `${p.passed}/${p.total} stories pass`
   }
-  return `Loop: ${enabled ? 'enabled' : 'disabled'}\nPRD: ${prog}`
+  const st = readStatus(targetDir)
+  if (!st) return `Loop: ${enabled ? 'enabled' : 'disabled'}\nPRD: ${prog}`
+  const head = `Loop: ${st.state.toUpperCase()}${st.story ? ` on ${st.story}${st.storyTitle ? ` "${st.storyTitle}"` : ''}` : ''}`
+  const meta = [st.phase, `iteration ${st.iteration}`, `${st.progress.passed}/${st.progress.total}`, `updated ${st.updatedAt}`]
+    .filter(Boolean).join(' · ')
+  const lines = [head, `  ${meta}`]
+  if (st.reason) lines.push(`  reason: ${st.reason}`)
+  return lines.join('\n')
 }
 
 export interface RunLoopCommandOptions {
@@ -43,6 +53,8 @@ export interface RunLoopCommandOptions {
   reviewRunner?: AgentRunner
   reviewer?: Agent
   review?: boolean
+  reporter?: LoopReporter
+  timeoutMinutes?: number
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -68,13 +80,16 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   const available = opts.isAvailable ?? isAgentAvailable
   const runnerAgent: Agent = opts.agent ?? config.agents[0] ?? 'claude'
 
+  const idleMinutes = opts.timeoutMinutes ?? config.loop.timeoutMinutes ?? DEFAULT_IDLE_MINUTES
+  const idleMs = idleMinutes > 0 ? idleMinutes * 60_000 : 0
+
   let runner = opts.runner
   if (!runner) {
     if (!available(runnerAgent)) {
       console.error(`Agent CLI "${runnerAgent}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
       return 2
     }
-    runner = makeRunner(runnerAgent)
+    runner = makeRunner(runnerAgent, idleMs)
   }
 
   let review = opts.reviewRunner
@@ -84,7 +99,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       console.error(`Reviewer agent CLI "${reviewerAgent}" was not found on PATH. Install it, or pick another with --reviewer=<claude|codex|gemini>.`)
       return 2
     }
-    review = makeReviewRunner(reviewerAgent)
+    review = makeReviewRunner(reviewerAgent, idleMs)
   }
 
   const result = runLoop({
@@ -96,6 +111,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     maxIterations: opts.maxIterations,
     isolate: opts.isolate ?? false,
     review,
+    reporter: opts.reporter ?? makeReporter(targetDir),
   })
   console.log(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
   if (result.reason) console.log(`Reason: ${result.reason}`)

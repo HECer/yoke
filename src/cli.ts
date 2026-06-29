@@ -115,9 +115,16 @@ function main(argv: string[]): number {
           reviewer = reviewerArg as Agent
         }
         const review = rest.includes('--review')
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review })
+        const toArg = rest.find(a => a.startsWith('--timeout='))
+        let timeoutMinutes: number | undefined
+        if (toArg) {
+          const v = Number(toArg.slice('--timeout='.length))
+          if (!Number.isFinite(v) || v < 0) { console.error(`Invalid --timeout value: ${toArg}`); return 1 }
+          timeoutMinutes = v
+        }
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review, timeoutMinutes })
       }
-      console.log('usage: yoke loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate] [--timeout=<minutes>]> [targetDir]')
       return 1
     }
     case 'context': {
