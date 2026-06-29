@@ -104,9 +104,17 @@ export function buildWatchdogInvocation(inv: Invocation, idleTimeoutMs: number):
 // execSync (our args are literal flags, never user data — the prompt is piped via
 // stdin), which avoids the warning. On other platforms execFileSync with no shell
 // is already warning-free. Throws on a non-zero exit (caller catches).
+// Build a win32 command string, quoting only args that contain whitespace.
+// Existing agent flags (claude -p, codex exec) have no spaces, so they are
+// unchanged; an absolute watchdog path with spaces gets quoted.
+export function win32CommandString(command: string, args: string[]): string {
+  const q = (s: string) => (/\s/.test(s) ? `"${s}"` : s)
+  return [command, ...args].map(q).join(' ')
+}
+
 function runCli(inv: Invocation): void {
   if (process.platform === 'win32') {
-    execSync([inv.command, ...inv.args].join(' '), {
+    execSync(win32CommandString(inv.command, inv.args), {
       cwd: inv.cwd,
       input: inv.input,
       stdio: ['pipe', 'inherit', 'inherit'],

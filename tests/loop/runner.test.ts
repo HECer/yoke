@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner, contextBlockFor, buildWatchdogInvocation } from '../../src/loop/runner.js'
+import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner, contextBlockFor, buildWatchdogInvocation, win32CommandString } from '../../src/loop/runner.js'
 import type { Story } from '../../src/loop/prd.js'
 
 const story: Story = {
@@ -135,6 +135,16 @@ describe('idle-timeout wiring', () => {
   it('returns the invocation unchanged when idleTimeoutMs is 0', () => {
     const base = { command: 'claude', args: ['-p'], input: 'hi', cwd: '.' }
     expect(buildWatchdogInvocation(base, 0)).toEqual(base)
+  })
+})
+
+describe('win32CommandString', () => {
+  it('quotes only args with spaces', () => {
+    expect(win32CommandString('node', ['C:\\a b\\watchdog.js', '--idle-ms=5', '--', 'claude', '-p']))
+      .toBe('node "C:\\a b\\watchdog.js" --idle-ms=5 -- claude -p')
+  })
+  it('leaves space-free commands untouched', () => {
+    expect(win32CommandString('claude', ['-p'])).toBe('claude -p')
   })
 })
 
