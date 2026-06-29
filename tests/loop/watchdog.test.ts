@@ -35,6 +35,31 @@ describe('runWatchdog', () => {
     await expect(p).resolves.toBe(124)
   })
 
+  it('escalates SIGTERM then SIGKILL after the grace window and resolves 124', async () => {
+    const child = fakeChild()
+    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, graceMs: 200, spawnFn: () => child, stdin: new EventEmitter() as any })
+    vi.advanceTimersByTime(150)
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM')
+    expect(child.kill).not.toHaveBeenCalledWith('SIGKILL')
+    vi.advanceTimersByTime(250)
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL')
+    child.emit('close', null)
+    await expect(p).resolves.toBe(124)
+  })
+
+  it('a normally-closing child never triggers the grace SIGKILL', async () => {
+    const child = fakeChild()
+    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, graceMs: 200, spawnFn: () => child, stdin: new EventEmitter() as any })
+    vi.advanceTimersByTime(50)
+    child.stdout.emit('data', Buffer.from('x'))
+    vi.advanceTimersByTime(50)
+    child.emit('close', 0)
+    await expect(p).resolves.toBe(0)
+    expect(child.kill).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(10_000)
+    expect(child.kill).not.toHaveBeenCalledWith('SIGKILL')
+  })
+
   it('with idleMs=0 never starts a timer and passes the exit code through', async () => {
     const child = fakeChild()
     const p = runWatchdog({ command: 'x', args: [], idleMs: 0, spawnFn: () => child, stdin: new EventEmitter() as any })

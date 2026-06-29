@@ -19,6 +19,8 @@ export interface WatchdogOpts {
   args: string[]
   idleMs: number
   spawnFn?: SpawnLike
+  /** Wait after SIGTERM before force-killing with SIGKILL. Default 5000. */
+  graceMs?: number
   stdin?: Readable
   out?: (d: unknown) => void
   err?: (d: unknown) => void
@@ -34,16 +36,34 @@ export function runWatchdog(opts: WatchdogOpts): Promise<number> {
     try { (opts.stdin as Readable).pipe(child.stdin as never) } catch { /* no stdin */ }
   }
 
+  const graceMs = opts.graceMs ?? 5000
+
   return new Promise<number>((resolve) => {
     let timer: ReturnType<typeof setTimeout> | undefined
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
     let killedForIdle = false
-    const clear = () => { if (timer) { clearTimeout(timer); timer = undefined } }
+    // Clear BOTH the idle timer and the post-SIGTERM grace timer so no dangling
+    // timers survive on any terminal path (close/error) or on each re-arm.
+    const clear = () => {
+      if (timer) { clearTimeout(timer); timer = undefined }
+      if (graceTimer) { clearTimeout(graceTimer); graceTimer = undefined }
+    }
     const arm = () => {
       if (opts.idleMs <= 0) return
       clear()
       timer = setTimeout(() => {
+        timer = undefined
         killedForIdle = true
         try { child.kill('SIGTERM') } catch { /* already gone */ }
+        // Escalation: a child that catches/ignores SIGTERM would never emit
+        // 'close' and the promise would hang forever — defeating the watchdog.
+        // SIGKILL is uncatchable, so the child must close and we resolve.
+        // win32 limitation: with shell:true, SIGKILL on the shell may orphan
+        // grandchild processes (a resource-cleanup edge, not a hang) — not fixed here.
+        graceTimer = setTimeout(() => {
+          graceTimer = undefined
+          try { child.kill('SIGKILL') } catch { /* already gone */ }
+        }, graceMs)
       }, opts.idleMs)
     }
     child.stdout.on('data', (d) => { out(d); arm() })
