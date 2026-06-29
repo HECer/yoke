@@ -61,6 +61,31 @@ npm run yoke -- loop run /path/to/your/project --isolate --reviewer=claude --max
 
 > Requires Node ≥ 20 and git. The MCP tools (rtk, graphify/Serena, Playwright MCP) are wired by Yoke but installed separately — the generated config is a clearly-labelled, adjustable template.
 
+## 🤖 Driving it through an agent (Claude / Codex / Gemini)
+
+Yoke is meant to be operated *by* your coding agent. Install the `yoke` CLI once, then just tell the agent what to do — after a retrofit the agent already has the skills, safety policy, and routing, so it knows the methodology.
+
+**1) Install the `yoke` command once (global):**
+
+```bash
+git clone https://github.com/HECer/yoke.git && cd yoke
+npm install && npm run build && npm link   # → global `yoke` on your PATH
+```
+
+(No global install? Use `node /path/to/yoke/dist/cli.js …` or `npm --prefix /path/to/yoke run yoke -- …` instead of `yoke …`.)
+
+**2) In your project, instruct the agent.** Copy-paste prompts — the same wording works for Claude Code, Codex CLI, and Gemini CLI:
+
+> **Set it up** — *"Install the Yoke harness in this project: run `yoke retrofit . --agent=all`, pick the code-graph you'd recommend for this codebase, and leave the autonomous loop disabled for now. Then summarise what changed and commit it."*
+
+> **Work the disciplined way** — *"From now on follow the Yoke skills you just installed: brainstorm → spec → plan → TDD → review before merging. Use the `review` skill before any merge."*
+
+> **Run autonomously** — *"Write `.yoke/prd.yaml` with one story per task (each needs acceptance criteria), set `verify.command` in `.yoke/config.yaml`, enable the loop with `yoke loop on .`, then run it in small visible batches: `yoke loop run . --max=5`. After each batch show me `yoke loop status .`."*
+
+> **Watch / unblock** — *"Run `yoke loop status .`. If it says BLOCKED, run the project's verify command, find the root cause, fix it without weakening tests, then continue the loop."*
+
+A genuinely hung agent self-terminates after the idle timeout (default 20 min; `--timeout`), and `yoke loop status` shows the live phase or a `⚠ possibly stuck` hint — so an autonomous run is never a black box.
+
 ## 🏗️ Architecture
 
 ```mermaid
