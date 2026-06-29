@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner, contextBlockFor } from '../../src/loop/runner.js'
+import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner, contextBlockFor, buildWatchdogInvocation } from '../../src/loop/runner.js'
 import type { Story } from '../../src/loop/prd.js'
 
 const story: Story = {
@@ -119,6 +119,22 @@ describe('prompt context injection', () => {
     expect(contextBlockFor(empty)).toBe('')
     rmSync(d, { recursive: true, force: true })
     rmSync(empty, { recursive: true, force: true })
+  })
+})
+
+describe('idle-timeout wiring', () => {
+  it('wraps the agent command in the watchdog when idleTimeoutMs > 0', () => {
+    const inv = buildWatchdogInvocation({ command: 'claude', args: ['-p'], input: 'hi', cwd: '.' }, 1200000)
+    expect(inv.command).toBe('node')
+    expect(inv.args.join(' ')).toContain('watchdog.js')
+    expect(inv.args.join(' ')).toContain('--idle-ms=1200000')
+    expect(inv.args.join(' ')).toContain('-- claude -p')
+    expect(inv.input).toBe('hi')
+    expect(inv.cwd).toBe('.')
+  })
+  it('returns the invocation unchanged when idleTimeoutMs is 0', () => {
+    const base = { command: 'claude', args: ['-p'], input: 'hi', cwd: '.' }
+    expect(buildWatchdogInvocation(base, 0)).toEqual(base)
   })
 })
 
