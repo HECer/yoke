@@ -4,6 +4,15 @@ import { stopTheLineGate, preDispatchGate, type GitOps } from './gates.js'
 import type { AgentRunner } from './runner.js'
 import type { Verifier } from './verify.js'
 import { appendDecision, contextDir } from '../context/context.js'
+import { noopReporter, type LoopReporter } from './reporter.js'
+
+function blockReason(base: string, targetDir: string, git: GitOps): string {
+  let dirty = false
+  try { dirty = !git.isClean(targetDir) } catch { /* ignore */ }
+  return dirty
+    ? `${base} (working tree has uncommitted changes from the blocked story — review/clean before re-running)`
+    : base
+}
 
 export interface LoopOptions {
   prdPath: string
@@ -14,6 +23,7 @@ export interface LoopOptions {
   maxIterations: number
   isolate?: boolean
   review?: AgentRunner
+  reporter?: LoopReporter
 }
 
 export interface LoopResult {
@@ -25,9 +35,11 @@ export interface LoopResult {
 
 export function runLoop(opts: LoopOptions): LoopResult {
   let iterations = 0
+  const reporter = opts.reporter ?? noopReporter
 
   const initial = loadPrd(opts.prdPath)
   if (initial.length === 0) {
+    reporter.blocked('PRD has no stories')
     return { status: 'blocked', iterations: 0, reason: 'PRD has no stories', finalProgress: { passed: 0, total: 0 } }
   }
 
@@ -35,26 +47,33 @@ export function runLoop(opts: LoopOptions): LoopResult {
     const stories = loadPrd(opts.prdPath)
 
     if (allPass(stories)) {
+      reporter.complete(progress(stories))
       return { status: 'complete', iterations, finalProgress: progress(stories) }
     }
     if (iterations >= opts.maxIterations) {
+      reporter.capReached(progress(stories))
       return { status: 'cap-reached', iterations, finalProgress: progress(stories) }
     }
 
     const pre = preDispatchGate(opts.targetDir, opts.git)
     if (!pre.ok) {
+      reporter.blocked(pre.reason ?? 'pre-dispatch gate failed')
       return { status: 'blocked', iterations, reason: pre.reason, finalProgress: progress(stories) }
     }
 
     const story = selectNextStory(stories)
     if (!story) {
+      reporter.complete(progress(stories))
       return { status: 'complete', iterations, finalProgress: progress(stories) }
     }
 
     const stl = stopTheLineGate(story)
     if (!stl.ok) {
+      reporter.blocked(stl.reason ?? 'stop-the-line gate failed')
       return { status: 'blocked', iterations, reason: stl.reason, finalProgress: progress(stories) }
     }
+
+    reporter.storyStart({ id: story.id, title: story.title }, iterations + 1, progress(stories))
 
     if (opts.isolate) {
       const wt = join(opts.targetDir, '.yoke', 'worktrees', story.id)
@@ -64,21 +83,30 @@ export function runLoop(opts: LoopOptions): LoopResult {
         const result = opts.runner({ targetDir: wt, story })
         iterations++
         if (!result.success) {
-          return { status: 'blocked', iterations, reason: `story ${story.id} failed: ${result.summary}`, finalProgress: progress(stories) }
+          const reason = blockReason(`story ${story.id} failed: ${result.summary}`, opts.targetDir, opts.git)
+          reporter.blocked(reason)
+          return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
         }
+        reporter.phase('verifying')
         const verdict = opts.verify(wt)
         if (!verdict.passed) {
-          return { status: 'blocked', iterations, reason: `story ${story.id} did not verify: ${verdict.summary}`, finalProgress: progress(stories) }
+          const reason = blockReason(`story ${story.id} did not verify: ${verdict.summary}`, opts.targetDir, opts.git)
+          reporter.blocked(reason)
+          return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
         }
         if (opts.review) {
+          reporter.phase('reviewing')
           const reviewResult = opts.review({ targetDir: wt, story })
           if (!reviewResult.success) {
-            return { status: 'blocked', iterations, reason: `story ${story.id} rejected in review: ${reviewResult.summary}`, finalProgress: progress(stories) }
+            const reason = blockReason(`story ${story.id} rejected in review: ${reviewResult.summary}`, opts.targetDir, opts.git)
+            reporter.blocked(reason)
+            return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
           }
         }
         // The worktree is a checkout of committed HEAD, so the agent above reads
         // context from HEAD's .yoke/context — commit context changes for --isolate
         // to honour them. We write the decision here so `integrate` carries it back.
+        reporter.phase('committing')
         appendDecision(contextDir(wt), {
           storyId: story.id,
           title: story.title,
@@ -89,7 +117,9 @@ export function runLoop(opts: LoopOptions): LoopResult {
         opts.git.commitAll(wt, `yoke: complete ${story.id} ${story.title}`)
         opts.git.integrate(opts.targetDir, wt)
       } catch (e) {
-        return { status: 'blocked', iterations, reason: `isolated iteration failed for ${story.id}: ${(e as Error).message}`, finalProgress: progress(stories) }
+        const reason = blockReason(`isolated iteration failed for ${story.id}: ${(e as Error).message}`, opts.targetDir, opts.git)
+        reporter.blocked(reason)
+        return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
       } finally {
         try { opts.git.removeWorktree(opts.targetDir, wt) } catch { /* cleanup is best-effort */ }
       }
@@ -100,36 +130,45 @@ export function runLoop(opts: LoopOptions): LoopResult {
     iterations++
 
     if (!result.success) {
+      const reason = blockReason(`story ${story.id} failed: ${result.summary}`, opts.targetDir, opts.git)
+      reporter.blocked(reason)
       return {
         status: 'blocked',
         iterations,
-        reason: `story ${story.id} failed: ${result.summary}`,
+        reason,
         finalProgress: progress(stories),
       }
     }
 
+    reporter.phase('verifying')
     const verdict = opts.verify(opts.targetDir)
     if (!verdict.passed) {
+      const reason = blockReason(`story ${story.id} did not verify: ${verdict.summary}`, opts.targetDir, opts.git)
+      reporter.blocked(reason)
       return {
         status: 'blocked',
         iterations,
-        reason: `story ${story.id} did not verify: ${verdict.summary}`,
+        reason,
         finalProgress: progress(stories),
       }
     }
 
     if (opts.review) {
+      reporter.phase('reviewing')
       const reviewResult = opts.review({ targetDir: opts.targetDir, story })
       if (!reviewResult.success) {
+        const reason = blockReason(`story ${story.id} rejected in review: ${reviewResult.summary}`, opts.targetDir, opts.git)
+        reporter.blocked(reason)
         return {
           status: 'blocked',
           iterations,
-          reason: `story ${story.id} rejected in review: ${reviewResult.summary}`,
+          reason,
           finalProgress: progress(stories),
         }
       }
     }
 
+    reporter.phase('committing')
     const dec = appendDecision(contextDir(opts.targetDir), {
       storyId: story.id,
       title: story.title,
@@ -142,10 +181,12 @@ export function runLoop(opts: LoopOptions): LoopResult {
     } catch (e) {
       savePrd(opts.prdPath, stories) // revert — never persist passes:true without a commit
       dec.rollback()                 // and never leave an orphan decision
+      const reason = blockReason(`commit failed for ${story.id}: ${(e as Error).message}`, opts.targetDir, opts.git)
+      reporter.blocked(reason)
       return {
         status: 'blocked',
         iterations,
-        reason: `commit failed for ${story.id}: ${(e as Error).message}`,
+        reason,
         finalProgress: progress(stories),
       }
     }
