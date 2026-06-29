@@ -89,9 +89,11 @@ Three layers: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) →
 
 > **rtk asymmetry, handled:** Claude can rewrite commands transparently via a hook (needs WSL on Windows); Codex and Gemini have no such hook, so they get an instruction to prefix commands with `rtk` instead.
 
-## 🧰 What's in the canon — 25 skills
+## 🧰 What's in the canon — 24 skills
 
 `yoke retrofit` installs all of these into each agent natively (Claude `.claude/skills/`, Codex/Gemini command + instruction artifacts). Provenance is credited in [`canon/skills/ATTRIBUTION.md`](canon/skills/ATTRIBUTION.md).
+
+To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.md` carries a **skill routing & precedence** block (methodology before role; one canonical entrypoint per concern — e.g. pre-merge code review is always `review`), emitted into all three agents.
 
 **Process / methodology** — *superpowers-derived discipline (13)*
 
@@ -111,14 +113,13 @@ Three layers: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) →
 | `finishing-a-development-branch` | Merge / PR / cleanup a finished branch |
 | `writing-skills` | Author and verify new skills |
 
-**Roles** — *gstack-derived, de-gstacked to be harness-agnostic (8)*
+**Roles** — *gstack-derived, de-gstacked to be harness-agnostic (7)*
 
 | Skill | What it does |
 |---|---|
-| `eng-review` | Engineering-manager review of a change before merge |
 | `plan-eng-review` | Architecture / edge-case review of a *plan* |
 | `plan-ceo-review` | Founder-mode scope & ambition review of a plan |
-| `review` | Pre-landing diff review (SQL safety, trust boundaries, side effects) |
+| `review` | Single canonical pre-merge code review — diff safety + engineering quality (architecture, edge cases, tests, performance) |
 | `ship` | Ship workflow: tests → review → version → changelog → PR |
 | `health` | Code-quality dashboard with a composite score |
 | `retro` | Engineering retrospective from commit history |
