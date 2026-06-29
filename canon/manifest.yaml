@@ -3,7 +3,6 @@ version: 0.1.0
 agents: [claude, codex, gemini]
 skills:
   - { id: tdd, path: skills/tdd, kind: methodology }
-  - { id: eng-review, path: skills/eng-review, kind: role }
   - { id: yoke-retrofit, path: skills/yoke-retrofit, kind: methodology }
   - { id: minimal-code, path: skills/minimal-code, kind: methodology }
   - { id: maintaining-context, path: skills/maintaining-context, kind: methodology }

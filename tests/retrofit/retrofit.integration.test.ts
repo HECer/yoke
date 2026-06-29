@@ -17,7 +17,7 @@ describe('yoke retrofit (integration, Claude)', () => {
     expect(existsSync(join(target, 'AGENTS.md'))).toBe(true)
     expect(existsSync(join(target, 'CLAUDE.md'))).toBe(true)
     expect(existsSync(join(target, '.claude/skills/tdd/SKILL.md'))).toBe(true)
-    expect(existsSync(join(target, '.claude/skills/eng-review/SKILL.md'))).toBe(true)
+    expect(existsSync(join(target, '.claude/skills/review/SKILL.md'))).toBe(true)
     expect(existsSync(join(target, '.claude/skills/yoke-retrofit/SKILL.md'))).toBe(true)
     const cfg = loadConfig(target)!
     expect(cfg.agents).toContain('claude')
