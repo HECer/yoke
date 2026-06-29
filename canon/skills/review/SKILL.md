@@ -225,8 +225,8 @@ Beyond the structural/safety scan above, also review the change as an engineerin
 this is the angle the old `eng-review` skill covered, now folded in here so there is one
 pre-merge review:
 
-- **Architecture fit:** does the change follow the project's established patterns, or does it
-  drift? Flag architectural drift.
+- **Architecture fit & data flow:** does the change follow the project's established patterns and
+  data flow, or does it drift? Flag architectural drift.
 - **Edge cases & error paths:** are unhandled inputs, failure modes, and boundary conditions
   covered?
 - **Test coverage:** is the changed behavior covered by tests that verify behavior (not just
