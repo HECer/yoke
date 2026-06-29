@@ -53,7 +53,8 @@ describe('planGemini', () => {
     // The whole guarantee: substring asserts can't catch invalid TOML; parsing can.
     const parsed = parseToml(cmd.content) as { description: string; prompt: string }
     expect(parsed.description).toBe(desc)
-    expect(parsed.prompt).toContain(desc)
+    // prompt now carries the skill body (the fixture body is "body"), not the description
+    expect(parsed.prompt).toContain('body')
   })
 
   it('collapses a multi-line description into valid single-line TOML', () => {
@@ -64,5 +65,25 @@ describe('planGemini', () => {
     expect(parsed.description).not.toContain('\n')
     expect(parsed.description).toContain('Line one of the description.')
     expect(parsed.description).toContain('Line two continues here.')
+  })
+
+  it('embeds the full skill body in the command prompt, not just the description', () => {
+    writeFileSync(join(canon, 'skills/tdd/SKILL.md'),
+      '---\nname: tdd\ndescription: Test-driven development\n---\n# TDD\n\nWrite the failing test FIRST, then the minimal code. Refactor.')
+    const cmd = planGemini(canon, '/t').find(a => a.target === '.gemini/commands/tdd.toml')!
+    const parsed = parseToml(cmd.content) as { description: string; prompt: string }
+    // description stays the one-line summary
+    expect(parsed.description).toBe('Test-driven development')
+    // prompt now carries the actual body, not just the description
+    expect(parsed.prompt).toContain('Write the failing test FIRST')
+    expect(parsed.prompt).toContain('Refactor')
+  })
+  it('produces valid TOML for a body with quotes, backslashes and code fences', () => {
+    writeFileSync(join(canon, 'skills/tdd/SKILL.md'),
+      '---\nname: tdd\ndescription: d\n---\n# Body\n\nRun `npm test` with a "quote" and a path C:\\\\x.\n\n```js\nconst a = 1\n```\n')
+    const cmd = planGemini(canon, '/t').find(a => a.target === '.gemini/commands/tdd.toml')!
+    const parsed = parseToml(cmd.content) as { prompt: string }
+    expect(parsed.prompt).toContain('npm test')
+    expect(parsed.prompt).toContain('const a = 1')
   })
 })
