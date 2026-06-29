@@ -60,6 +60,29 @@ describe('runWatchdog', () => {
     expect(child.kill).not.toHaveBeenCalledWith('SIGKILL')
   })
 
+  it('does NOT let death-throes output rescind the committed idle-kill', async () => {
+    const child = fakeChild()
+    const out = vi.fn()
+    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, graceMs: 200, spawnFn: () => child, stdin: new EventEmitter() as any, out })
+    vi.advanceTimersByTime(150)
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM')
+    // A child that caught SIGTERM coughs out one last byte before the grace window ends.
+    child.stdout.emit('data', Buffer.from('dying'))
+    expect(out).toHaveBeenCalled() // output still forwards
+    vi.advanceTimersByTime(250)
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL') // escalation NOT cancelled
+    child.emit('close', null)
+    await expect(p).resolves.toBe(124)
+  })
+
+  it('resolves 127 on spawn error', async () => {
+    const child = fakeChild()
+    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, spawnFn: () => child, stdin: new EventEmitter() as any })
+    child.emit('error', new Error('ENOENT'))
+    await expect(p).resolves.toBe(127)
+    expect(child.kill).not.toHaveBeenCalled()
+  })
+
   it('with idleMs=0 never starts a timer and passes the exit code through', async () => {
     const child = fakeChild()
     const p = runWatchdog({ command: 'x', args: [], idleMs: 0, spawnFn: () => child, stdin: new EventEmitter() as any })

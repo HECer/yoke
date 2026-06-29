@@ -50,6 +50,11 @@ export function runWatchdog(opts: WatchdogOpts): Promise<number> {
     }
     const arm = () => {
       if (opts.idleMs <= 0) return
+      // Once we've committed to killing, output no longer rescinds the escalation:
+      // a child that catches SIGTERM and keeps emitting heartbeats must not be able
+      // to reset the idle clock / cancel the pending SIGKILL. Forwarding still happens
+      // because the data handlers call out(d)/err(d) BEFORE arm().
+      if (killedForIdle) return
       clear()
       timer = setTimeout(() => {
         timer = undefined
