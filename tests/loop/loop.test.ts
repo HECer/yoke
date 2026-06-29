@@ -8,6 +8,7 @@ import { contextDir } from '../../src/context/context.js'
 import type { GitOps } from '../../src/loop/gates.js'
 import type { AgentRunner } from '../../src/loop/runner.js'
 import type { Verifier } from '../../src/loop/verify.js'
+import { type LoopReporter } from '../../src/loop/reporter.js'
 
 let dir: string
 const prd = () => join(dir, 'prd.yaml')
@@ -151,6 +152,44 @@ describe('runLoop', () => {
     expect(res.status).toBe('blocked')
     expect(readFileSync(decisionsFile(), 'utf8')).toBe('PRIOR\n')
     expect(loadPrd(prd()).every(s => !s.passes)).toBe(true)
+  })
+})
+
+function recordingReporter(): { reporter: LoopReporter; events: string[] } {
+  const events: string[] = []
+  const reporter: LoopReporter = {
+    storyStart: (s) => events.push(`start:${s.id}`),
+    phase: (p) => events.push(`phase:${p}`),
+    blocked: (r) => events.push(`blocked:${r}`),
+    complete: () => events.push('complete'),
+    capReached: () => events.push('cap'),
+  }
+  return { reporter, events }
+}
+
+describe('runLoop reporter', () => {
+  it('drives the reporter through phases on success and reports complete', () => {
+    const { reporter, events } = recordingReporter()
+    runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, maxIterations: 10, reporter })
+    expect(events).toContain('start:S1')
+    expect(events).toContain('phase:verifying')
+    expect(events).toContain('phase:committing')
+    expect(events[events.length - 1]).toBe('complete')
+  })
+
+  it('reports blocked with a leftover hint when the tree is dirty after a block', () => {
+    const { reporter, events } = recordingReporter()
+    // isClean: true for the pre-dispatch gate (first call), false afterwards so the
+    // post-block leftover check sees a dirty tree.
+    let calls = 0
+    const dirtyAfter: GitOps = {
+      isClean: () => { calls += 1; return calls <= 1 },
+      commitAll: () => { throw new Error('commit boom') },
+      addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {},
+    }
+    runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: dirtyAfter, verify: verifyOk, maxIterations: 10, reporter })
+    const blocked = events.find(e => e.startsWith('blocked:'))!
+    expect(blocked).toMatch(/uncommitted changes/i)
   })
 })
 

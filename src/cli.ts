@@ -7,6 +7,7 @@ import type { Agent } from './retrofit/config.js'
 import { applyActions } from './retrofit/apply.js'
 import { formatReport } from './retrofit/report.js'
 import { detectProject } from './retrofit/detect.js'
+import { ensureGitignore } from './retrofit/gitignore.js'
 import { loadConfig, saveConfig, defaultConfig, type YokeConfig, type CodeGraph } from './retrofit/config.js'
 import { loadManifest } from './canon/manifest.js'
 import { join } from 'node:path'
@@ -44,6 +45,10 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: A
   const actions = planRetrofit(canonDir, targetDir, agents, codeGraph)
   const backupDir = join(targetDir, '.yoke', 'backup', String(Date.now()))
   const applied = applyActions(actions, targetDir, { backupDir })
+
+  // Ensure runtime artifacts (loop status/log, worktrees, backups) are gitignored
+  // so the loop's clean-tree pre-dispatch gate is not broken by untracked files.
+  ensureGitignore(targetDir)
 
   const priorAgents = existing?.agents ?? []
   const mergedAgents = [...new Set([...priorAgents, ...agents])]
@@ -115,9 +120,16 @@ function main(argv: string[]): number {
           reviewer = reviewerArg as Agent
         }
         const review = rest.includes('--review')
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review })
+        const toArg = rest.find(a => a.startsWith('--timeout='))
+        let timeoutMinutes: number | undefined
+        if (toArg) {
+          const v = Number(toArg.slice('--timeout='.length))
+          if (!Number.isFinite(v) || v < 0) { console.error(`Invalid --timeout value: ${toArg}`); return 1 }
+          timeoutMinutes = v
+        }
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review, timeoutMinutes })
       }
-      console.log('usage: yoke loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate] [--timeout=<minutes>]> [targetDir]')
       return 1
     }
     case 'context': {

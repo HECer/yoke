@@ -12,7 +12,7 @@ const CodeGraphSchema = z.enum(['graphify', 'serena'])
 const YokeConfigSchema = z.object({
   canonVersion: z.string().min(1),
   agents: z.array(AgentSchema),
-  loop: z.object({ enabled: z.boolean() }),
+  loop: z.object({ enabled: z.boolean(), timeoutMinutes: z.number().optional() }),
   verify: z.object({ command: z.string().min(1) }).optional(),
   codeGraph: CodeGraphSchema.optional(),
 })
@@ -20,7 +20,7 @@ const YokeConfigSchema = z.object({
 export interface YokeConfig {
   canonVersion: string
   agents: Agent[]
-  loop: { enabled: boolean }
+  loop: { enabled: boolean; timeoutMinutes?: number }
   verify?: { command: string }
   codeGraph?: CodeGraph
 }

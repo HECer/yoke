@@ -1,5 +1,6 @@
 import type { Story } from './prd.js'
 import { execFileSync, execSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import type { Agent } from '../retrofit/config.js'
 import { loadContext, formatForPrompt, contextDir } from '../context/context.js'
 
@@ -80,15 +81,40 @@ export function claudeInvocation(prompt: string, cwd: string): Invocation {
   return agentInvocation('claude', prompt, cwd)
 }
 
+function watchdogPath(): string {
+  // runner.js and watchdog.js sit side by side (dist/loop/ at runtime, src/loop/ under tsx)
+  return fileURLToPath(new URL('./watchdog.js', import.meta.url))
+}
+
+// When idleTimeoutMs > 0, run the agent THROUGH the watchdog so a silent hang is
+// killed after idleTimeoutMs of no output. The prompt still flows via stdin.
+export function buildWatchdogInvocation(inv: Invocation, idleTimeoutMs: number): Invocation {
+  if (idleTimeoutMs <= 0) return inv
+  return {
+    command: 'node',
+    args: [watchdogPath(), `--idle-ms=${idleTimeoutMs}`, '--', inv.command, ...inv.args],
+    input: inv.input,
+    cwd: inv.cwd,
+  }
+}
+
 // Execute a CLI invocation. On Windows the agent CLIs are `.cmd` shims that
 // execFileSync cannot resolve without a shell; but passing an args array with
 // shell:true triggers DEP0190. So on win32 we run a single command string via
 // execSync (our args are literal flags, never user data — the prompt is piped via
 // stdin), which avoids the warning. On other platforms execFileSync with no shell
 // is already warning-free. Throws on a non-zero exit (caller catches).
+// Build a win32 command string, quoting only args that contain whitespace.
+// Existing agent flags (claude -p, codex exec) have no spaces, so they are
+// unchanged; an absolute watchdog path with spaces gets quoted.
+export function win32CommandString(command: string, args: string[]): string {
+  const q = (s: string) => (/\s/.test(s) ? `"${s}"` : s)
+  return [command, ...args].map(q).join(' ')
+}
+
 function runCli(inv: Invocation): void {
   if (process.platform === 'win32') {
-    execSync([inv.command, ...inv.args].join(' '), {
+    execSync(win32CommandString(inv.command, inv.args), {
       cwd: inv.cwd,
       input: inv.input,
       stdio: ['pipe', 'inherit', 'inherit'],
@@ -117,9 +143,10 @@ function probeVersion(command: string): boolean {
   }
 }
 
-export function makeRunner(agent: Agent): AgentRunner {
+export function makeRunner(agent: Agent, idleTimeoutMs = 0): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
-    const inv = agentInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir)), ctx.targetDir)
+    const base = agentInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir)), ctx.targetDir)
+    const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     try {
       // NOTE: the loop trusts the agent's exit code as a proxy for "it ran".
       // Independent verification happens in the loop (Baustein C2), not here.
@@ -133,9 +160,10 @@ export function makeRunner(agent: Agent): AgentRunner {
 
 export const claudeRunner: AgentRunner = makeRunner('claude')
 
-export function makeReviewRunner(agent: Agent): AgentRunner {
+export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
-    const inv = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir)), ctx.targetDir)
+    const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir)), ctx.targetDir)
+    const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     try {
       runCli(inv)
       return { success: true, summary: `${agent} approved ${ctx.story.id}` }
