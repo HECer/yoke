@@ -11,6 +11,18 @@ import { commandVerifier, type Verifier } from './verify.js'
 import { readStatus, makeReporter, type LoopReporter } from './reporter.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
+const STALE_MINUTES = 20  // a running status older than this likely means the loop died
+
+export function relativeTime(fromIso: string, now: Date): string {
+  const ms = Math.max(0, now.getTime() - Date.parse(fromIso))
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s ago`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
 
 export function prdPath(targetDir: string): string {
   return join(targetDir, '.yoke', 'prd.yaml')
@@ -23,7 +35,7 @@ export function setLoopEnabled(targetDir: string, enabled: boolean): void {
   saveConfig(targetDir, config)
 }
 
-export function loopStatus(targetDir: string): string {
+export function loopStatus(targetDir: string, now: () => Date = () => new Date()): string {
   const config = loadConfig(targetDir)
   const enabled = config?.loop.enabled ?? false
   const path = prdPath(targetDir)
@@ -35,10 +47,14 @@ export function loopStatus(targetDir: string): string {
   const st = readStatus(targetDir)
   if (!st) return `Loop: ${enabled ? 'enabled' : 'disabled'}\nPRD: ${prog}`
   const head = `Loop: ${st.state.toUpperCase()}${st.story ? ` on ${st.story}${st.storyTitle ? ` "${st.storyTitle}"` : ''}` : ''}`
-  const meta = [st.phase, `iteration ${st.iteration}`, `${st.progress.passed}/${st.progress.total}`, `updated ${st.updatedAt}`]
+  const meta = [st.phase, `iteration ${st.iteration}`, `${st.progress.passed}/${st.progress.total}`, `updated ${relativeTime(st.updatedAt, now())}`]
     .filter(Boolean).join(' · ')
   const lines = [head, `  ${meta}`]
   if (st.reason) lines.push(`  reason: ${st.reason}`)
+  const ageMs = now().getTime() - Date.parse(st.updatedAt)
+  if (st.state === 'running' && ageMs > STALE_MINUTES * 60_000) {
+    lines.push(`  ⚠ possibly stuck — no update in ${relativeTime(st.updatedAt, now())}`)
+  }
   return lines.join('\n')
 }
 
