@@ -1,10 +1,11 @@
 ---
 name: review
 description: |
-  Pre-landing PR review. Analyzes the diff against the base branch for SQL safety, LLM trust
-  boundary violations, conditional side effects, and other structural issues. Use when
-  asked to "review this PR", "code review", "pre-landing review", or "check my diff".
-  Proactively suggest when the user is about to merge or land code changes.
+  Pre-merge code review — the single canonical review of a change before it lands. Covers BOTH
+  diff safety/structure (SQL safety, LLM trust-boundary violations, conditional side effects)
+  AND engineering quality (architecture fit, edge cases, test coverage, performance). Use when
+  asked to "review this PR", "code review", "pre-landing review", "check my diff", or before
+  merging. (For plan-time review use plan-eng-review or plan-ceo-review instead.)
 triggers:
   - review this pr
   - code review
@@ -217,3 +218,20 @@ Report one of:
 - **Never commit, push, or create PRs** — that is the `ship` skill's job.
 - **Be terse.** One line problem, one line fix. No preamble.
 - **Only flag real problems.** Skip anything that is fine.
+
+## Engineering-manager checklist
+
+Beyond the structural/safety scan above, also review the change as an engineering manager would —
+this is the angle the old `eng-review` skill covered, now folded in here so there is one
+pre-merge review:
+
+- **Architecture fit:** does the change follow the project's established patterns, or does it
+  drift? Flag architectural drift.
+- **Edge cases & error paths:** are unhandled inputs, failure modes, and boundary conditions
+  covered?
+- **Test coverage:** is the changed behavior covered by tests that verify behavior (not just
+  mocks)? Missing or weak tests for changed behavior is a blocking issue.
+- **Performance:** any obvious regressions (N+1, unbounded growth, needless work in hot paths)?
+
+Output a pass/block verdict with specific, actionable findings. A reviewer never reviews their
+own implementation (see `policy/roles.md`).
