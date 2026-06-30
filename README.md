@@ -10,7 +10,7 @@ A cross-agent coding **harness** that installs a curated set of skills, safety p
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-203%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-228%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -40,7 +40,7 @@ flowchart LR
 - 🧪 **Worktree isolation** — run each story in a throwaway git worktree; only verified, committed work is fast-forwarded back.
 - 🧠 **Choose your code-graph** — graphify (fast, multimodal) or Serena (LSP-accurate) per project, with a recommendation at retrofit time.
 - 🪙 **Token-aware** — wires rtk for command-output compression and ships a `minimal-code` skill that nudges every agent to write less.
-- ✅ **203 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
+- ✅ **228 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
 
 ## 🚀 Quickstart
 
@@ -221,6 +221,11 @@ A per-iteration **idle timeout** guards against a genuinely hung agent: if the a
 output is **never** killed — the output stream *is* the liveness signal. Set a project default
 with `loop.timeoutMinutes` in `.yoke/config.yaml`.
 
+The loop trusts **verify**, not the agent's exit code: a story whose tests are green is
+committed even if the agent process exited non-zero (a common Windows `.cmd`-wrapper ghost).
+A failing verify is retried up to `verify.retries` times (default 1) so a transient flake
+self-heals while a real failure still blocks.
+
 `.yoke/loop-status.json` and `.yoke/loop.log` are runtime artifacts; `yoke retrofit` gitignores
 them (along with `.yoke/worktrees/` and `.yoke/backup/`) so they never trip the clean-tree gate.
 
@@ -297,7 +302,7 @@ docs/superpowers/ # the spec and every component's implementation plan
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (203 tests)
+npm test          # vitest (228 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

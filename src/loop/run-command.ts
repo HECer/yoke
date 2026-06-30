@@ -7,7 +7,7 @@ import { realGitOps } from './git.js'
 import { makeRunner, makeReviewRunner, isAgentAvailable, type AgentRunner } from './runner.js'
 import type { Agent } from '../retrofit/config.js'
 import type { GitOps } from './gates.js'
-import { commandVerifier, type Verifier } from './verify.js'
+import { commandVerifier, retryingVerifier, type Verifier } from './verify.js'
 import { readStatus, makeReporter, type LoopReporter } from './reporter.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
@@ -96,7 +96,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       console.error('No verify command configured. Set verify.command in .yoke/config.yaml (e.g. "npm test") so the loop can confirm tests pass before marking work done.')
       return 2
     }
-    verify = commandVerifier(command)
+    verify = retryingVerifier(commandVerifier(command), config.verify?.retries ?? 1)
   }
   const available = opts.isAvailable ?? isAgentAvailable
   const runnerAgent: Agent = opts.agent ?? config.agents[0] ?? 'claude'

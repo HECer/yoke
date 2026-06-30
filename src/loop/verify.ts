@@ -23,3 +23,24 @@ export function commandVerifier(command: string): Verifier {
     }
   }
 }
+
+// Re-run a failing verifier up to `retries` times; the first pass wins. Lets a
+// transient flake (e.g. a load-induced async timeout) self-heal while a real
+// failure still fails (it stays red across every attempt).
+export function retryingVerifier(inner: Verifier, retries: number): Verifier {
+  return (targetDir: string): VerifyResult => {
+    let last = inner(targetDir)
+    let attempt = 0
+    while (!last.passed && attempt < retries) {
+      attempt++
+      last = inner(targetDir)
+    }
+    if (last.passed && attempt > 0) {
+      return { passed: true, summary: `${last.summary} (passed on retry ${attempt})` }
+    }
+    if (!last.passed && attempt > 0) {
+      return { passed: false, summary: `${last.summary} (still failing after ${attempt} retr${attempt === 1 ? 'y' : 'ies'})` }
+    }
+    return last
+  }
+}

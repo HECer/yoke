@@ -9,11 +9,11 @@ export type CodeGraph = 'graphify' | 'serena'
 const AgentSchema = z.enum(['claude', 'codex', 'gemini'])
 const CodeGraphSchema = z.enum(['graphify', 'serena'])
 
-const YokeConfigSchema = z.object({
+export const YokeConfigSchema = z.object({
   canonVersion: z.string().min(1),
   agents: z.array(AgentSchema),
   loop: z.object({ enabled: z.boolean(), timeoutMinutes: z.number().optional() }),
-  verify: z.object({ command: z.string().min(1) }).optional(),
+  verify: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
   codeGraph: CodeGraphSchema.optional(),
 })
 
@@ -21,7 +21,7 @@ export interface YokeConfig {
   canonVersion: string
   agents: Agent[]
   loop: { enabled: boolean; timeoutMinutes?: number }
-  verify?: { command: string }
+  verify?: { command: string; retries?: number }
   codeGraph?: CodeGraph
 }
 

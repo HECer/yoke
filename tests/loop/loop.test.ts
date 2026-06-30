@@ -40,11 +40,23 @@ describe('runLoop', () => {
     expect(commits).toHaveLength(2)
   })
 
-  it('blocks when the runner fails a story', () => {
-    const failS1: AgentRunner = ({ story }) => ({ success: story.id !== 'S1', summary: 'boom' })
-    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: failS1, git: cleanGit(), verify: verifyOk, maxIterations: 10 })
+  it('commits a story when the runner reports failure but verify is GREEN (exit-code ghost)', () => {
+    const commits: string[] = []
+    const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m), addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
+    const runnerGhost: AgentRunner = () => ({ success: false, summary: 'exit 127 from claude.cmd' })
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: runnerGhost, git, verify: verifyOk, maxIterations: 10 })
+    expect(res.status).toBe('complete')
+    expect(commits.length).toBe(2)
+    expect(loadPrd(prd()).every(s => s.passes)).toBe(true)
+  })
+
+  it('blocks when the runner fails AND verify is red, naming both', () => {
+    const runnerBad: AgentRunner = () => ({ success: false, summary: 'agent boom' })
+    const verifyBad: Verifier = () => ({ passed: false, summary: 'tests red' })
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: runnerBad, git: cleanGit(), verify: verifyBad, maxIterations: 10 })
     expect(res.status).toBe('blocked')
-    expect(res.reason).toMatch(/S1/)
+    expect(res.reason).toMatch(/agent boom/)
+    expect(res.reason).toMatch(/tests red/)
   })
 
   it('stops at the iteration cap', () => {
