@@ -13,6 +13,7 @@ import { loadManifest } from './canon/manifest.js'
 import { join } from 'node:path'
 import { setLoopEnabled, loopStatus, runLoopCommand } from './loop/run-command.js'
 import { runContextInit, runContextStatus } from './context/command.js'
+import { scanDir } from './scan/design.js'
 
 export function runValidate(canonDir: string): number {
   const issues = validateCanon(canonDir)
@@ -62,6 +63,18 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: A
   saveConfig(targetDir, config)
 
   console.log(formatReport(applied, { loopEnabled: config.loop.enabled, detectedAgents: detection.agents }))
+  return 0
+}
+
+export function runDesignScan(targetDir: string, opts: { max: number; report: boolean }): number {
+  const { findings, score } = scanDir(targetDir)
+  for (const f of findings) {
+    console.log(`  ${f.file}:${f.line}  ${f.tell}  — ${f.hint}`)
+  }
+  const label = `Design scan: score ${score} (${findings.length} tell${findings.length === 1 ? '' : 's'}), budget ${opts.max}`
+  if (opts.report) { console.log(`${label} — report only`); return 0 }
+  if (score > opts.max) { console.log(`${label} — ✗ over budget`); return 1 }
+  console.log(`${label} — ✓`)
   return 0
 }
 
@@ -140,8 +153,16 @@ function main(argv: string[]): number {
       console.log('usage: yoke context <init|status> [targetDir]')
       return 1
     }
+    case 'design-scan': {
+      const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
+      const report = rest.includes('--report')
+      const maxArg = rest.find(a => a.startsWith('--max='))
+      const max = maxArg ? Number(maxArg.slice('--max='.length)) : 4
+      if (!Number.isFinite(max) || max < 0) { console.error(`Invalid --max value: ${maxArg}`); return 1 }
+      return runDesignScan(targetDir, { max, report })
+    }
     default:
-      console.log('usage: yoke <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | loop <on|off|status|run> | context <init|status>>')
+      console.log('usage: yoke <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | loop <on|off|status|run> | context <init|status> | design-scan [dir] [--max=N] [--report]>')
       return cmd ? 1 : 0
   }
 }
