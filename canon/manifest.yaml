@@ -29,6 +29,9 @@ skills:
   - { id: plan-eng-review, path: skills/plan-eng-review, kind: role }
   # authored workflow skill (kind: methodology)
   - { id: workflow, path: skills/workflow, kind: methodology }
+  # visual & design verification (kind: methodology)
+  - { id: unslop-ui, path: skills/unslop-ui, kind: methodology }
+  - { id: visual-verification, path: skills/visual-verification, kind: methodology }
 policy:
   - { path: policy/gates.md }
   - { path: policy/roles.md }

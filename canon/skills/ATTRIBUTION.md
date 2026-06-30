@@ -26,6 +26,16 @@ writing-skills
 
 ---
 
+## vibecoded-design-tells (research credit)
+
+**Source:** https://github.com/JCarterJohnson/vibecoded-design-tells (MIT © 2026 Carter Johnson)
+
+The `unslop-ui` rubric and the `yoke design-scan` tell set are **informed by** this data-ranked
+study of AI-generated-UI tells. Yoke implements the idea **natively in TypeScript** and copies no
+code or data — credited here in the spirit of the MIT license.
+
+---
+
 ## MIT License
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

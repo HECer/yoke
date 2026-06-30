@@ -30,4 +30,10 @@ describe('real canon', () => {
     expect(agents).toContain('Pre-merge code review')
     expect(agents).toContain('`review`')
   })
+
+  it('registers the visual verification skills', () => {
+    const manifest = loadManifest(join(repoRoot, 'canon', 'manifest.yaml'))
+    expect(manifest.skills.some(s => s.id === 'unslop-ui')).toBe(true)
+    expect(manifest.skills.some(s => s.id === 'visual-verification')).toBe(true)
+  })
 })
