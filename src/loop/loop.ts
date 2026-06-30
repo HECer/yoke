@@ -82,18 +82,21 @@ export function runLoop(opts: LoopOptions): LoopResult {
         opts.git.addWorktree(opts.targetDir, wt)
         const result = opts.runner({ targetDir: wt, story })
         iterations++
-        if (!result.success) {
-          const reason = blockReason(`story ${story.id} failed: ${result.summary}`, opts.targetDir, opts.git)
-          reporter.blocked(reason)
-          return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
-        }
+        // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
+        // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
         reporter.phase('verifying')
         const verdict = opts.verify(wt)
         if (!verdict.passed) {
-          const reason = blockReason(`story ${story.id} did not verify: ${verdict.summary}`, opts.targetDir, opts.git)
+          const base = result.success
+            ? `story ${story.id} did not verify: ${verdict.summary}`
+            : `story ${story.id} runner failed (${result.summary}) and verify is red: ${verdict.summary}`
+          const reason = blockReason(base, opts.targetDir, opts.git)
           reporter.blocked(reason)
           return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
         }
+        const summary = result.success
+          ? result.summary
+          : `${result.summary} (runner exited non-zero but verify is green)`
         if (opts.review) {
           reporter.phase('reviewing')
           const reviewResult = opts.review({ targetDir: wt, story })
@@ -110,7 +113,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         appendDecision(contextDir(wt), {
           storyId: story.id,
           title: story.title,
-          summary: result.summary,
+          summary,
         })
         const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
         savePrd(wtPrd, updated)
@@ -129,21 +132,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
     const result = opts.runner({ targetDir: opts.targetDir, story })
     iterations++
 
-    if (!result.success) {
-      const reason = blockReason(`story ${story.id} failed: ${result.summary}`, opts.targetDir, opts.git)
-      reporter.blocked(reason)
-      return {
-        status: 'blocked',
-        iterations,
-        reason,
-        finalProgress: progress(stories),
-      }
-    }
-
+    // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
+    // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
     reporter.phase('verifying')
     const verdict = opts.verify(opts.targetDir)
     if (!verdict.passed) {
-      const reason = blockReason(`story ${story.id} did not verify: ${verdict.summary}`, opts.targetDir, opts.git)
+      const base = result.success
+        ? `story ${story.id} did not verify: ${verdict.summary}`
+        : `story ${story.id} runner failed (${result.summary}) and verify is red: ${verdict.summary}`
+      const reason = blockReason(base, opts.targetDir, opts.git)
       reporter.blocked(reason)
       return {
         status: 'blocked',
@@ -152,6 +149,9 @@ export function runLoop(opts: LoopOptions): LoopResult {
         finalProgress: progress(stories),
       }
     }
+    const summary = result.success
+      ? result.summary
+      : `${result.summary} (runner exited non-zero but verify is green)`
 
     if (opts.review) {
       reporter.phase('reviewing')
@@ -172,7 +172,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
     const dec = appendDecision(contextDir(opts.targetDir), {
       storyId: story.id,
       title: story.title,
-      summary: result.summary,
+      summary,
     })
     const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
     savePrd(opts.prdPath, updated)
