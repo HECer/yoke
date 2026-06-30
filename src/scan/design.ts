@@ -25,6 +25,8 @@ export const TELLS: Tell[] = [
     test: (l) => (/bg-clip-text/.test(l) && /text-transparent/.test(l)) || /-webkit-background-clip:\s*text/i.test(l) },
   { name: 'neon-glow', weight: 2, hint: 'Neon glow is a tell — use subtle, neutral elevation',
     test: (l) => NEON_TW.test(l) || NEON_CSS.test(l) },
+  // A purple gradient legitimately trips BOTH ai-purple and gradient-overload — that double-count
+  // is intentional (two distinct tells), and the weights are kept small so it never dominates.
   { name: 'gradient-overload', weight: 1, hint: 'Gradients everywhere flatten hierarchy — use them sparingly',
     test: (l) => /bg-gradient-to-/.test(l) || /linear-gradient\(/i.test(l) },
   { name: 'emoji-icon', weight: 1, hint: 'Emoji-as-icons is a tell — use a real icon set',
@@ -44,7 +46,12 @@ export function scanText(text: string, tells: Tell[] = TELLS): Match[] {
 }
 
 const EXT = new Set(['.css', '.scss', '.tsx', '.jsx', '.ts', '.js', '.html', '.vue', '.svelte', '.astro'])
-const SKIP = new Set(['node_modules', 'dist', '.next', 'build', '.yoke', 'coverage', '.git', 'out'])
+const SKIP = new Set(['node_modules', 'dist', '.next', 'build', '.yoke', 'coverage', '.git', 'out', '__fixtures__', '__mocks__'])
+
+// Test/spec/story files routinely embed slop patterns as FIXTURES (a purple gradient in a
+// snapshot, a neon shadow in a render test). Scanning them would make the gate flag test data
+// as if it were shipped UI, so they're excluded — the scanner gates real source, not fixtures.
+const FIXTURE = /\.(test|spec|stories|story)\.[cm]?[jt]sx?$/i
 
 function walk(dir: string, acc: string[]): void {
   for (const entry of readdirSync(dir)) {
@@ -53,7 +60,7 @@ function walk(dir: string, acc: string[]): void {
     try { s = statSync(full) } catch { continue }
     if (s.isDirectory()) {
       if (!SKIP.has(entry)) walk(full, acc)
-    } else if (EXT.has(extname(entry).toLowerCase())) {
+    } else if (EXT.has(extname(entry).toLowerCase()) && !FIXTURE.test(entry)) {
       acc.push(full)
     }
   }

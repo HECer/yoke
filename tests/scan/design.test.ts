@@ -53,6 +53,14 @@ describe('scanDir', () => {
     const tells = [{ name: 'foo', weight: 5, test: (l: string) => l.includes('foo'), hint: 'h' }]
     expect(scanDir(dir, tells).score).toBe(5)
   })
+  it('skips test/spec/story files (their slop is fixtures, not shipped UI)', () => {
+    writeFileSync(join(dir, 'Hero.test.tsx'), 'color:#6c5ce7;')
+    writeFileSync(join(dir, 'Hero.spec.ts'), 'box-shadow: 0 0 40px #0ff;')
+    writeFileSync(join(dir, 'Hero.stories.tsx'), 'from-purple-500')
+    expect(scanDir(dir).score).toBe(0)
+    writeFileSync(join(dir, 'Hero.tsx'), 'color:#6c5ce7;') // a real source file IS scanned
+    expect(scanDir(dir).score).toBe(2)
+  })
 })
 
 it('TELLS is the curated non-empty default set', () => {
