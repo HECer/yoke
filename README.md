@@ -10,7 +10,7 @@ A cross-agent coding **harness** that installs a curated set of skills, safety p
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-228%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-243%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -40,7 +40,7 @@ flowchart LR
 - 🧪 **Worktree isolation** — run each story in a throwaway git worktree; only verified, committed work is fast-forwarded back.
 - 🧠 **Choose your code-graph** — graphify (fast, multimodal) or Serena (LSP-accurate) per project, with a recommendation at retrofit time.
 - 🪙 **Token-aware** — wires rtk for command-output compression and ships a `minimal-code` skill that nudges every agent to write less.
-- ✅ **228 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
+- ✅ **243 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
 
 ## 🚀 Quickstart
 
@@ -114,7 +114,7 @@ Three layers: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) →
 
 > **rtk asymmetry, handled:** Claude can rewrite commands transparently via a hook (needs WSL on Windows); Codex and Gemini have no such hook, so they get an instruction to prefix commands with `rtk` instead.
 
-## 🧰 What's in the canon — 24 skills
+## 🧰 What's in the canon — 26 skills
 
 `yoke retrofit` installs all of these into each agent natively (Claude `.claude/skills/`, Codex/Gemini command + instruction artifacts). Provenance is credited in [`canon/skills/ATTRIBUTION.md`](canon/skills/ATTRIBUTION.md).
 
@@ -150,7 +150,7 @@ To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.
 | `retro` | Engineering retrospective from commit history |
 | `document-release` | Post-ship documentation sync (README / CHANGELOG / …) |
 
-**Yoke-native** — *authored or adapted for this harness (4)*
+**Yoke-native** — *authored or adapted for this harness (6)*
 
 | Skill | What it does |
 |---|---|
@@ -158,6 +158,8 @@ To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.
 | `minimal-code` | Write the least code that solves the task (YAGNI; ponytail-derived) |
 | `maintaining-context` | Keep `.yoke/context/` the durable source of truth (the Context layer) |
 | `workflow` | The default order of operations, from idea to deploy |
+| `unslop-ui` | Detect & remove AI-slop design tells (purple gradients, neon glow, emoji-icons…) |
+| `visual-verification` | Widen verify to flow-smoke + design-scan; capture video only on failure |
 
 ## 🤖 The autonomous loop
 
@@ -245,6 +247,22 @@ commit. Manage them directly with `yoke context init` and `yoke context status`.
 > Commit `.yoke/context/` to git. The `--isolate` loop runs each iteration in a worktree
 > checked out from HEAD, so it only sees committed context.
 
+## 🎨 Visual & design verification
+
+Unit tests don't catch a blank page, an unwired route, or generic AI-slop design. Yoke adds two things:
+
+- **`yoke design-scan [dir]`** — a static scanner for the visual *tells* of AI-generated UIs
+  (AI-purple gradients, gradient hero text, neon glow, emoji-as-icons, gradient overload). It
+  scores findings and **exits non-zero over budget** (`--max`, default 4; `--report` to list only),
+  so it drops straight into your verify pipeline.
+- **`unslop-ui` + `visual-verification` skills** — the design rubric, plus how to compose a verify
+  pipeline (`types → units → design-scan → Playwright flow-smoke`) and capture video *only on failure*.
+
+Because the loop trusts **verify as the source of truth**, widening `verify.command` to include the
+scanner and a flow-smoke makes visual quality a real gate — not an afterthought.
+
+*Tell set informed by the MIT-licensed [vibecoded-design-tells](https://github.com/JCarterJohnson/vibecoded-design-tells) research.*
+
 ## 🛡️ Safety model
 
 Yoke's guardrails are **mechanical, not advisory** — the loop blocks on a dirty worktree, missing acceptance criteria, red tests, or a reviewer rejection, and **none of them rely on the agent choosing to behave**.
@@ -302,7 +320,7 @@ docs/superpowers/ # the spec and every component's implementation plan
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (228 tests)
+npm test          # vitest (243 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```
