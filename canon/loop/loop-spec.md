@@ -16,7 +16,12 @@ When enabled and run, each iteration:
 2. Pick the highest-priority unfinished PRD story (`.yoke/prd.yaml`).
 3. Stop-the-Line gate: the story must have acceptance criteria, else `blocked`.
 4. Run a fresh agent to implement ONE story. The runner is selected by `--runner=<claude|codex|gemini>` or the first configured agent (default claude); the loop refuses to start if that agent's CLI is not installed.
-5. On success: run the project's verify command (config `verify.command`, or detected `npm test`). Only if it passes, mark the story `passes: true`, save the PRD, and commit atomically. If the agent succeeds but verification fails: `blocked` (story stays open, no commit).
+5. Run the project's verify command (config `verify.command`, or detected `npm test`).
+   **Verify is the source of truth** — the agent's exit code is advisory, so a spurious
+   non-zero exit (e.g. a Windows `.cmd` wrapper) cannot block a story whose tests are green.
+   A failing verify is retried up to `verify.retries` times (default 1) so a transient flake
+   self-heals; a real failure still fails. Only if verify passes is the story marked
+   `passes: true`, committed atomically, and a decision logged. If verify fails: `blocked`.
 6. Stop when all stories `passes: true` (`complete`), or the iteration cap is reached (`cap-reached`).
 
 State lives outside the model context: the PRD file + git. The agent runner is pluggable.

@@ -221,6 +221,11 @@ A per-iteration **idle timeout** guards against a genuinely hung agent: if the a
 output is **never** killed — the output stream *is* the liveness signal. Set a project default
 with `loop.timeoutMinutes` in `.yoke/config.yaml`.
 
+The loop trusts **verify**, not the agent's exit code: a story whose tests are green is
+committed even if the agent process exited non-zero (a common Windows `.cmd`-wrapper ghost).
+A failing verify is retried up to `verify.retries` times (default 1) so a transient flake
+self-heals while a real failure still blocks.
+
 `.yoke/loop-status.json` and `.yoke/loop.log` are runtime artifacts; `yoke retrofit` gitignores
 them (along with `.yoke/worktrees/` and `.yoke/backup/`) so they never trip the clean-tree gate.
 
