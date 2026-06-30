@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand } from '../../src/retrofit/config.js'
+import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand, YokeConfigSchema } from '../../src/retrofit/config.js'
 import { writeFileSync } from 'node:fs'
 
 let dir: string
@@ -61,6 +61,15 @@ describe('yoke config', () => {
     const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: false } }
     saveConfig(dir, cfg)
     expect(loadConfig(dir)!.loop.timeoutMinutes).toBeUndefined()
+  })
+
+  it('accepts an optional verify.retries', () => {
+    const parsed = YokeConfigSchema.parse({ canonVersion: '0.1.0', agents: ['claude'], loop: { enabled: true }, verify: { command: 'npm test', retries: 2 } })
+    expect(parsed.verify?.retries).toBe(2)
+  })
+  it('accepts verify without retries', () => {
+    const parsed = YokeConfigSchema.parse({ canonVersion: '0.1.0', agents: [], loop: { enabled: false }, verify: { command: 'npm test' } })
+    expect(parsed.verify?.retries).toBeUndefined()
   })
 
   it('round-trips an optional codeGraph choice', () => {
