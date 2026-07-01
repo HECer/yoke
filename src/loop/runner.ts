@@ -59,6 +59,22 @@ export function buildReviewPrompt(story: Story, context: string): string {
   return lines.join('\n')
 }
 
+export function buildStandaloneReviewPrompt(scope: string, focus?: string): string {
+  const lines = [
+    'You are an independent reviewer. You did NOT write this change.',
+    `Review ${scope}. Run git yourself to see the diff (e.g. \`git diff\`, or \`git diff <base>..HEAD\`).`,
+    'Judge it for correctness, unmet intent, missing tests, and obvious bug or security risks.',
+  ]
+  if (focus) lines.push(`Pay particular attention to: ${focus}.`)
+  lines.push(
+    '',
+    'Approve by exiting 0 ONLY if the change is sound and complete.',
+    'If you find ANY blocking issue, exit non-zero to reject and explain what is wrong.',
+    'Do not modify files. Do not commit.',
+  )
+  return lines.join('\n')
+}
+
 export interface Invocation {
   command: string
   args: string[]
@@ -140,6 +156,17 @@ function probeVersion(command: string): boolean {
     return true
   } catch {
     return false
+  }
+}
+
+// Reusable one-shot invocation runner for callers outside the loop (e.g. `yoke review`).
+// Mirrors makeRunner's try/catch: success=true when the CLI exits 0, false when it throws.
+export function runAgent(inv: Invocation): AgentResult {
+  try {
+    runCli(inv)
+    return { success: true, summary: 'exited 0' }
+  } catch (e) {
+    return { success: false, summary: (e as Error).message }
   }
 }
 
