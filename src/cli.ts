@@ -171,7 +171,7 @@ function main(argv: string[]): number {
         if (!Number.isFinite(v) || v < 0) { console.error(`Invalid --timeout value: ${toArg}`); return 1 }
         timeoutMinutes = v
       }
-      return runReview(targetDir, { reviewer: reviewerArg as any, base, focus, timeoutMinutes })
+      return runReview(targetDir, { reviewer: reviewerArg as Agent | undefined, base, focus, timeoutMinutes })
     }
     case 'design-scan': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
