@@ -13,6 +13,7 @@ import { loadManifest } from './canon/manifest.js'
 import { join } from 'node:path'
 import { setLoopEnabled, loopStatus, runLoopCommand } from './loop/run-command.js'
 import { runContextInit, runContextStatus } from './context/command.js'
+import { runReview } from './review/command.js'
 import { scanDir } from './scan/design.js'
 
 export function runValidate(canonDir: string): number {
@@ -153,6 +154,25 @@ function main(argv: string[]): number {
       console.log('usage: yoke context <init|status> [targetDir]')
       return 1
     }
+    case 'review': {
+      const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
+      const valid = ['claude', 'codex', 'gemini']
+      const reviewerArg = rest.find(a => a.startsWith('--reviewer='))?.slice('--reviewer='.length)
+      if (reviewerArg && !valid.includes(reviewerArg)) {
+        console.error(`Invalid --reviewer value: ${reviewerArg} (expected claude|codex|gemini)`)
+        return 1
+      }
+      const base = rest.find(a => a.startsWith('--base='))?.slice('--base='.length)
+      const focus = rest.find(a => a.startsWith('--focus='))?.slice('--focus='.length)
+      const toArg = rest.find(a => a.startsWith('--timeout='))
+      let timeoutMinutes: number | undefined
+      if (toArg) {
+        const v = Number(toArg.slice('--timeout='.length))
+        if (!Number.isFinite(v) || v < 0) { console.error(`Invalid --timeout value: ${toArg}`); return 1 }
+        timeoutMinutes = v
+      }
+      return runReview(targetDir, { reviewer: reviewerArg as any, base, focus, timeoutMinutes })
+    }
     case 'design-scan': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
       const report = rest.includes('--report')
@@ -162,7 +182,7 @@ function main(argv: string[]): number {
       return runDesignScan(targetDir, { max, report })
     }
     default:
-      console.log('usage: yoke <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | loop <on|off|status|run> | context <init|status> | design-scan [dir] [--max=N] [--report]>')
+      console.log('usage: yoke <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | loop <on|off|status|run> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report]>')
       return cmd ? 1 : 0
   }
 }
