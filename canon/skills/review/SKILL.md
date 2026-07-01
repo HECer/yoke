@@ -235,3 +235,12 @@ pre-merge review:
 
 Output a pass/block verdict with specific, actionable findings. A reviewer never reviews their
 own implementation (see `policy/roles.md`).
+
+## Interactive cross-model review
+
+Outside the loop, run `yoke review` to have a *second* model review your current diff
+before you commit or push. It resolves to the first available of codex → gemini → claude
+(preferring a model other than the one you are driving), reviews the uncommitted working
+tree by default (or `--base=<ref>` for a branch range), and exits non-zero if it finds a
+blocking issue — so it chains as a gate (`... && yoke review`) or a pre-push hook.
+This is the interactive counterpart to the loop's `--review`/`--reviewer`.
