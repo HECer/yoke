@@ -5,15 +5,31 @@ import type { Action } from '../plan.js'
 import type { CodeGraph } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
 import { hasWsl } from '../wsl.js'
+import { detectGstack } from '../gstack.js'
 
-const claudeMd = (rtkNote: string) => `# Project Instructions
+const GSTACK_COMPOSE = `## Composed tools (gstack detected)
+
+This project also has [gstack](https://github.com/garrytan/gstack) installed. For capabilities Yoke does not ship, prefer gstack's skills:
+
+- Live-browser QA → \`/qa\`
+- Security audit → \`/cso\`
+- Ship / deploy → \`/ship\`, \`/land-and-deploy\`
+`
+
+const claudeMd = (rtkNote: string, composeNote: string) => `# Project Instructions
 
 This project uses the Yoke harness. Baseline instructions:
 
 @AGENTS.md
-${rtkNote ? `\n${rtkNote}\n` : ''}`
+${rtkNote ? `\n${rtkNote}\n` : ''}${composeNote ? `\n${composeNote}\n` : ''}`
 
-export function planClaude(canonDir: string, _targetDir: string, wslAvailable: boolean = hasWsl(), codeGraph: CodeGraph = 'graphify'): Action[] {
+export function planClaude(
+  canonDir: string,
+  targetDir: string,
+  wslAvailable: boolean = hasWsl(),
+  codeGraph: CodeGraph = 'graphify',
+  gstackDetected: boolean = detectGstack(targetDir),
+): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const actions: Action[] = []
 
@@ -38,7 +54,7 @@ export function planClaude(canonDir: string, _targetDir: string, wslAvailable: b
   actions.push({
     kind: 'write',
     target: 'CLAUDE.md',
-    content: claudeMd(rtkHookable ? '' : rtkInstruction()),
+    content: claudeMd(rtkHookable ? '' : rtkInstruction(), gstackDetected ? GSTACK_COMPOSE : ''),
     reason: 'Claude entry importing AGENTS.md',
   })
 

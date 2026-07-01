@@ -36,6 +36,15 @@ code or data — credited here in the spirit of the MIT license.
 
 ---
 
+### gstack (cross-model review, idea credit)
+
+The interactive `yoke review` command is inspired by gstack's `/codex` skill
+(https://github.com/garrytan/gstack, MIT © Garry Tan) — an independent second-model
+review with a pass/fail gate. Yoke's implementation is native and cross-agent; no code
+or data was copied.
+
+---
+
 ## MIT License
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

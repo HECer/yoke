@@ -10,7 +10,7 @@ A cross-agent coding **harness** that installs a curated set of skills, safety p
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-244%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-262%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -40,7 +40,7 @@ flowchart LR
 - 🧪 **Worktree isolation** — run each story in a throwaway git worktree; only verified, committed work is fast-forwarded back.
 - 🧠 **Choose your code-graph** — graphify (fast, multimodal) or Serena (LSP-accurate) per project, with a recommendation at retrofit time.
 - 🪙 **Token-aware** — wires rtk for command-output compression and ships a `minimal-code` skill that nudges every agent to write less.
-- ✅ **244 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
+- ✅ **262 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
 
 ## 🚀 Quickstart
 
@@ -113,6 +113,8 @@ Three layers: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) →
 | **Gemini** | `GEMINI.md`, `.gemini/commands/*.toml` (one per skill), `.gemini/settings.json` (MCP + `AGENTS.md` context) |
 
 > **rtk asymmetry, handled:** Claude can rewrite commands transparently via a hook (needs WSL on Windows); Codex and Gemini have no such hook, so they get an instruction to prefix commands with `rtk` instead.
+
+> **Composes with gstack:** if [gstack](https://github.com/garrytan/gstack) is installed (repo-local or global), `yoke retrofit` adds a short "Composed tools" routing note to **CLAUDE.md only** — telling Claude to prefer gstack's skills for capabilities Yoke doesn't ship (live-browser QA `/qa`, security audit `/cso`, ship/deploy `/ship`). No bundling, no dependency; the note is never written to the Codex or Gemini artifacts.
 
 ## 🧰 What's in the canon — 26 skills
 
@@ -231,6 +233,27 @@ self-heals while a real failure still blocks.
 `.yoke/loop-status.json` and `.yoke/loop.log` are runtime artifacts; `yoke retrofit` gitignores
 them (along with `.yoke/worktrees/` and `.yoke/backup/`) so they never trip the clean-tree gate.
 
+## Cross-model review (`yoke review`)
+
+Outside the loop, `yoke review` has a **second** model review your current diff as a
+pass/fail gate — the interactive counterpart to the loop's `--review`/`--reviewer`.
+
+```bash
+yoke review .                       # review the uncommitted working tree
+yoke review . --base=main           # review the range main..HEAD instead
+yoke review . --reviewer=codex      # force a specific reviewer
+yoke review . --focus="the auth layer"   # steer what it scrutinises
+```
+
+- **Reviewer resolution** — picks the first available of **codex → gemini → claude**,
+  preferring a model *other* than the one you drive so the review is genuinely cross-model.
+  On a Claude-only machine it degrades to a self-review (and says so).
+- **Scope** — the uncommitted working tree by default, or a commit range with `--base=<ref>`.
+- **Exit-code gate** — exits `0` when the reviewer approves, `1` when it finds a blocking
+  issue, `2` when no (or an unavailable) reviewer CLI is found. Chain it: `... && yoke review`,
+  or wire it into a pre-push hook.
+- Runs through the same idle-timeout watchdog as the loop (`--timeout`, default 20 min).
+
 ## Context layer (`.yoke/context/`)
 
 Yoke keeps durable, cross-session context so a fresh-context agent is never blind:
@@ -320,7 +343,7 @@ docs/superpowers/ # the spec and every component's implementation plan
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (244 tests)
+npm test          # vitest (262 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```
