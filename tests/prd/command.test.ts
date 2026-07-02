@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runPrdDraft, buildPrdDraftPrompt, PRD_TEMPLATE } from '../../src/prd/command.js'
+import { runPrdDraft, runPrdCheck, buildPrdDraftPrompt, PRD_TEMPLATE } from '../../src/prd/command.js'
 import type { Invocation } from '../../src/loop/runner.js'
 
 let dir: string
@@ -80,5 +80,38 @@ describe('runPrdDraft', () => {
   it('fails when the agent run fails', () => {
     const run = (_: Invocation) => ({ success: false, summary: 'boom' })
     expect(runPrdDraft(dir, { idea: 'x', isAvailable: () => true, run })).toBe(1)
+  })
+})
+
+describe('runPrdCheck', () => {
+  const write = (content: string) => writeFileSync(join(dir, '.yoke', 'prd.yaml'), content)
+
+  it('passes a valid PRD', () => {
+    write(VALID_PRD)
+    expect(runPrdCheck(dir)).toBe(0)
+  })
+
+  it('fails when the file is missing', () => {
+    expect(runPrdCheck(dir)).toBe(1)
+  })
+
+  it('fails on schema violations', () => {
+    write('- id: STORY-1\n')
+    expect(runPrdCheck(dir)).toBe(1)
+  })
+
+  it('fails on duplicate ids', () => {
+    write(VALID_PRD + VALID_PRD.replace('scaffold project', 'again'))
+    expect(runPrdCheck(dir)).toBe(1)
+  })
+
+  it('fails on empty acceptance', () => {
+    write('- id: STORY-1\n  title: t\n  priority: 1\n  acceptance: []\n  passes: false\n')
+    expect(runPrdCheck(dir)).toBe(1)
+  })
+
+  it('fails on zero stories (the untouched template)', () => {
+    write(PRD_TEMPLATE)
+    expect(runPrdCheck(dir)).toBe(1)
   })
 })

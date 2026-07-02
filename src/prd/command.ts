@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Agent } from '../retrofit/config.js'
 import { loadConfig } from '../retrofit/config.js'
-import { loadPrd } from '../loop/prd.js'
+import { loadPrd, progress, type Story } from '../loop/prd.js'
 import {
   agentInvocation,
   buildWatchdogInvocation,
@@ -107,5 +107,36 @@ export function runPrdDraft(targetDir: string, opts: PrdDraftOptions): number {
     return 1
   }
   console.log(`Drafted ${count} stories → ${path}`)
+  return 0
+}
+
+export function runPrdCheck(targetDir: string): number {
+  const path = prdFile(targetDir)
+  if (!existsSync(path)) {
+    console.error(`No PRD at ${path} — create one with yoke prd draft or yoke new.`)
+    return 1
+  }
+  let stories: Story[]
+  try {
+    stories = loadPrd(path)
+  } catch (e) {
+    console.error(`Invalid PRD: ${(e as Error).message}`)
+    return 1
+  }
+  const errors: string[] = []
+  if (stories.length === 0) errors.push('PRD has no stories')
+  const seen = new Set<string>()
+  for (const s of stories) {
+    if (seen.has(s.id)) errors.push(`duplicate story id: ${s.id}`)
+    seen.add(s.id)
+    // the schema allows [], but the loop's stop-the-line gate blocks it — fail fast here
+    if (s.acceptance.length === 0) errors.push(`story ${s.id} has no acceptance criteria`)
+  }
+  if (errors.length > 0) {
+    for (const e of errors) console.error(`ERROR ${e}`)
+    return 1
+  }
+  const p = progress(stories)
+  console.log(`✓ PRD valid — ${p.total} stories, ${p.passed} pass`)
   return 0
 }
