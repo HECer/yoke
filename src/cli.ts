@@ -7,6 +7,9 @@ import { setLoopEnabled, loopStatus, runLoopCommand } from './loop/run-command.j
 import { runContextInit, runContextStatus } from './context/command.js'
 import { runReview } from './review/command.js'
 import { scanDir } from './scan/design.js'
+import { runNew } from './new/command.js'
+import { runPrdDraft, runPrdCheck } from './prd/command.js'
+import { runLoopCleanup } from './loop/cleanup.js'
 
 export { runRetrofit } from './retrofit/command.js'
 
@@ -68,6 +71,7 @@ function main(argv: string[]): number {
       if (sub === 'on') { setLoopEnabled(targetDir, true); console.log('Loop enabled.'); return 0 }
       if (sub === 'off') { setLoopEnabled(targetDir, false); console.log('Loop disabled.'); return 0 }
       if (sub === 'status') { console.log(loopStatus(targetDir)); return 0 }
+      if (sub === 'cleanup') return runLoopCleanup(targetDir)
       if (sub === 'run') {
         const maxArg = rest.find(a => a.startsWith('--max='))
         const rawMax = maxArg ? Number(maxArg.slice('--max='.length)) : 25
@@ -102,7 +106,56 @@ function main(argv: string[]): number {
         }
         return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review, timeoutMinutes })
       }
-      console.log('usage: yoke loop <on|off|status|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate] [--timeout=<minutes>]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|cleanup|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate] [--timeout=<minutes>]> [targetDir]')
+      return 1
+    }
+    case 'new': {
+      const dir = rest.find(a => !a.startsWith('-'))
+      if (!dir) {
+        console.error('usage: yoke new <dir> [--idea="..."] [--agent=claude,codex,gemini|all] [--runner=<claude|codex|gemini>] [--loop]')
+        return 1
+      }
+      const idea = rest.find(a => a.startsWith('--idea='))?.slice('--idea='.length)
+      const loop = rest.includes('--loop')
+      const agentArg = rest.find(a => a.startsWith('--agent='))?.slice('--agent='.length)
+      const all: Agent[] = ['claude', 'codex', 'gemini']
+      const agents = !agentArg || agentArg === 'all'
+        ? (agentArg === 'all' ? all : undefined)
+        : agentArg.split(',').filter((a): a is Agent => (all as string[]).includes(a))
+      const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
+      if (runnerArg && !(all as string[]).includes(runnerArg)) {
+        console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini)`)
+        return 1
+      }
+      return runNew(dir, { idea, agents, runner: runnerArg as Agent | undefined, loop })
+    }
+    case 'prd': {
+      const sub = rest[0]
+      const targetDir = rest.slice(1).find(a => !a.startsWith('-')) ?? '.'
+      if (sub === 'draft') {
+        const idea = rest.find(a => a.startsWith('--idea='))?.slice('--idea='.length)
+        if (!idea) {
+          console.error('usage: yoke prd draft [dir] --idea="..." [--runner=<claude|codex|gemini>] [--force] [--timeout=<minutes>]')
+          return 1
+        }
+        const valid = ['claude', 'codex', 'gemini']
+        const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
+        if (runnerArg && !valid.includes(runnerArg)) {
+          console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini)`)
+          return 1
+        }
+        const force = rest.includes('--force')
+        const toArg = rest.find(a => a.startsWith('--timeout='))
+        let timeoutMinutes: number | undefined
+        if (toArg) {
+          const v = Number(toArg.slice('--timeout='.length))
+          if (!Number.isFinite(v) || v < 0) { console.error(`Invalid --timeout value: ${toArg}`); return 1 }
+          timeoutMinutes = v
+        }
+        return runPrdDraft(targetDir, { idea, runner: runnerArg as Agent | undefined, force, timeoutMinutes })
+      }
+      if (sub === 'check') return runPrdCheck(targetDir)
+      console.log('usage: yoke prd <draft|check> [dir] [--idea="..."] [--runner=<claude|codex|gemini>] [--force] [--timeout=<minutes>]')
       return 1
     }
     case 'context': {
@@ -141,7 +194,7 @@ function main(argv: string[]): number {
       return runDesignScan(targetDir, { max, report })
     }
     default:
-      console.log('usage: yoke <validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | loop <on|off|status|run> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report]>')
+      console.log('usage: yoke <new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | prd <draft|check> [dir] | loop <on|off|status|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report]>')
       return cmd ? 1 : 0
   }
 }
