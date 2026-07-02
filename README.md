@@ -10,7 +10,7 @@ A cross-agent coding **harness** that installs a curated set of skills, safety p
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-299%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-316%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -40,7 +40,8 @@ flowchart LR
 - 🧪 **Worktree isolation** — run each story in a throwaway git worktree; only verified, committed work is fast-forwarded back.
 - 🧠 **Choose your code-graph** — graphify (fast, multimodal) or Serena (LSP-accurate) per project, with a recommendation at retrofit time.
 - 🪙 **Token-aware** — wires rtk for command-output compression and ships a `minimal-code` skill that nudges every agent to write less.
-- ✅ **299 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
+- 📸 **Done, with a photo** — `yoke flow-smoke` saves a screenshot proof per user flow to `.yoke/proof/<story>/` (video kept on failure), so every completed story carries visual evidence.
+- ✅ **316 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
 
 ## 🚀 Quickstart
 
@@ -169,7 +170,7 @@ To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.
 | `maintaining-context` | Keep `.yoke/context/` the durable source of truth (the Context layer) |
 | `workflow` | The default order of operations, from idea to deploy |
 | `unslop-ui` | Detect & remove AI-slop design tells (purple gradients, neon glow, emoji-icons…) |
-| `visual-verification` | Widen verify to flow-smoke + design-scan; capture video only on failure |
+| `visual-verification` | Widen verify to design-scan + the built-in `yoke flow-smoke` gate (screenshot proofs; video on failure) |
 
 ## 🌱 Zero to 100: `yoke new` + `yoke prd`
 
@@ -324,19 +325,54 @@ commit. Manage them directly with `yoke context init` and `yoke context status`.
 
 ## 🎨 Visual & design verification
 
-Unit tests don't catch a blank page, an unwired route, or generic AI-slop design. Yoke adds two things:
+Unit tests don't catch a blank page, an unwired route, or generic AI-slop design. Yoke adds three things:
 
 - **`yoke design-scan [dir]`** — a static scanner for the visual *tells* of AI-generated UIs
   (AI-purple gradients, gradient hero text, neon glow, emoji-as-icons, gradient overload). It
   scores findings and **exits non-zero over budget** (`--max`, default 4; `--report` to list only),
   so it drops straight into your verify pipeline.
+- **`yoke flow-smoke [dir]`** — a built-in browser gate with **proof artifacts** (see below).
 - **`unslop-ui` + `visual-verification` skills** — the design rubric, plus how to compose a verify
-  pipeline (`types → units → design-scan → Playwright flow-smoke`) and capture video *only on failure*.
+  pipeline (`types → units → design-scan → flow-smoke`).
 
 Because the loop trusts **verify as the source of truth**, widening `verify.command` to include the
-scanner and a flow-smoke makes visual quality a real gate — not an afterthought.
+scanner and the flow-smoke makes visual quality a real gate — not an afterthought.
 
 *Tell set informed by the MIT-licensed [vibecoded-design-tells](https://github.com/JCarterJohnson/vibecoded-design-tells) research.*
+
+### `yoke flow-smoke [dir] [--url=<baseUrl>] [--label=<name>]`
+
+Configure your key user flows once in `.yoke/config.yaml`:
+
+```yaml
+smoke:
+  baseUrl: http://localhost:3000
+  flows:
+    - name: home
+      path: /
+      landmark: "main h1"   # optional CSS selector to wait for
+    - name: login
+      path: /login
+```
+
+For every flow, `yoke flow-smoke` loads the route against the running dev server, waits for the
+landmark, and fails on a non-OK response or **any console/page error**. The proof contract:
+
+- **Screenshots always** — every flow (pass *or* fail) saves `.yoke/proof/<label>/<flow>.png`;
+  the failure screenshot *is* the evidence.
+- **Video only on failure** — each flow is recorded, but the clip is kept only when the flow
+  goes red (`<flow>.webm`); green runs delete it.
+- **Labelled per story** — inside the loop, verify runs with `YOKE_STORY=<story-id>`, so proofs
+  land in `.yoke/proof/<story-id>/` automatically. Standalone runs use `latest`, or pass
+  `--label=`. The label dir is wiped per run — evidence is always from the latest run.
+- **Exit codes** — `0` all flows green (chain it: `... && yoke design-scan . && yoke flow-smoke .`),
+  `1` any flow failed, `2` not runnable (no `smoke:` config, or Playwright missing).
+- **Playwright comes from the *target project*, never Yoke** —
+  `npm i -D playwright && npx playwright install chromium` there. Start the dev server before
+  verify (e.g. via `start-server-and-test`); `--url=` overrides `baseUrl`.
+
+`.yoke/proof/` is gitignored by the retrofit — proofs are runtime artifacts and never break the
+loop's clean-tree gate.
 
 ## 🛡️ Safety model
 
@@ -386,6 +422,7 @@ src/
   loop/           # prd · gates · runner · verify · git/worktree · loop · run-command · lock · cleanup
   new/            # yoke new — greenfield bootstrap
   prd/            # yoke prd draft|check — idea → stories + lint gate
+  smoke/          # yoke flow-smoke — browser gate with screenshot/video proofs
 docs/superpowers/ # the spec and every component's implementation plan
 ```
 
@@ -397,7 +434,7 @@ docs/superpowers/ # the spec and every component's implementation plan
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (299 tests)
+npm test          # vitest (316 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```
