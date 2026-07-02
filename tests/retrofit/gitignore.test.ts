@@ -39,6 +39,11 @@ describe('ensureGitignore', () => {
     ensureGitignore(dir)
     expect(readFileSync(gi(), 'utf8')).toContain('.yoke/loop.lock')
   })
+  it('ensures the flow-smoke proof dir is ignored', () => {
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/proof/')
+    ensureGitignore(dir)
+    expect(readFileSync(gi(), 'utf8')).toContain('.yoke/proof/')
+  })
   it('appends cleanly when the existing file has no trailing newline (no glued lines)', () => {
     writeFileSync(gi(), 'node_modules/') // no trailing newline — the load-bearing prefix branch
     ensureGitignore(dir)
