@@ -154,6 +154,14 @@ describe('runLoop', () => {
     expect(existsSync(decisionsFile())).toBe(false)
   })
 
+  it('exposes the story id to the verifier via YOKE_STORY and unsets it after', () => {
+    const seen: (string | undefined)[] = []
+    const verify: Verifier = () => { seen.push(process.env.YOKE_STORY); return { passed: true, summary: 'green' } }
+    runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify, maxIterations: 10 })
+    expect(seen).toEqual(['S1', 'S2'])
+    expect(process.env.YOKE_STORY).toBeUndefined()
+  })
+
   it('reverts the decision append when the commit fails', () => {
     // Seed a prior DECISIONS.md so the assertion distinguishes "appended then
     // rolled back to prior bytes" from "never appended at all".
@@ -263,6 +271,17 @@ describe('runLoop with isolation', () => {
     expect(res.reason).toMatch(/rejected in review/i)
     expect(loadPrd(isoPrd())[0].passes).toBe(false)
     expect(removed.length).toBe(1) // worktree still cleaned up
+  })
+
+  it('exposes YOKE_STORY to the verifier in isolated mode too, and unsets it after', () => {
+    let seen: string | undefined
+    const verify: Verifier = () => { seen = process.env.YOKE_STORY; return { passed: true, summary: 'green' } }
+    runLoop({
+      prdPath: isoPrd(), targetDir: isoDir, runner: alwaysPass, git: fsWorktreeGit(isoDir, []),
+      verify, isolate: true, maxIterations: 5,
+    })
+    expect(seen).toBe('S1')
+    expect(process.env.YOKE_STORY).toBeUndefined()
   })
 
   it('blocks (does not crash) when addWorktree throws, leaving the main PRD untouched', () => {

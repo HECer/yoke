@@ -10,6 +10,7 @@ import { scanDir } from './scan/design.js'
 import { runNew } from './new/command.js'
 import { runPrdDraft, runPrdCheck } from './prd/command.js'
 import { runLoopCleanup } from './loop/cleanup.js'
+import { runFlowSmoke } from './smoke/command.js'
 
 export { runRetrofit } from './retrofit/command.js'
 
@@ -41,7 +42,7 @@ export function runDesignScan(targetDir: string, opts: { max: number; report: bo
   return 0
 }
 
-function main(argv: string[]): number {
+function main(argv: string[]): number | Promise<number> {
   const [cmd, ...rest] = argv
   switch (cmd) {
     case 'validate':
@@ -188,6 +189,12 @@ function main(argv: string[]): number {
       }
       return runReview(targetDir, { reviewer: reviewerArg as Agent | undefined, base, focus, timeoutMinutes })
     }
+    case 'flow-smoke': {
+      const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
+      const url = rest.find(a => a.startsWith('--url='))?.slice('--url='.length)
+      const label = rest.find(a => a.startsWith('--label='))?.slice('--label='.length)
+      return runFlowSmoke(targetDir, { url, label })
+    }
     case 'design-scan': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
       const report = rest.includes('--report')
@@ -197,12 +204,12 @@ function main(argv: string[]): number {
       return runDesignScan(targetDir, { max, report })
     }
     default:
-      console.log('usage: yoke <new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | prd <draft|check> [dir] | loop <on|off|status|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report]>')
+      console.log('usage: yoke <new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | prd <draft|check> [dir] | loop <on|off|status|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>]>')
       return cmd ? 1 : 0
   }
 }
 
 const isMain = process.argv[1] ? pathToFileURL(process.argv[1]).href === import.meta.url : false
 if (isMain) {
-  process.exit(main(process.argv.slice(2)))
+  process.exit(await main(process.argv.slice(2)))
 }

@@ -43,6 +43,11 @@ The interactive `yoke review` command is inspired by gstack's `/codex` skill
 review with a pass/fail gate. Yoke's implementation is native and cross-agent; no code
 or data was copied.
 
+Likewise, the browser-QA-as-gate idea behind gstack's `/qa` skill is natively
+re-implemented as `yoke flow-smoke` — cross-agent, with a proof-artifact contract
+(screenshots always, video kept on failure, under `.yoke/proof/<story>/`); no code
+was copied.
+
 ---
 
 ## MIT License

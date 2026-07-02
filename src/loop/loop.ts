@@ -85,7 +85,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
         // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
         // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
         reporter.phase('verifying')
-        const verdict = opts.verify(wt)
+        const prevStory = process.env.YOKE_STORY
+        process.env.YOKE_STORY = story.id
+        let verdict
+        try {
+          verdict = opts.verify(wt)
+        } finally {
+          if (prevStory === undefined) delete process.env.YOKE_STORY
+          else process.env.YOKE_STORY = prevStory
+        }
         if (!verdict.passed) {
           const base = result.success
             ? `story ${story.id} did not verify: ${verdict.summary}`
@@ -135,7 +143,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
     // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
     // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
     reporter.phase('verifying')
-    const verdict = opts.verify(opts.targetDir)
+    const prevStory = process.env.YOKE_STORY
+    process.env.YOKE_STORY = story.id
+    let verdict
+    try {
+      verdict = opts.verify(opts.targetDir)
+    } finally {
+      if (prevStory === undefined) delete process.env.YOKE_STORY
+      else process.env.YOKE_STORY = prevStory
+    }
     if (!verdict.passed) {
       const base = result.success
         ? `story ${story.id} did not verify: ${verdict.summary}`
