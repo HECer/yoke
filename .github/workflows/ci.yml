@@ -7,17 +7,18 @@ on:
 
 jobs:
   test:
-    name: build + test (${{ matrix.os }})
+    name: build + test (${{ matrix.os }}, node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        node: [20, 24]   # supported floor (README: Node >= 20) and current LTS
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
       - run: npm run build
