@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand, YokeConfigSchema } from '../../src/retrofit/config.js'
@@ -76,5 +76,23 @@ describe('yoke config', () => {
     const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: false }, codeGraph: 'serena' as const }
     saveConfig(dir, cfg)
     expect(loadConfig(dir)).toEqual(cfg)
+  })
+
+  it('round-trips a smoke section', () => {
+    const config = { ...defaultConfig('1.0.0'), smoke: { baseUrl: 'http://localhost:3000', flows: [{ name: 'home', path: '/', landmark: 'main h1' }, { name: 'login', path: '/login' }] } }
+    saveConfig(dir, config)
+    expect(loadConfig(dir)?.smoke?.flows).toHaveLength(2)
+    expect(loadConfig(dir)?.smoke?.flows[0].landmark).toBe('main h1')
+  })
+
+  it('config without smoke stays valid', () => {
+    saveConfig(dir, defaultConfig('1.0.0'))
+    expect(loadConfig(dir)?.smoke).toBeUndefined()
+  })
+
+  it('rejects a smoke section with empty flows', () => {
+    mkdirSync(join(dir, '.yoke'), { recursive: true })
+    writeFileSync(join(dir, '.yoke', 'config.yaml'), 'canonVersion: "1"\nagents: []\nloop:\n  enabled: false\nsmoke:\n  baseUrl: http://x\n  flows: []\n')
+    expect(() => loadConfig(dir)).toThrow()
   })
 })

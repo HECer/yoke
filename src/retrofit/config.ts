@@ -9,13 +9,20 @@ export type CodeGraph = 'graphify' | 'serena'
 const AgentSchema = z.enum(['claude', 'codex', 'gemini'])
 const CodeGraphSchema = z.enum(['graphify', 'serena'])
 
+const SmokeFlowSchema = z.object({ name: z.string().min(1), path: z.string().min(1), landmark: z.string().optional() })
+const SmokeSchema = z.object({ baseUrl: z.string().min(1), flows: z.array(SmokeFlowSchema).min(1) })
+
 export const YokeConfigSchema = z.object({
   canonVersion: z.string().min(1),
   agents: z.array(AgentSchema),
   loop: z.object({ enabled: z.boolean(), timeoutMinutes: z.number().optional() }),
   verify: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
   codeGraph: CodeGraphSchema.optional(),
+  smoke: SmokeSchema.optional(),
 })
+
+export interface SmokeFlow { name: string; path: string; landmark?: string }
+export interface SmokeConfig { baseUrl: string; flows: SmokeFlow[] }
 
 export interface YokeConfig {
   canonVersion: string
@@ -23,6 +30,7 @@ export interface YokeConfig {
   loop: { enabled: boolean; timeoutMinutes?: number }
   verify?: { command: string; retries?: number }
   codeGraph?: CodeGraph
+  smoke?: SmokeConfig
 }
 
 export function defaultConfig(canonVersion: string): YokeConfig {
