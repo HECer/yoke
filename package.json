@@ -1,14 +1,51 @@
 {
-  "name": "yoke",
-  "version": "0.1.0",
+  "name": "@hecer/yoke",
+  "version": "0.2.0",
+  "description": "One harness, three agents, zero trust in \"done\" — cross-agent coding harness for Claude Code, Codex CLI, and Gemini CLI: one skill canon, mechanical safety gates, an autonomous loop with screenshot/video proofs.",
   "type": "module",
   "bin": {
     "yoke": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "canon",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HECer/yoke.git"
+  },
+  "homepage": "https://github.com/HECer/yoke#readme",
+  "bugs": {
+    "url": "https://github.com/HECer/yoke/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "agents",
+    "agentic-coding",
+    "harness",
+    "autonomous",
+    "ralph-loop",
+    "code-review",
+    "skills",
+    "agents-md",
+    "tdd"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "yoke": "tsx src/cli.ts"
+    "yoke": "tsx src/cli.ts",
+    "prepublishOnly": "npm run build && vitest run"
   },
   "dependencies": {
     "yaml": "^2.5.0",

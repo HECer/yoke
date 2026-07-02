@@ -2,9 +2,9 @@
 
 # 🐂 Yoke
 
-### One harness, every agent. Yoke it once — run it autonomously.
+### One harness, three agents — and zero trust in "done."
 
-A cross-agent coding **harness** that installs a curated set of skills, safety policy, and tooling into **any project** for **Claude Code, OpenAI Codex CLI, and Gemini CLI** — plus an opt-in autonomous **loop** that ships a spec story-by-story behind hard, mechanical safety gates.
+**Yoke** installs one curated canon of skills, **mechanical safety gates**, and tool wiring into any project — natively for **Claude Code, OpenAI Codex CLI, and Gemini CLI**. Then, when you want it, an opt-in autonomous loop ships your spec story-by-story: tested, cross-model-reviewed, committed — **with a screenshot to prove every story and a video for every failure**.
 
 [![CI](https://github.com/HECer/yoke/actions/workflows/ci.yml/badge.svg)](https://github.com/HECer/yoke/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
@@ -16,85 +16,119 @@ A cross-agent coding **harness** that installs a curated set of skills, safety p
 
 </div>
 
+> **TL;DR** — `yoke new my-app --idea="..."` scaffolds a git repo, installs the harness for all three agents, and drafts a story backlog from your idea. `yoke loop run my-app --isolate --review` then implements it story by story behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. If any gate is red, nothing is committed. When a story is done, there's a photo of it in `.yoke/proof/<story>/`.
+
 ---
 
-## What is Yoke?
+## Why Yoke exists
 
-You curate **one source of truth** — skills, policy, and tool wiring. Yoke generates the **idiomatic, native artifacts** each agent expects (Claude skills + hooks, Codex `AGENTS.md` + config, Gemini commands + settings) — non-destructively, into any repo. Then, when you want it, the same harness can run an **autonomous loop** that picks the next story, implements it, runs your real tests, has an independent agent review it, and commits — never touching your working tree unless the work is green.
+Agentic coding in 2026 fails in four well-documented ways. Yoke answers each one **mechanically** — in code, not in a prompt the agent can ignore:
 
-```mermaid
-flowchart LR
-    Canon["📦 one CANON<br/><i>source of truth</i>"]
-    Agents["🤝 Claude · Codex · Gemini<br/>skills · MCP · instructions"]
-    Done["✅ implement → test<br/>→ review → commit"]
-    Canon -->|yoke retrofit| Agents
-    Agents -->|yoke loop run --isolate| Done
+| The pain | What actually happens | What Yoke does about it |
+|---|---|---|
+| 🎭 **The verification gap** — *"agent says done, but it isn't"* | Agents submit confidently on 100% of runs while resolving far fewer; "all tests pass" when they were never run ([silent-failures research](https://arxiv.org/pdf/2603.25764)) | The loop trusts **your verify command's exit code**, never the agent's word. A story is `passes: true` only after tests are green, the reviewer approved, and the commit landed — atomically. Plus: **screenshot proofs** per story. |
+| 🔀 **Three agents, three configs** | Teams hand-maintain `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, skills, and MCP wiring separately — copy-paste drift everywhere | **One canon → `yoke retrofit`** generates the idiomatic native artifacts for each agent. Change the canon once, re-retrofit everywhere. |
+| 🌀 **Overnight loops going off the rails** | Raw Ralph-loop users "wake up to broken codebases that don't compile" | Yoke is **"Ralph, but with gates"**: clean-worktree gate, acceptance-criteria gate, green-tests gate, review gate, per-story worktree isolation, idle-timeout watchdog, single-flight lock, commit integrity. |
+| 😵 **Review fatigue** | AI adoption nearly doubles PR volume and review time; humans start skimming | **`yoke review`**: a *second* model reviews the diff as a pass/fail exit-code gate — chainable into verify, pre-push, or CI. Cross-model review measurably catches what self-review misses. |
+
+**Who it's for:** anyone driving Claude Code, Codex CLI, or Gemini CLI on real projects — especially if you use more than one, want autonomous runs you can trust, or are tired of "done" meaning "probably". Greenfield (`yoke new`) and brownfield (`yoke retrofit`) both work.
+
+**Who it's not for:** if you want a chat pair-programmer with no process, you don't need a harness. Yoke is for shipping with discipline.
+
+## ⏱️ 60 seconds: idea → tested, photographed software
+
+```console
+$ yoke new reading-app --idea="a web app that tracks my reading list"
+✓ reading-app bootstrapped.        # git repo · harness for all agents · context · PRD drafted from the idea
+
+$ yoke prd check reading-app
+✓ PRD valid — 8 stories, 0 pass
+
+$ yoke loop on reading-app
+$ yoke loop run reading-app --isolate --review --max=10
+▶ STORY-1 (0/8) — implementing… · verifying… · reviewing… ✔ committed → 1/8
+▶ STORY-2 (1/8) — implementing… · verifying… ✔ committed → 2/8
+▶ STORY-3 (2/8) — implementing… · verifying… ✘ blocked: story did not verify (tests red)
+                                              # nothing was committed. fix, then re-run.
+
+$ ls reading-app/.yoke/proof/STORY-2/
+home.png  list.png                            # photographic evidence, labelled per story
 ```
 
-## ✨ Highlights
-
-- 🤝 **Truly cross-agent** — Claude Code, Codex CLI, and Gemini CLI, generated from one canon. No copy-paste drift.
-- 🧩 **Non-destructive retrofit** — every file is backed up before a change; re-runs are idempotent; `.claude/settings.json` is *merged*, never clobbered.
-- 🤖 **Optional autonomous loop** — a Ralph-style loop that completes a PRD, gated by your real test suite and an independent agent review.
-- 🛡️ **Mechanical safety gates** — clean-worktree, acceptance-criteria, green-tests, and role-separated review. Enforced in code, not by agent goodwill.
-- 🧪 **Worktree isolation** — run each story in a throwaway git worktree; only verified, committed work is fast-forwarded back.
-- 🧠 **Choose your code-graph** — graphify (fast, multimodal) or Serena (LSP-accurate) per project, with a recommendation at retrofit time.
-- 🪙 **Token-aware** — wires rtk for command-output compression and ships a `minimal-code` skill that nudges every agent to write less.
-- 📸 **Done, with a photo** — `yoke flow-smoke` saves a screenshot proof per user flow to `.yoke/proof/<story>/` (video kept on failure), so every completed story carries visual evidence.
-- ✅ **322 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
+Every claim in that transcript is enforced by code paths with tests behind them — 322 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
 
 ## 🚀 Quickstart
 
 ```bash
 git clone https://github.com/HECer/yoke.git && cd yoke
-npm install
+npm install && npm run build && npm link   # → global `yoke` on your PATH
 
 # Greenfield: idea → loop-ready project in one command
-npm run yoke -- new my-app --idea="a CLI that tracks reading lists"
-npm run yoke -- loop on my-app
-npm run yoke -- loop run my-app --isolate
+yoke new my-app --idea="a CLI that tracks reading lists"
+yoke loop on my-app && yoke loop run my-app --isolate
 
 # — or retrofit an existing project —
-
-# 1) sanity-check the canon
-npm run yoke -- validate canon
-
-# 2) retrofit a project (asks/chooses code-graph; non-destructive)
-npm run yoke -- retrofit /path/to/your/project --agent=all --code-graph=serena
-
-# 3) (optional) run the autonomous loop on a PRD
-npm run yoke -- loop on  /path/to/your/project
-npm run yoke -- loop run /path/to/your/project --isolate --reviewer=claude --max=20
+yoke validate canon                                          # 1) sanity-check the canon
+yoke retrofit /path/to/project --agent=all                   # 2) install (non-destructive)
+yoke loop on /path/to/project                                # 3) optional: the autonomous loop
+yoke loop run /path/to/project --isolate --reviewer=codex --max=20
 ```
 
-> Requires Node ≥ 20 and git. The MCP tools (rtk, graphify/Serena, Playwright MCP) are wired by Yoke but installed separately — the generated config is a clearly-labelled, adjustable template.
+> Requires Node ≥ 20 and git. No global install? `node /path/to/yoke/dist/cli.js …` or `npm --prefix /path/to/yoke run yoke -- …` work too. The MCP tools (rtk, graphify/Serena, Playwright MCP) are wired by Yoke but installed separately — the generated config is a clearly-labelled, adjustable template. *(npm package `@hecer/yoke` is prepared; until it's published, clone as above.)*
 
-## 🤖 Driving it through an agent (Claude / Codex / Gemini)
+## 🤖 Driving it through an agent
 
-Yoke is meant to be operated *by* your coding agent. Install the `yoke` CLI once, then just tell the agent what to do — after a retrofit the agent already has the skills, safety policy, and routing, so it knows the methodology.
-
-**1) Install the `yoke` command once (global):**
-
-```bash
-git clone https://github.com/HECer/yoke.git && cd yoke
-npm install && npm run build && npm link   # → global `yoke` on your PATH
-```
-
-(No global install? Use `node /path/to/yoke/dist/cli.js …` or `npm --prefix /path/to/yoke run yoke -- …` instead of `yoke …`.)
-
-**2) In your project, instruct the agent.** Copy-paste prompts — the same wording works for Claude Code, Codex CLI, and Gemini CLI:
+Yoke is meant to be operated *by* your coding agent — after a retrofit, the agent has the skills, the safety policy, and the routing, so it knows the methodology. Copy-paste prompts (identical wording works for Claude Code, Codex CLI, and Gemini CLI):
 
 > **Set it up** — *"Install the Yoke harness in this project: run `yoke retrofit . --agent=all`, pick the code-graph you'd recommend for this codebase, and leave the autonomous loop disabled for now. Then summarise what changed and commit it."*
 
 > **Work the disciplined way** — *"From now on follow the Yoke skills you just installed: brainstorm → spec → plan → TDD → review before merging. Use the `review` skill before any merge."*
 
-> **Run autonomously** — *"Write `.yoke/prd.yaml` with one story per task (each needs acceptance criteria), set `verify.command` in `.yoke/config.yaml`, enable the loop with `yoke loop on .`, then run it in small visible batches: `yoke loop run . --max=5`. After each batch show me `yoke loop status .`."*
+> **Run autonomously** — *"Write `.yoke/prd.yaml` with one story per task (each needs acceptance criteria — see the `authoring-prd` skill), set `verify.command` in `.yoke/config.yaml`, enable the loop with `yoke loop on .`, then run it in small visible batches: `yoke loop run . --max=5`. After each batch show me `yoke loop status .`."*
 
 > **Watch / unblock** — *"Run `yoke loop status .`. If it says BLOCKED, run the project's verify command, find the root cause, fix it without weakening tests, then continue the loop."*
 
-A genuinely hung agent self-terminates after the idle timeout (default 20 min; `--timeout`), and `yoke loop status` shows the live phase or a `⚠ possibly stuck` hint — so an autonomous run is never a black box.
+### Agent cheat sheet — every command is an exit-code contract
+
+Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) can branch on exit codes without parsing prose.
+
+| Command | What it does | Exit codes |
+|---|---|---|
+| `yoke validate [canonDir]` | Validate the canon (schema, frontmatter, templates) | `0` valid · `1` errors |
+| `yoke new <dir> [--idea=] [--agent=] [--runner=] [--loop]` | Greenfield bootstrap: git init → scaffold → retrofit → context → PRD (drafted from `--idea`) → committed | `0` · `1` usage / non-empty dir / draft failed (scaffold survives) · `2` draft agent unavailable |
+| `yoke retrofit [dir] [--agent=claude,codex,gemini\|all] [--code-graph=graphify\|serena] [--loop]` | Install/update the harness, non-destructively | `0` |
+| `yoke prd draft [dir] --idea= [--runner=] [--force]` | Idea → 5–12 stories with testable acceptance criteria | `0` · `1` invalid/guarded · `2` agent unavailable |
+| `yoke prd check [dir]` | PRD lint gate (schema, duplicate ids, empty acceptance) | `0` valid · `1` violations |
+| `yoke context init\|status [dir]` | Durable context layer (`PROJECT/DECISIONS/KNOWLEDGE.md`) | `0` |
+| `yoke loop on\|off\|status\|run\|cleanup [dir]` | The autonomous loop (see below) | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked |
+| `yoke review [dir] [--reviewer=] [--base=] [--focus=]` | A **second model** reviews your diff | `0` approved · `1` findings · `2` no reviewer CLI |
+| `yoke design-scan [dir] [--max=N] [--report]` | Static AI-slop design gate | `0` within budget · `1` over |
+| `yoke flow-smoke [dir] [--url=] [--label=]` | Browser gate with screenshot/video proofs | `0` green · `1` failures · `2` not runnable |
+
+A genuinely hung agent self-terminates after the idle timeout (default 20 min; `--timeout`), and `yoke loop status` shows the live phase or a `⚠ possibly stuck` hint — an autonomous run is never a black box.
+
+## ⚖️ How it compares — superpowers · gstack · Yoke
+
+Three excellent projects, three different jobs. Honest version:
+
+| | [superpowers](https://github.com/obra/superpowers) (obra) | [gstack](https://github.com/garrytan/gstack) (Garry Tan) | **Yoke** |
+|---|---|---|---|
+| **What it is** | The canonical *skills methodology*: brainstorm → plan → TDD → review as composable skills | A *software factory* for Claude Code: ~40 role skills (QA, CSO, ship…) + a real Chromium browser layer | A *cross-agent harness*: one canon → native installs, plus a gated autonomous loop |
+| **Agents** | Claude Code first | Claude Code + hosts like Codex/Cursor/Kiro — **no Gemini CLI** | **Claude Code, Codex CLI, Gemini CLI** from one source of truth |
+| **Enforcement** | Advisory — skills *describe* the discipline; following them is up to the agent | Skill-driven; browser QA is genuinely real | **Mechanical** — gates live in code: clean tree, acceptance criteria, green tests, review verdict, commit integrity |
+| **Autonomy** | Interactive sessions | Interactive slash-commands (`/qa`, `/ship`, …) | Opt-in **Ralph loop** with watchdog, worktree isolation, single-flight lock, per-story proofs |
+| **Visual QA** | — | **Best-in-class**: live browser daemon (Chromium/CDP) with deep interactive QA | Built-in `flow-smoke` gate: screenshots always, video on failure, labelled per story — lighter, but *enforced* and cross-agent |
+| **Cross-model review** | — | `/codex` second opinion (Codex-only direction) | `yoke review` — resolves **codex → gemini → claude**, exit-code gate, works in and outside the loop |
+| **Footprint** | Markdown skills (plugin) | ~230 MB with browser runtime; hourly auto-update | Node CLI + markdown canon; Playwright only if you use flow-smoke, resolved **from your project** |
+| **License** | MIT | MIT | MIT |
+
+**They compose — use all three where they're strongest.** Yoke's canon *ships* the superpowers methodology natively for all three agents (13 skills, [attributed](canon/skills/ATTRIBUTION.md)). And if gstack is installed, `yoke retrofit` detects it and adds a routing note to `CLAUDE.md` telling Claude to prefer gstack's live-browser `/qa`, `/cso`, and ship pipeline for what Yoke deliberately doesn't bundle — no dependency, no conflict, and Codex/Gemini artifacts stay uniform.
+
+**Choose Yoke when** you run more than one agent, want autonomy you can audit (gates + proofs + logs), or want one place to maintain your team's methodology. **Choose gstack when** you live 100% in Claude Code and want the deepest interactive browser QA. **Choose superpowers when** you want the methodology alone, interactively, in Claude Code — or just use it *through* Yoke.
 
 ## 🏗️ Architecture
+
+You curate **one source of truth** — skills, policy, and tool wiring. Yoke generates the **idiomatic, native artifacts** each agent expects, non-destructively, into any repo:
 
 ```mermaid
 flowchart TD
@@ -104,21 +138,21 @@ flowchart TD
     Skill --> Claude["Claude Code<br/>.claude/skills · .mcp.json · hook"]
     Skill --> Codex["Codex CLI<br/>AGENTS.md · config.toml · RTK.md"]
     Skill --> Gemini["Gemini CLI<br/>GEMINI.md · commands · settings.json"]
-    Loop["🤖 yoke loop — autonomous Ralph loop<br/>gates · verify · review · worktree isolation"]
+    Loop["🤖 yoke loop — autonomous Ralph loop<br/>gates · verify · review · isolation · proofs"]
     Claude -. drives .-> Loop
     Codex -. drives .-> Loop
     Gemini -. drives .-> Loop
 ```
 
-Three layers: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) → **Loop** (`yoke loop`), with a durable **Context layer** (`yoke context init|status`) underneath.
+Three layers — **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) → **Loop** (`yoke loop`) — on top of a durable **Context layer** (`yoke context`).
 
-## 🔌 What gets generated per agent
+### What gets generated per agent
 
 | Agent | Artifacts |
 |---|---|
 | **Claude** | `.claude/skills/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json` (code-graph + Playwright), and an rtk `PreToolUse` hook when WSL is available |
 | **Codex** | `AGENTS.md` (native), `.codex/config.toml` (MCP servers), `RTK.md` |
-| **Gemini** | `GEMINI.md`, `.gemini/commands/*.toml` (one per skill), `.gemini/settings.json` (MCP + `AGENTS.md` context) |
+| **Gemini** | `GEMINI.md`, `.gemini/commands/*.toml` (one per skill, full body), `.gemini/settings.json` (MCP + `AGENTS.md` context) |
 
 > **rtk asymmetry, handled:** Claude can rewrite commands transparently via a hook (needs WSL on Windows); Codex and Gemini have no such hook, so they get an instruction to prefix commands with `rtk` instead.
 
@@ -126,7 +160,7 @@ Three layers: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) →
 
 ## 🧰 What's in the canon — 27 skills
 
-`yoke retrofit` installs all of these into each agent natively (Claude `.claude/skills/`, Codex/Gemini command + instruction artifacts). Provenance is credited in [`canon/skills/ATTRIBUTION.md`](canon/skills/ATTRIBUTION.md).
+`yoke retrofit` installs all of these into each agent natively. Provenance is credited in [`canon/skills/ATTRIBUTION.md`](canon/skills/ATTRIBUTION.md).
 
 To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.md` carries a **skill routing & precedence** block (methodology before role; one canonical entrypoint per concern — e.g. pre-merge code review is always `review`), emitted into all three agents.
 
@@ -218,7 +252,7 @@ flowchart LR
     E -- no --> X
     E -- yes --> F{reviewer<br/>approves?}
     F -- no --> X
-    F -- yes --> G[commit + mark passes:true]
+    F -- yes --> G[commit + mark passes:true<br/>+ proof in .yoke/proof/]
     G --> A
 ```
 
@@ -271,8 +305,8 @@ A failing verify is retried up to `verify.retries` times (default 1) so a transi
 self-heals while a real failure still blocks.
 
 `.yoke/loop-status.json`, `.yoke/loop.log`, and `.yoke/loop.lock` are runtime artifacts;
-`yoke retrofit` gitignores them (along with `.yoke/worktrees/` and `.yoke/backup/`) so they
-never trip the clean-tree gate.
+`yoke retrofit` gitignores them (along with `.yoke/worktrees/`, `.yoke/backup/`, and
+`.yoke/proof/`) so they never trip the clean-tree gate.
 
 ### Single-flight guard + cleanup
 
@@ -286,7 +320,7 @@ whose holder process is dead is taken over automatically (with a warning).
 never touched) and a **stale** lock file. A live lock is reported and left alone. Exits `0`
 when everything cleaned, `1` if any removal failed.
 
-## Cross-model review (`yoke review`)
+## 🔍 Cross-model review (`yoke review`)
 
 Outside the loop, `yoke review` has a **second** model review your current diff as a
 pass/fail gate — the interactive counterpart to the loop's `--review`/`--reviewer`.
@@ -307,23 +341,7 @@ yoke review . --focus="the auth layer"   # steer what it scrutinises
   or wire it into a pre-push hook.
 - Runs through the same idle-timeout watchdog as the loop (`--timeout`, default 20 min).
 
-## Context layer (`.yoke/context/`)
-
-Yoke keeps durable, cross-session context so a fresh-context agent is never blind:
-
-- `PROJECT.md` — the north star (goal, constraints, non-goals, success criteria).
-- `DECISIONS.md` — an append-only ledger. The loop adds an entry per completed story; you and agents add the *why*.
-- `KNOWLEDGE.md` — reusable gotchas and conventions.
-
-`yoke retrofit` scaffolds these files (non-destructively — your edits are never overwritten).
-The loop reads them into every agent + reviewer prompt and logs decisions back on each story's
-commit. Manage them directly with `yoke context init` and `yoke context status`. The
-`maintaining-context` skill teaches agents to honour the same files during interactive work.
-
-> Commit `.yoke/context/` to git. The `--isolate` loop runs each iteration in a worktree
-> checked out from HEAD, so it only sees committed context.
-
-## 🎨 Visual & design verification
+## 🎨 Visual & design verification — done, with a photo
 
 Unit tests don't catch a blank page, an unwired route, or generic AI-slop design. Yoke adds three things:
 
@@ -331,7 +349,7 @@ Unit tests don't catch a blank page, an unwired route, or generic AI-slop design
   (AI-purple gradients, gradient hero text, neon glow, emoji-as-icons, gradient overload). It
   scores findings and **exits non-zero over budget** (`--max`, default 4; `--report` to list only),
   so it drops straight into your verify pipeline.
-- **`yoke flow-smoke [dir]`** — a built-in browser gate with **proof artifacts** (see below).
+- **`yoke flow-smoke [dir]`** — a built-in browser gate with **proof artifacts** (below).
 - **`unslop-ui` + `visual-verification` skills** — the design rubric, plus how to compose a verify
   pipeline (`types → units → design-scan → flow-smoke`).
 
@@ -374,6 +392,22 @@ landmark, and fails on a non-OK response or **any console/page error**. The proo
 `.yoke/proof/` is gitignored by the retrofit — proofs are runtime artifacts and never break the
 loop's clean-tree gate.
 
+## 🧠 Context layer (`.yoke/context/`)
+
+Yoke keeps durable, cross-session context so a fresh-context agent is never blind:
+
+- `PROJECT.md` — the north star (goal, constraints, non-goals, success criteria).
+- `DECISIONS.md` — an append-only ledger. The loop adds an entry per completed story; you and agents add the *why*.
+- `KNOWLEDGE.md` — reusable gotchas and conventions.
+
+`yoke retrofit` scaffolds these files (non-destructively — your edits are never overwritten).
+The loop reads them into every agent + reviewer prompt and logs decisions back on each story's
+commit. Manage them directly with `yoke context init` and `yoke context status`. The
+`maintaining-context` skill teaches agents to honour the same files during interactive work.
+
+> Commit `.yoke/context/` to git. The `--isolate` loop runs each iteration in a worktree
+> checked out from HEAD, so it only sees committed context.
+
 ## 🛡️ Safety model
 
 Yoke's guardrails are **mechanical, not advisory** — the loop blocks on a dirty worktree, missing acceptance criteria, red tests, or a reviewer rejection, and **none of them rely on the agent choosing to behave**.
@@ -383,6 +417,7 @@ Yoke's guardrails are **mechanical, not advisory** — the loop blocks on a dirt
 - **Isolation** — with `--isolate`, failed or partial work is discarded with the worktree and never reaches your main tree.
 - **Non-destructive retrofit** — existing files are backed up before any change; settings are merged, not replaced.
 - **Independent verification** — "done" means *your test command exits 0*, not "the agent said so".
+- **Single-flight** — a lock prevents two loops from racing the same repo; `yoke loop cleanup` recovers after crashes.
 
 ## 🧠 Choose your code-graph
 
@@ -409,7 +444,7 @@ Yoke attacks tokens on two complementary surfaces:
 
 **The inspiration.** Yoke is a synthesis of ideas already proven across the ecosystem: composable-skills methodology ([superpowers](https://github.com/obra/superpowers), [gstack](https://github.com/garrytan/gstack)); the portable [AGENTS.md](https://agents.md/) standard; the *"one source-of-truth → idiomatic per-harness artifacts"* generation pattern ([wshobson/agents](https://github.com/wshobson/agents)); spec-driven autonomous orchestration (GSD); mechanical safety gates and role separation (safe-agentic-workflow); and the **Ralph loop** (Geoff Huntley) — keep handing a *fresh* agent the next task until the spec is done. Token efficiency comes from [rtk](https://github.com/rtk-ai/rtk) and the write-less-code idea behind [ponytail](https://github.com/DietrichGebert/ponytail).
 
-**How it was built.** Yoke was built the way it's meant to be *used* — agent-driven, incremental, and test-first. The stack was chosen by **researching alternatives first** (which is how `jcodemunch` was dropped for its license and Serena was added as an option). Then every component shipped one small piece at a time through a disciplined loop: **brainstorm → spec → plan → TDD implementation → an independent two-stage review** (does it match the spec? is it well-built?) **→ merge**. Those reviews caught real bugs before they shipped — a Windows `.cmd` spawn failure, a commit-integrity hole, a missing infinite-loop guard, a TOML-escaping bug, a hook-duplication bug. Yoke was even **dogfooded on its own repo**, which surfaced (and fixed) a genuine Windows bug. Every spec and plan lives in [`docs/superpowers/`](docs/superpowers/).
+**How it was built.** Yoke was built the way it's meant to be *used* — agent-driven, incremental, and test-first. The stack was chosen by **researching alternatives first** (which is how `jcodemunch` was dropped for its license and Serena was added as an option). Then every component shipped one small piece at a time through a disciplined loop: **brainstorm → spec → plan → TDD implementation → an independent two-stage review** (does it match the spec? is it well-built?) **→ merge**. Those reviews caught real bugs before they shipped — a Windows `.cmd` spawn failure, a commit-integrity hole, a path-traversal that could delete project data, a resolution bug that broke the CLI's default invocation, a TOML-escaping bug. Yoke was even **dogfooded on its own repo**, which surfaced (and fixed) a genuine Windows bug. Every spec and plan lives in [`docs/superpowers/`](docs/superpowers/).
 
 ## 🗂️ Project layout
 
@@ -422,14 +457,21 @@ src/
   loop/           # prd · gates · runner · verify · git/worktree · loop · run-command · lock · cleanup
   new/            # yoke new — greenfield bootstrap
   prd/            # yoke prd draft|check — idea → stories + lint gate
+  review/         # yoke review — cross-model diff gate
   smoke/          # yoke flow-smoke — browser gate with screenshot/video proofs
+  scan/           # yoke design-scan — AI-slop design gate
+  context/        # the durable context layer
 docs/superpowers/ # the spec and every component's implementation plan
 ```
 
 ## 🗺️ Roadmap
 
-- **Multi-reviewer quorum** — N independent reviewers with distinct lenses (correctness / security / acceptance) instead of one.
+- **npm publish** (`@hecer/yoke`) — one-liner `npx` install (package prepared).
+- **Security gate** — a `cso`-style audit skill + `yoke audit` (deps, secrets, diff surface).
+- **Token-budget gate** — per-story budget with abort; cost transparency for loop runs.
+- **Multi-reviewer quorum** — N independent reviewers with distinct lenses (correctness / security / acceptance).
 - **Merge queue** — re-test against the latest main before integrating, for parallel/multi-agent loops.
+- **More agents** — the canon→retrofit pattern generalises; OpenCode and Copilot CLI are natural next targets.
 
 ## 🧪 Development
 
@@ -448,5 +490,5 @@ Yoke stands on the shoulders of a great ecosystem: methodology ideas from [super
 MIT — see [`LICENSE`](LICENSE).
 
 <div align="center">
-<sub>Built with a disciplined loop: brainstorm → spec → plan → TDD → two-stage review → merge.</sub>
+<sub>Built with a disciplined loop: brainstorm → spec → plan → TDD → two-stage review → merge — and reviewed by a second model, because we don't trust "done" either.</sub>
 </div>
