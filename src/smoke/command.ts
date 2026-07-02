@@ -1,7 +1,6 @@
 import { mkdirSync, rmSync, renameSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
-import { pathToFileURL } from 'node:url'
 import { loadConfig } from '../retrofit/config.js'
 
 // Structural browser interface: the real path adapts Playwright's chromium,
@@ -42,9 +41,11 @@ export async function launchPlaywright(targetDir: string): Promise<SmokeBrowser 
   try {
     // createRequire needs an absolute anchor — a relative targetDir (the CLI
     // default '.') would throw and masquerade as "playwright not found".
+    // Playwright is CJS, so load it with native require() rather than a
+    // file:// dynamic import — the URL round-trip breaks under Windows 8.3
+    // short paths (e.g. RUNNER~1 on CI) and test-runner import interception.
     const req = createRequire(join(resolve(targetDir), 'package.json'))
-    const resolved = req.resolve('playwright')
-    const pw = await import(pathToFileURL(resolved).href) as { chromium?: { launch(o: object): Promise<SmokeBrowser> }; default?: { chromium: { launch(o: object): Promise<SmokeBrowser> } } }
+    const pw = req('playwright') as { chromium?: { launch(o: object): Promise<SmokeBrowser> }; default?: { chromium: { launch(o: object): Promise<SmokeBrowser> } } }
     const chromium = pw.chromium ?? pw.default?.chromium
     if (!chromium) return null
     return await chromium.launch({ headless: true })
