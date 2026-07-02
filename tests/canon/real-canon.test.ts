@@ -31,6 +31,11 @@ describe('real canon', () => {
     expect(agents).toContain('`review`')
   })
 
+  it('registers the authoring-prd skill', () => {
+    const manifest = loadManifest(join(repoRoot, 'canon', 'manifest.yaml'))
+    expect(manifest.skills.some(s => s.id === 'authoring-prd')).toBe(true)
+  })
+
   it('registers the visual verification skills', () => {
     const manifest = loadManifest(join(repoRoot, 'canon', 'manifest.yaml'))
     expect(manifest.skills.some(s => s.id === 'unslop-ui')).toBe(true)

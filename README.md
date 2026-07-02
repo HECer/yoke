@@ -10,7 +10,7 @@ A cross-agent coding **harness** that installs a curated set of skills, safety p
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-262%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-299%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -40,13 +40,20 @@ flowchart LR
 - 🧪 **Worktree isolation** — run each story in a throwaway git worktree; only verified, committed work is fast-forwarded back.
 - 🧠 **Choose your code-graph** — graphify (fast, multimodal) or Serena (LSP-accurate) per project, with a recommendation at retrofit time.
 - 🪙 **Token-aware** — wires rtk for command-output compression and ships a `minimal-code` skill that nudges every agent to write less.
-- ✅ **262 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
+- ✅ **299 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
 
 ## 🚀 Quickstart
 
 ```bash
 git clone https://github.com/HECer/yoke.git && cd yoke
 npm install
+
+# Greenfield: idea → loop-ready project in one command
+npm run yoke -- new my-app --idea="a CLI that tracks reading lists"
+npm run yoke -- loop on my-app
+npm run yoke -- loop run my-app --isolate
+
+# — or retrofit an existing project —
 
 # 1) sanity-check the canon
 npm run yoke -- validate canon
@@ -116,7 +123,7 @@ Three layers: **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) →
 
 > **Composes with gstack:** if [gstack](https://github.com/garrytan/gstack) is installed (repo-local or global), `yoke retrofit` adds a short "Composed tools" routing note to **CLAUDE.md only** — telling Claude to prefer gstack's skills for capabilities Yoke doesn't ship (live-browser QA `/qa`, security audit `/cso`, ship/deploy `/ship`). No bundling, no dependency; the note is never written to the Codex or Gemini artifacts.
 
-## 🧰 What's in the canon — 26 skills
+## 🧰 What's in the canon — 27 skills
 
 `yoke retrofit` installs all of these into each agent natively (Claude `.claude/skills/`, Codex/Gemini command + instruction artifacts). Provenance is credited in [`canon/skills/ATTRIBUTION.md`](canon/skills/ATTRIBUTION.md).
 
@@ -152,16 +159,48 @@ To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.
 | `retro` | Engineering retrospective from commit history |
 | `document-release` | Post-ship documentation sync (README / CHANGELOG / …) |
 
-**Yoke-native** — *authored or adapted for this harness (6)*
+**Yoke-native** — *authored or adapted for this harness (7)*
 
 | Skill | What it does |
 |---|---|
 | `yoke-retrofit` | Set up the Yoke harness in a project (detect → plan → apply) |
+| `authoring-prd` | Slice a product idea into loop-ready stories with testable acceptance criteria |
 | `minimal-code` | Write the least code that solves the task (YAGNI; ponytail-derived) |
 | `maintaining-context` | Keep `.yoke/context/` the durable source of truth (the Context layer) |
 | `workflow` | The default order of operations, from idea to deploy |
 | `unslop-ui` | Detect & remove AI-slop design tells (purple gradients, neon glow, emoji-icons…) |
 | `visual-verification` | Widen verify to flow-smoke + design-scan; capture video only on failure |
+
+## 🌱 Zero to 100: `yoke new` + `yoke prd`
+
+Yoke's greenfield entrypoint — one command from idea to loop-ready project:
+
+```bash
+yoke new my-app --idea="a CLI that tracks reading lists"   # scaffold + retrofit + context + PRD
+yoke loop on my-app && yoke loop run my-app --isolate      # hand it to the loop
+```
+
+`yoke new <dir>` refuses a non-empty directory (greenfield-only — use `yoke retrofit` for
+existing projects), then: creates and `git init`s the directory, writes a minimal scaffold
+(`README.md`, `.gitignore`), runs the full **retrofit** (`--agent=` as usual), initialises the
+**context layer** (with `--idea` seeded into `PROJECT.md` as the north star), writes a commented
+**PRD template** to `.yoke/prd.yaml`, and makes the initial commit — so `--isolate` works from
+iteration 1. With `--idea`, it then drafts the PRD from your idea via an agent (`--runner=`,
+default `claude`) and commits it as a second commit (`docs: draft PRD from idea`).
+
+- **Exit codes** — `0` success; `1` usage / non-empty dir / draft failure (the scaffold survives —
+  retry with `yoke prd draft`); `2` requested draft agent unavailable.
+
+**`yoke prd draft [dir] --idea="..."`** turns an idea into 5–12 small, independently shippable
+stories with testable behavioral acceptance criteria (greenfield STORY-1 scaffolds the project
+skeleton + test suite and wires `verify.command`). An existing PRD with stories is never
+overwritten without `--force`; the untouched template doesn't trigger the guard. Runs through
+the same idle-timeout watchdog as the loop (`--timeout`).
+
+**`yoke prd check [dir]`** is the chainable pre-loop lint gate: schema validation plus
+duplicate-id, empty-acceptance, and zero-stories checks. Exits `0` with
+`✓ PRD valid — N stories, M pass`, `1` on any violation. The `authoring-prd` canon skill
+teaches interactive sessions the same story-slicing discipline.
 
 ## 🤖 The autonomous loop
 
@@ -230,8 +269,21 @@ committed even if the agent process exited non-zero (a common Windows `.cmd`-wra
 A failing verify is retried up to `verify.retries` times (default 1) so a transient flake
 self-heals while a real failure still blocks.
 
-`.yoke/loop-status.json` and `.yoke/loop.log` are runtime artifacts; `yoke retrofit` gitignores
-them (along with `.yoke/worktrees/` and `.yoke/backup/`) so they never trip the clean-tree gate.
+`.yoke/loop-status.json`, `.yoke/loop.log`, and `.yoke/loop.lock` are runtime artifacts;
+`yoke retrofit` gitignores them (along with `.yoke/worktrees/` and `.yoke/backup/`) so they
+never trip the clean-tree gate.
+
+### Single-flight guard + cleanup
+
+Two concurrent `yoke loop run`s would race on the PRD and status files, so the loop takes a
+**lock** (`.yoke/loop.lock`) for the duration of a run. A second invocation exits `2` with
+`Another loop is already running here (pid …). If that is wrong, run: yoke loop cleanup`. A lock
+whose holder process is dead is taken over automatically (with a warning).
+
+**`yoke loop cleanup [dir]`** removes what a crashed loop leaves behind: every worktree under
+`.yoke/worktrees/` (via `git worktree remove --force` + `prune` — user-created worktrees are
+never touched) and a **stale** lock file. A live lock is reported and left alone. Exits `0`
+when everything cleaned, `1` if any removal failed.
 
 ## Cross-model review (`yoke review`)
 
@@ -331,7 +383,9 @@ canon/            # the source of truth — harness-agnostic
 src/
   canon/          # manifest schema + validator (yoke validate)
   retrofit/       # detect · plan · apply · planners (claude/codex/gemini) · tools
-  loop/           # prd · gates · runner · verify · git/worktree · loop · run-command
+  loop/           # prd · gates · runner · verify · git/worktree · loop · run-command · lock · cleanup
+  new/            # yoke new — greenfield bootstrap
+  prd/            # yoke prd draft|check — idea → stories + lint gate
 docs/superpowers/ # the spec and every component's implementation plan
 ```
 
@@ -343,7 +397,7 @@ docs/superpowers/ # the spec and every component's implementation plan
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (262 tests)
+npm test          # vitest (299 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

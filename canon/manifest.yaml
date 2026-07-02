@@ -32,6 +32,8 @@ skills:
   # visual & design verification (kind: methodology)
   - { id: unslop-ui, path: skills/unslop-ui, kind: methodology }
   - { id: visual-verification, path: skills/visual-verification, kind: methodology }
+  # zero-to-100 bootstrap (kind: methodology)
+  - { id: authoring-prd, path: skills/authoring-prd, kind: methodology }
 policy:
   - { path: policy/gates.md }
   - { path: policy/roles.md }

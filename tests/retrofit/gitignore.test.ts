@@ -34,6 +34,11 @@ describe('ensureGitignore', () => {
     const text = readFileSync(gi(), 'utf8')
     expect(text.match(/\.yoke\/backup\//g)?.length).toBe(1)
   })
+  it('ensures the loop lock file is ignored', () => {
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/loop.lock')
+    ensureGitignore(dir)
+    expect(readFileSync(gi(), 'utf8')).toContain('.yoke/loop.lock')
+  })
   it('appends cleanly when the existing file has no trailing newline (no glued lines)', () => {
     writeFileSync(gi(), 'node_modules/') // no trailing newline — the load-bearing prefix branch
     ensureGitignore(dir)
