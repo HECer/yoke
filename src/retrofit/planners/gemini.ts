@@ -5,6 +5,7 @@ import { parseFrontmatter } from '../../canon/frontmatter.js'
 import type { Action } from '../plan.js'
 import type { CodeGraph } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
+import { PRESERVE_SCAFFOLD } from '../preserve.js'
 
 function tomlString(s: string): string {
   return '"""\n' + s.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"') + '\n"""'
@@ -19,7 +20,7 @@ export function planGemini(canonDir: string, _targetDir: string, codeGraph: Code
   actions.push({
     kind: 'write',
     target: 'GEMINI.md',
-    content: `${baseline}\n${rtkInstruction()}\n`,
+    content: `${baseline}\n${rtkInstruction()}\n\n${PRESERVE_SCAFFOLD}\n`,
     reason: 'baseline + rtk instruction (no hook on Gemini)',
   })
 

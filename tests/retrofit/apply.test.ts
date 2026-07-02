@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { applyActions } from '../../src/retrofit/apply.js'
 import type { Action } from '../../src/retrofit/plan.js'
+import { PRESERVE_START, PRESERVE_END, PRESERVE_SCAFFOLD } from '../../src/retrofit/preserve.js'
 
 let target: string
 const backupDir = () => join(target, '.yoke', 'backup', 'test')
@@ -113,5 +114,63 @@ describe('applyActions', () => {
     expect(second[0].status).toBe('unchanged')
     expect(readFileSync(dest, 'utf8')).toBe('USER EDIT')
     rmSync(d, { recursive: true, force: true })
+  })
+})
+
+describe('applyActions — preserve blocks', () => {
+  const userBlock = `${PRESERVE_START}\n## Project context\n\n@docs/PRD.md\n${PRESERVE_END}`
+  const newTemplate = `# New template\n\n${PRESERVE_SCAFFOLD}\n`
+
+  it('carries a user preserve block into the incoming content on overwrite', () => {
+    writeFileSync(join(target, 'CLAUDE.md'), `# Old template\n\n${userBlock}\n`)
+    const res = applyActions(
+      [{ kind: 'write', target: 'CLAUDE.md', content: newTemplate, reason: 'entry' }],
+      target, { backupDir: backupDir() },
+    )
+    expect(res[0].status).toBe('overwritten')
+    expect(res[0].reason).toContain('preserve block kept')
+    const written = readFileSync(join(target, 'CLAUDE.md'), 'utf8')
+    expect(written).toContain('# New template')
+    expect(written).toContain('@docs/PRD.md')
+    expect(written).not.toContain('# Old template')
+  })
+
+  it('appends the preserved block when the incoming content has no markers', () => {
+    writeFileSync(join(target, 'AGENTS.md'), `old\n\n${userBlock}\n`)
+    applyActions(
+      [{ kind: 'write', target: 'AGENTS.md', content: 'new baseline\n', reason: 'baseline' }],
+      target, { backupDir: backupDir() },
+    )
+    const written = readFileSync(join(target, 'AGENTS.md'), 'utf8')
+    expect(written).toContain('new baseline')
+    expect(written).toContain('@docs/PRD.md')
+  })
+
+  it('is idempotent across re-runs once the preserve block is carried', () => {
+    writeFileSync(join(target, 'CLAUDE.md'), `# Old template\n\n${userBlock}\n`)
+    const action: Action = { kind: 'write', target: 'CLAUDE.md', content: newTemplate, reason: 'entry' }
+    applyActions([action], target, { backupDir: backupDir() })
+    const second = applyActions([action], target, { backupDir: join(target, '.yoke', 'backup', 'second') })
+    expect(second[0].status).toBe('unchanged')
+    expect(readFileSync(join(target, 'CLAUDE.md'), 'utf8')).toContain('@docs/PRD.md')
+  })
+
+  it('still backs up the pre-overwrite file', () => {
+    writeFileSync(join(target, 'CLAUDE.md'), `# Old template\n\n${userBlock}\n`)
+    const res = applyActions(
+      [{ kind: 'write', target: 'CLAUDE.md', content: newTemplate, reason: 'entry' }],
+      target, { backupDir: backupDir() },
+    )
+    expect(res[0].backedUp).toBeDefined()
+    expect(readFileSync(res[0].backedUp!, 'utf8')).toContain('# Old template')
+  })
+
+  it('plain overwrite is untouched when the existing file has no preserve markers', () => {
+    writeFileSync(join(target, 'CLAUDE.md'), '# Old, no markers\n')
+    applyActions(
+      [{ kind: 'write', target: 'CLAUDE.md', content: newTemplate, reason: 'entry' }],
+      target, { backupDir: backupDir() },
+    )
+    expect(readFileSync(join(target, 'CLAUDE.md'), 'utf8')).toBe(newTemplate)
   })
 })

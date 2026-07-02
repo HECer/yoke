@@ -158,6 +158,13 @@ Three layers — **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) 
 
 > **Composes with gstack:** if [gstack](https://github.com/garrytan/gstack) is installed (repo-local or global), `yoke retrofit` adds a short "Composed tools" routing note to **CLAUDE.md only** — telling Claude to prefer gstack's skills for capabilities Yoke doesn't ship (live-browser QA `/qa`, security audit `/cso`, ship/deploy `/ship`). No bundling, no dependency; the note is never written to the Codex or Gemini artifacts.
 
+> **Your content survives re-retrofits — preserve blocks:** anything you put between
+> `<!-- yoke:preserve:start -->` and `<!-- yoke:preserve:end -->` in a generated file is
+> carried into the regenerated version on every future `yoke retrofit`. The generated
+> `CLAUDE.md` and `GEMINI.md` ship an empty preserve block scaffold — put your project-specific
+> instructions (tech stack, workflow, `@`-includes) inside it. Works in any yoke-written file;
+> content *outside* the markers is still replaced (and backed up under `.yoke/backup/`).
+
 ## 🧰 What's in the canon — 27 skills
 
 `yoke retrofit` installs all of these into each agent natively. Provenance is credited in [`canon/skills/ATTRIBUTION.md`](canon/skills/ATTRIBUTION.md).

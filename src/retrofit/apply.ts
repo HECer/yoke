@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from
 import { join, dirname } from 'node:path'
 import type { Action } from './plan.js'
 import { mergeJson } from './merge-json.js'
+import { carryPreserved } from './preserve.js'
 
 export interface AppliedAction {
   target: string
@@ -21,6 +22,8 @@ export function applyActions(actions: Action[], targetDir: string, opts: ApplyOp
     const dest = join(targetDir, action.target)
     let status: AppliedAction['status']
     let backedUp: string | undefined
+    let content = action.content
+    let reason = action.reason
 
     if (existsSync(dest)) {
       if (action.ifAbsent) {
@@ -51,7 +54,11 @@ export function applyActions(actions: Action[], targetDir: string, opts: ApplyOp
         continue
       }
 
-      if (current === action.content) {
+      // Carry user content marked with yoke preserve markers into the new file.
+      content = carryPreserved(current, action.content)
+      if (content !== action.content) reason = `${action.reason} (preserve block kept)`
+
+      if (current === content) {
         results.push({ target: action.target, status: 'unchanged', reason: action.reason })
         continue
       }
@@ -64,8 +71,8 @@ export function applyActions(actions: Action[], targetDir: string, opts: ApplyOp
     }
 
     mkdirSync(dirname(dest), { recursive: true })
-    writeFileSync(dest, action.content)
-    results.push({ target: action.target, status, backedUp, reason: action.reason })
+    writeFileSync(dest, content)
+    results.push({ target: action.target, status, backedUp, reason })
   }
 
   return results

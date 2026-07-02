@@ -62,4 +62,10 @@ describe('planClaude', () => {
     expect(mcp.content).toContain('serena')
     expect(mcp.content).not.toContain('graphify')
   })
+
+  it('CLAUDE.md template ships an empty preserve block scaffold', () => {
+    const claudeMd = planClaude(canon, '/t').find(a => a.target === 'CLAUDE.md')!
+    expect(claudeMd.content).toContain('<!-- yoke:preserve:start -->')
+    expect(claudeMd.content).toContain('<!-- yoke:preserve:end -->')
+  })
 })

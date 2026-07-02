@@ -32,6 +32,12 @@ describe('planGemini', () => {
     expect(targets).toContain('.gemini/settings.json')
   })
 
+  it('GEMINI.md template ships an empty preserve block scaffold', () => {
+    const geminiMd = planGemini(canon, '/t').find(a => a.target === 'GEMINI.md')!
+    expect(geminiMd.content).toContain('<!-- yoke:preserve:start -->')
+    expect(geminiMd.content).toContain('<!-- yoke:preserve:end -->')
+  })
+
   it('settings.json wires mcpServers and AGENTS.md context', () => {
     const s = planGemini(canon, '/t').find(a => a.target === '.gemini/settings.json')!
     const cfg = JSON.parse(s.content)

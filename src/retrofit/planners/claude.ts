@@ -6,6 +6,7 @@ import type { CodeGraph } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
 import { hasWsl } from '../wsl.js'
 import { detectGstack } from '../gstack.js'
+import { PRESERVE_SCAFFOLD } from '../preserve.js'
 
 const GSTACK_COMPOSE = `## Composed tools (gstack detected)
 
@@ -21,7 +22,9 @@ const claudeMd = (rtkNote: string, composeNote: string) => `# Project Instructio
 This project uses the Yoke harness. Baseline instructions:
 
 @AGENTS.md
-${rtkNote ? `\n${rtkNote}\n` : ''}${composeNote ? `\n${composeNote}\n` : ''}`
+${rtkNote ? `\n${rtkNote}\n` : ''}${composeNote ? `\n${composeNote}\n` : ''}
+${PRESERVE_SCAFFOLD}
+`
 
 export function planClaude(
   canonDir: string,
