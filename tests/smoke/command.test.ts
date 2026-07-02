@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { runFlowSmoke, type SmokeBrowser, type SmokePage } from '../../src/smoke/command.js'
+import { runFlowSmoke, launchPlaywright, safeLabel, type SmokeBrowser, type SmokePage } from '../../src/smoke/command.js'
 import { saveConfig, defaultConfig, type SmokeConfig } from '../../src/retrofit/config.js'
 
 let dir: string
@@ -162,5 +162,72 @@ describe('runFlowSmoke', () => {
     }
     await runFlowSmoke(dir, { launch: spying, url: 'http://override:9999' })
     expect(seen[0]).toBe('http://override:9999/p')
+  })
+
+  it('sanitizes a path-traversal label instead of deleting outside the proof dir', async () => {
+    withSmoke({ baseUrl: 'http://x', flows: [{ name: 'home', path: '/' }] })
+    const code = await runFlowSmoke(dir, { launch: fakeLaunch({}), label: '..' })
+    expect(code).toBe(0)
+    // .yoke (and the config) must survive; the label collapses to 'latest'
+    expect(existsSync(join(dir, '.yoke', 'config.yaml'))).toBe(true)
+    expect(existsSync(join(dir, '.yoke', 'proof', 'latest', 'home.png'))).toBe(true)
+  })
+
+  it('sanitizes a YOKE_STORY with path separators', async () => {
+    withSmoke({ baseUrl: 'http://x', flows: [{ name: 'home', path: '/' }] })
+    process.env.YOKE_STORY = '../evil/S7'
+    await runFlowSmoke(dir, { launch: fakeLaunch({}) })
+    expect(existsSync(join(dir, '.yoke', 'config.yaml'))).toBe(true)
+    expect(existsSync(join(dir, '.yoke', 'proof', 'evil-S7', 'home.png'))).toBe(true)
+  })
+
+  it('an exit-2 run does not destroy previous evidence', async () => {
+    withSmoke({ baseUrl: 'http://x', flows: [{ name: 'home', path: '/' }] })
+    const proof = join(dir, '.yoke', 'proof', 'latest')
+    mkdirSync(proof, { recursive: true })
+    writeFileSync(join(proof, 'home.png'), 'previous evidence')
+    const code = await runFlowSmoke(dir, { launch: async () => null })
+    expect(code).toBe(2)
+    expect(existsSync(join(proof, 'home.png'))).toBe(true)
+  })
+})
+
+describe('safeLabel', () => {
+  it('strips path semantics and falls back to latest', () => {
+    expect(safeLabel('S7')).toBe('S7')
+    expect(safeLabel('STORY-12')).toBe('STORY-12')
+    expect(safeLabel('..')).toBe('latest')
+    expect(safeLabel('../..')).toBe('latest')
+    expect(safeLabel('a/b\\c')).toBe('a-b-c')
+  })
+})
+
+describe('launchPlaywright', () => {
+  it('resolves playwright from a RELATIVE targetDir (the CLI default ".")', async () => {
+    // stub playwright package: chromium.launch returns a minimal browser object
+    const pkgDir = join(dir, 'node_modules', 'playwright')
+    mkdirSync(pkgDir, { recursive: true })
+    writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: 'playwright', version: '0.0.0', main: 'index.js' }))
+    writeFileSync(join(pkgDir, 'index.js'),
+      'module.exports = { chromium: { launch: async () => ({ newContext: async () => { throw new Error("stub") }, close: async () => {} }) } };\n')
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'target', version: '0.0.0' }))
+    const prev = process.cwd()
+    process.chdir(dir)
+    try {
+      const browser = await launchPlaywright('.')
+      expect(browser).not.toBeNull()
+      await browser?.close()
+    } finally {
+      process.chdir(prev)
+    }
+  })
+
+  it('returns null when the resolved module has no chromium export', async () => {
+    const pkgDir = join(dir, 'node_modules', 'playwright')
+    mkdirSync(pkgDir, { recursive: true })
+    writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: 'playwright', version: '0.0.0', main: 'index.js' }))
+    writeFileSync(join(pkgDir, 'index.js'), 'module.exports = {};\n')
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'target', version: '0.0.0' }))
+    expect(await launchPlaywright(dir)).toBeNull()
   })
 })

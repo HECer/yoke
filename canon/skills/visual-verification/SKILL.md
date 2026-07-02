@@ -33,12 +33,7 @@ smoke:
       landmark: "form"
 ```
 
-Then chain the built-in gate in `verify.command`:
-
-```
-<typecheck> && <unit tests> && yoke design-scan . && yoke flow-smoke .
-```
-
+With that in place, the `yoke flow-smoke .` step from the section-1 pipeline is live.
 `yoke flow-smoke` loads each route against the running dev server, waits for the landmark,
 fails on any console error, and **always** saves a screenshot to `.yoke/proof/<story>/`
 (the loop labels the folder with the current story id via `YOKE_STORY`; standalone runs use
