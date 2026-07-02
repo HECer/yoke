@@ -6,6 +6,7 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/backup/',
   '.yoke/loop-status.json',
   '.yoke/loop.log',
+  '.yoke/loop.lock',
 ]
 
 const HEADER = '# Yoke runtime artifacts (managed by yoke retrofit)'

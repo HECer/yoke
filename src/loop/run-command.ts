@@ -9,6 +9,7 @@ import type { Agent } from '../retrofit/config.js'
 import type { GitOps } from './gates.js'
 import { commandVerifier, retryingVerifier, type Verifier } from './verify.js'
 import { readStatus, makeReporter, type LoopReporter } from './reporter.js'
+import { acquireLock, releaseLock } from './lock.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -122,21 +123,33 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     review = makeReviewRunner(reviewerAgent, idleMs)
   }
 
-  const result = runLoop({
-    prdPath: path,
-    targetDir,
-    runner,
-    git: opts.git ?? realGitOps,
-    verify,
-    maxIterations: opts.maxIterations,
-    isolate: opts.isolate ?? false,
-    review,
-    reporter: opts.reporter ?? makeReporter(targetDir),
-  })
-  console.log(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
-  if (result.reason) console.log(`Reason: ${result.reason}`)
-  if (result.reason && /api key|please run \/login|not logged in/i.test(result.reason)) {
-    console.log('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY or log the agent in for headless use.')
+  const lock = acquireLock(targetDir)
+  if (!lock.acquired) {
+    console.error(`Another loop is already running here (pid ${lock.holderPid}). If that is wrong, run: yoke loop cleanup`)
+    return 2
   }
-  return result.status === 'complete' ? 0 : 1
+  if (lock.stalePid !== undefined) {
+    console.warn(`Took over a stale loop lock (pid ${lock.stalePid} is gone).`)
+  }
+  try {
+    const result = runLoop({
+      prdPath: path,
+      targetDir,
+      runner,
+      git: opts.git ?? realGitOps,
+      verify,
+      maxIterations: opts.maxIterations,
+      isolate: opts.isolate ?? false,
+      review,
+      reporter: opts.reporter ?? makeReporter(targetDir),
+    })
+    console.log(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
+    if (result.reason) console.log(`Reason: ${result.reason}`)
+    if (result.reason && /api key|please run \/login|not logged in/i.test(result.reason)) {
+      console.log('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY or log the agent in for headless use.')
+    }
+    return result.status === 'complete' ? 0 : 1
+  } finally {
+    releaseLock(targetDir)
+  }
 }

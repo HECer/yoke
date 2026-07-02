@@ -130,6 +130,21 @@ describe('yoke loop CLI', () => {
     expect(code).toBe(2)
   })
 
+  it('returns 2 when another loop holds the lock', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    writeFileSync(join(dir, '.yoke', 'loop.lock'), JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }))
+    const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })
+    expect(code).toBe(2)
+    expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(false)
+  })
+
+  it('releases the lock after a run', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })
+    expect(code).toBe(0)
+    expect(existsSync(join(dir, '.yoke', 'loop.lock'))).toBe(false)
+  })
+
   it('passes isolate:true through to runLoop (addWorktree is called)', () => {
     saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
     let addWorktreeCalled = false
