@@ -122,6 +122,9 @@ function main(argv: string[]): number {
       const agents = !agentArg || agentArg === 'all'
         ? (agentArg === 'all' ? all : undefined)
         : agentArg.split(',').filter((a): a is Agent => (all as string[]).includes(a))
+      if (agentArg && agentArg !== 'all' && agents !== undefined && agents.length === 0) {
+        console.warn('Unknown agent(s) in --agent; falling back to detection')
+      }
       const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
       if (runnerArg && !(all as string[]).includes(runnerArg)) {
         console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini)`)

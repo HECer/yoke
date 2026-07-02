@@ -21,6 +21,12 @@ describe('runNew', () => {
     expect(runNew(dir, { ...noGit })).toBe(1)
   })
 
+  it('refuses cleanly when the target is an existing file', () => {
+    const file = join(parent, 'app.txt')
+    writeFileSync(file, 'x')
+    expect(runNew(file, { ...noGit })).toBe(1)
+  })
+
   it('scaffolds README, .gitignore, retrofit artifacts, context and the PRD template', () => {
     const dir = join(parent, 'app')
     const gitCalls: string[][] = []

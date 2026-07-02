@@ -76,7 +76,9 @@ export function runPrdDraft(targetDir: string, opts: PrdDraftOptions): number {
         return 1
       }
     } catch {
-      // unparseable existing file: the draft will replace it
+      // an unparseable PRD is likely a hand-edit typo, not consent to overwrite
+      console.error('Existing .yoke/prd.yaml is unparseable — fix it, or pass --force to overwrite it.')
+      return 1
     }
   }
   const available = opts.isAvailable ?? isAgentAvailable

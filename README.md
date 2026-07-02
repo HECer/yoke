@@ -10,7 +10,7 @@ A cross-agent coding **harness** that installs a curated set of skills, safety p
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-297%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-299%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -40,7 +40,7 @@ flowchart LR
 - 🧪 **Worktree isolation** — run each story in a throwaway git worktree; only verified, committed work is fast-forwarded back.
 - 🧠 **Choose your code-graph** — graphify (fast, multimodal) or Serena (LSP-accurate) per project, with a recommendation at retrofit time.
 - 🪙 **Token-aware** — wires rtk for command-output compression and ships a `minimal-code` skill that nudges every agent to write less.
-- ✅ **297 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
+- ✅ **299 tests, built test-first** — every component was TDD'd and passed a two-stage (spec + quality) review.
 
 ## 🚀 Quickstart
 
@@ -277,7 +277,7 @@ never trip the clean-tree gate.
 
 Two concurrent `yoke loop run`s would race on the PRD and status files, so the loop takes a
 **lock** (`.yoke/loop.lock`) for the duration of a run. A second invocation exits `2` with
-`Another loop is already running (pid …). If that is wrong, run: yoke loop cleanup`. A lock
+`Another loop is already running here (pid …). If that is wrong, run: yoke loop cleanup`. A lock
 whose holder process is dead is taken over automatically (with a warning).
 
 **`yoke loop cleanup [dir]`** removes what a crashed loop leaves behind: every worktree under
@@ -397,7 +397,7 @@ docs/superpowers/ # the spec and every component's implementation plan
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (297 tests)
+npm test          # vitest (299 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

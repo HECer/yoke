@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runPrdDraft, runPrdCheck, buildPrdDraftPrompt, PRD_TEMPLATE } from '../../src/prd/command.js'
+import { loadPrd } from '../../src/loop/prd.js'
 import type { Invocation } from '../../src/loop/runner.js'
 
 let dir: string
@@ -35,8 +36,9 @@ describe('buildPrdDraftPrompt', () => {
 
 describe('PRD_TEMPLATE', () => {
   it('parses to an empty story array', () => {
-    writeFileSync(join(dir, '.yoke', 'prd.yaml'), PRD_TEMPLATE)
-    // loadPrd via runPrdCheck is Task 5; here just assert the YAML payload
+    const path = join(dir, '.yoke', 'prd.yaml')
+    writeFileSync(path, PRD_TEMPLATE)
+    expect(loadPrd(path)).toEqual([])
     expect(PRD_TEMPLATE.trim().endsWith('[]')).toBe(true)
   })
 })
@@ -60,6 +62,12 @@ describe('runPrdDraft', () => {
 
   it('refuses to overwrite a PRD with stories unless --force', () => {
     writeFileSync(join(dir, '.yoke', 'prd.yaml'), VALID_PRD)
+    expect(runPrdDraft(dir, { idea: 'x', isAvailable: () => true, run: writingRun(VALID_PRD) })).toBe(1)
+    expect(runPrdDraft(dir, { idea: 'x', force: true, isAvailable: () => true, run: writingRun(VALID_PRD) })).toBe(0)
+  })
+
+  it('refuses to overwrite an unparseable PRD unless --force', () => {
+    writeFileSync(join(dir, '.yoke', 'prd.yaml'), '- id: [broken')
     expect(runPrdDraft(dir, { idea: 'x', isAvailable: () => true, run: writingRun(VALID_PRD) })).toBe(1)
     expect(runPrdDraft(dir, { idea: 'x', force: true, isAvailable: () => true, run: writingRun(VALID_PRD) })).toBe(0)
   })

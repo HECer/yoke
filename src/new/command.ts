@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync, appendFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, appendFileSync } from 'node:fs'
 import { join, basename, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import type { Agent } from '../retrofit/config.js'
@@ -20,7 +20,7 @@ export interface RunNewOptions {
 export function runNew(dir: string, opts: RunNewOptions = {}): number {
   const git = opts.git ?? ((args: string[], cwd: string) => { execFileSync('git', args, { cwd, stdio: 'pipe' }) })
   const target = resolve(dir)
-  if (existsSync(target) && readdirSync(target).length > 0) {
+  if (existsSync(target) && (!statSync(target).isDirectory() || readdirSync(target).length > 0)) {
     console.error(`${dir} already exists and is not empty — yoke new is greenfield-only (use yoke retrofit for existing projects).`)
     return 1
   }
