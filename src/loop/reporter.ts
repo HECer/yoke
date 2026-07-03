@@ -24,7 +24,8 @@ export type LoopState = 'running' | 'blocked' | 'complete' | 'cap-reached' | 'pa
 export type LoopPhase = 'implementing' | 'verifying' | 'reviewing' | 'committing'
 
 // Cumulative runner token usage across the run (claude stream-json runners only).
-export interface TokenUsage { inputTokens: number; outputTokens: number }
+// model is the last-seen model id from the stream (absent if the CLI never reported one).
+export interface TokenUsage { inputTokens: number; outputTokens: number; model?: string }
 
 export interface LoopStatus {
   state: LoopState
@@ -139,9 +140,11 @@ export function makeReporter(
         'paused', `⏸ loop paused — ${progress.passed}/${progress.total}`)
     },
     addTokens(usage) {
+      const model = usage.model ?? tokens?.model
       tokens = {
         inputTokens: (tokens?.inputTokens ?? 0) + usage.inputTokens,
         outputTokens: (tokens?.outputTokens ?? 0) + usage.outputTokens,
+        ...(model ? { model } : {}),
       }
     },
   }

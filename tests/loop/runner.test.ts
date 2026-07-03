@@ -189,6 +189,43 @@ describe('parseClaudeStreamUsage', () => {
     ])
     expect(usage).toEqual({ inputTokens: 2, outputTokens: 6 })
   })
+
+  it('captures the model id from the system/init message', () => {
+    const usage = parseClaudeStreamUsage([
+      '{"type":"system","subtype":"init","model":"claude-opus-4-6-20260501"}',
+      assistant(4, 2),
+    ])
+    expect(usage.model).toBe('claude-opus-4-6-20260501')
+  })
+
+  it('captures the model id from an assistant message.model', () => {
+    const usage = parseClaudeStreamUsage([
+      JSON.stringify({ type: 'assistant', message: { model: 'claude-sonnet-5-20260615', usage: { input_tokens: 3, output_tokens: 1 } } }),
+    ])
+    expect(usage.model).toBe('claude-sonnet-5-20260615')
+  })
+
+  it('uses the LAST seen model id when init and assistant messages disagree', () => {
+    const usage = parseClaudeStreamUsage([
+      '{"type":"system","subtype":"init","model":"claude-opus-4-6-20260501"}',
+      JSON.stringify({ type: 'assistant', message: { model: 'claude-sonnet-5-20260615', usage: { input_tokens: 3, output_tokens: 1 } } }),
+    ])
+    expect(usage.model).toBe('claude-sonnet-5-20260615')
+  })
+
+  it('omits model when no message carries one', () => {
+    const usage = parseClaudeStreamUsage([assistant(4, 2), '{"type":"result","subtype":"success"}'])
+    expect(usage.model).toBeUndefined()
+    expect('model' in usage).toBe(false)
+  })
+
+  it('ignores a non-string model field defensively', () => {
+    const usage = parseClaudeStreamUsage([
+      '{"type":"system","subtype":"init","model":12345}',
+      assistant(1, 1),
+    ])
+    expect(usage.model).toBeUndefined()
+  })
 })
 
 describe('runnerInvocation (token-report wiring)', () => {
@@ -211,7 +248,7 @@ describe('runnerInvocation (token-report wiring)', () => {
 
 describe('makeRunner with tokenReport', () => {
   const streamLines = [
-    '{"type":"system","subtype":"init"}',
+    '{"type":"system","subtype":"init","model":"claude-opus-4-6-20260501"}',
     '{"type":"assistant","message":{"usage":{"input_tokens":10,"output_tokens":4}}}',
     '{"type":"result","subtype":"success","usage":{"input_tokens":15,"output_tokens":8}}',
   ].join('\n')
@@ -223,7 +260,7 @@ describe('makeRunner with tokenReport', () => {
     const res = runner({ targetDir: d, story })
     rmSync(d, { recursive: true, force: true })
     expect(res.success).toBe(true)
-    expect(res.tokens).toEqual({ inputTokens: 15, outputTokens: 8 })
+    expect(res.tokens).toEqual({ inputTokens: 15, outputTokens: 8, model: 'claude-opus-4-6-20260501' })
     expect(seen).toHaveLength(1)
     expect(seen[0].args).toContain('stream-json')
     expect(seen[0].input).toContain('S1')  // the prompt still flows via stdin
@@ -236,7 +273,7 @@ describe('makeRunner with tokenReport', () => {
     const res = runner({ targetDir: d, story })
     rmSync(d, { recursive: true, force: true })
     expect(res.success).toBe(false)
-    expect(res.tokens).toEqual({ inputTokens: 15, outputTokens: 8 })
+    expect(res.tokens).toEqual({ inputTokens: 15, outputTokens: 8, model: 'claude-opus-4-6-20260501' })
   })
 
   it('routes non-claude agents through the normal exec path even with tokenReport', () => {

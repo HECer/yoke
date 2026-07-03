@@ -144,6 +144,42 @@ describe('makeReporter token accounting', () => {
     const last = JSON.parse(lines[lines.length - 1])
     expect(last).toMatchObject({ type: 'status', state: 'complete', tokens: { inputTokens: 7, outputTokens: 4 } })
   })
+
+  it('carries the model id on tokens once reported', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.addTokens({ inputTokens: 10, outputTokens: 5, model: 'claude-opus-4-6-20260501' })
+    r.phase('verifying')
+    expect(readStatus(dir)?.tokens).toEqual({ inputTokens: 10, outputTokens: 5, model: 'claude-opus-4-6-20260501' })
+  })
+
+  it('the LAST seen model id wins across multiple addTokens calls', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.addTokens({ inputTokens: 10, outputTokens: 5, model: 'claude-opus-4-6-20260501' })
+    r.addTokens({ inputTokens: 3, outputTokens: 2, model: 'claude-sonnet-5-20260615' })
+    r.phase('verifying')
+    expect(readStatus(dir)?.tokens).toEqual({ inputTokens: 13, outputTokens: 7, model: 'claude-sonnet-5-20260615' })
+  })
+
+  it('keeps the previously seen model id when a later addTokens call omits it', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.addTokens({ inputTokens: 10, outputTokens: 5, model: 'claude-opus-4-6-20260501' })
+    r.addTokens({ inputTokens: 3, outputTokens: 2 })
+    r.phase('verifying')
+    expect(readStatus(dir)?.tokens).toEqual({ inputTokens: 13, outputTokens: 7, model: 'claude-opus-4-6-20260501' })
+  })
+
+  it('omits model entirely when no addTokens call ever reported one', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.addTokens({ inputTokens: 10, outputTokens: 5 })
+    r.phase('verifying')
+    const tokens = readStatus(dir)?.tokens
+    expect(tokens).toEqual({ inputTokens: 10, outputTokens: 5 })
+    expect(tokens && 'model' in tokens).toBe(false)
+  })
 })
 
 describe('noopReporter', () => {

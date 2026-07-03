@@ -117,6 +117,8 @@ export function runnerInvocation(agent: Agent, prompt: string, cwd: string, toke
 // non-JSON lines and unknown message shapes are ignored. The final "result" message
 // carries the run's cumulative usage — prefer it (last one wins); if it is absent
 // (e.g. the process died mid-run), fall back to summing assistant-message usage.
+// Also tracks the model id: the "system"/"init" message and "assistant" messages both
+// carry a model field — the LAST one seen across the stream wins; absent if none did.
 export function parseClaudeStreamUsage(lines: string[]): TokenUsage {
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
   const usageOf = (v: unknown): { input: number; output: number } | null => {
@@ -125,9 +127,11 @@ export function parseClaudeStreamUsage(lines: string[]): TokenUsage {
     if (u.input_tokens === undefined && u.output_tokens === undefined) return null
     return { input: num(u.input_tokens), output: num(u.output_tokens) }
   }
+  const modelOf = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined)
   let assistantIn = 0
   let assistantOut = 0
   let result: TokenUsage | undefined
+  let model: string | undefined
   for (const line of lines) {
     let msg: unknown
     try { msg = JSON.parse(line) } catch { continue }
@@ -137,11 +141,16 @@ export function parseClaudeStreamUsage(lines: string[]): TokenUsage {
       const u = usageOf(m.usage)
       if (u) result = { inputTokens: u.input, outputTokens: u.output }
     } else if (m.type === 'assistant') {
-      const u = usageOf((m.message as Record<string, unknown> | undefined)?.usage)
+      const message = m.message as Record<string, unknown> | undefined
+      const u = usageOf(message?.usage)
       if (u) { assistantIn += u.input; assistantOut += u.output }
+      model = modelOf(message?.model) ?? model
+    } else if (m.type === 'system' && m.subtype === 'init') {
+      model = modelOf(m.model) ?? model
     }
   }
-  return result ?? { inputTokens: assistantIn, outputTokens: assistantOut }
+  const usage = result ?? { inputTokens: assistantIn, outputTokens: assistantOut }
+  return model ? { ...usage, model } : usage
 }
 
 function watchdogPath(): string {

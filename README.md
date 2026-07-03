@@ -305,7 +305,9 @@ Every iteration emits token-free, harness-side feedback (Node console + local fi
   goes to stderr), and a consumer can follow the stream line by line instead of polling the file.
   With a **claude** runner, json mode also switches the agent to `--output-format stream-json`
   and accounts its usage: statuses (file + stream) carry a cumulative
-  `tokens: { inputTokens, outputTokens }` field for the whole run.
+  `tokens: { inputTokens, outputTokens, model? }` field for the whole run — `model` is the
+  last model id seen on the stream (e.g. `claude-opus-4-6-20260501`), omitted if the CLI
+  never reported one.
 
 ### Pausing a run
 
