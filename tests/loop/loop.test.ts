@@ -137,6 +137,28 @@ describe('runLoop', () => {
     expect(res.status).toBe('complete')
   })
 
+  it('pauses at the next story boundary when .yoke/loop.pause exists, consuming the file', () => {
+    const pauseFile = join(dir, '.yoke', 'loop.pause')
+    // The pause signal lands mid-story (as a supervisor would drop it): the loop must
+    // finish the running story, then stop before selecting the next one.
+    const pausingRunner: AgentRunner = () => {
+      mkdirSync(join(dir, '.yoke'), { recursive: true })
+      writeFileSync(pauseFile, '')
+      return { success: true, summary: 'done' }
+    }
+    const { reporter, events } = recordingReporter()
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: pausingRunner, git: cleanGit(), verify: verifyOk, maxIterations: 10, reporter })
+    expect(res.status).toBe('paused')
+    expect(res.iterations).toBe(1)
+    expect(res.finalProgress).toEqual({ passed: 1, total: 2 })
+    const stories = loadPrd(prd())
+    expect(stories.find(s => s.id === 'S1')?.passes).toBe(true)   // story 1 finished + committed
+    expect(stories.find(s => s.id === 'S2')?.passes).toBe(false)  // story 2 never started
+    expect(existsSync(pauseFile)).toBe(false)                     // signal consumed
+    expect(events[events.length - 1]).toBe('paused')
+    expect(events).not.toContain('start:S2')
+  })
+
   const decisionsFile = () => join(contextDir(dir), 'DECISIONS.md')
 
   it('appends a decision per completed story, in the commit', () => {
@@ -183,6 +205,7 @@ function recordingReporter(): { reporter: LoopReporter; events: string[] } {
     blocked: (r) => events.push(`blocked:${r}`),
     complete: () => events.push('complete'),
     capReached: () => events.push('cap'),
+    paused: () => events.push('paused'),
   }
   return { reporter, events }
 }

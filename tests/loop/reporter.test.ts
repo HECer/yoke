@@ -71,6 +71,15 @@ describe('makeReporter', () => {
     r.complete({ passed: 2, total: 2 })
     expect(readStatus(dir)).toMatchObject({ state: 'complete', progress: { passed: 2, total: 2 } })
   })
+  it('paused() records state paused and a "paused" log label', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.paused({ passed: 1, total: 2 })
+    expect(readStatus(dir)).toMatchObject({ state: 'paused', progress: { passed: 1, total: 2 } })
+    expect(readStatus(dir)?.phase).toBeUndefined()
+    const log = readFileSync(join(dir, '.yoke', 'loop.log'), 'utf8')
+    expect(log).toMatch(/paused/)
+  })
   it('quiet suppresses the console callback but still writes files', () => {
     const lines: string[] = []
     const r = makeReporter(dir, { log: (s) => lines.push(s), quiet: true }, fixedNow)

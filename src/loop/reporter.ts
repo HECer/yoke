@@ -20,7 +20,7 @@ export function appendLog(dir: string, line: string, capBytes: number = LOG_CAP_
   writeFileSync(file, `# … loop.log truncated …\n${trimmed}`)
 }
 
-export type LoopState = 'running' | 'blocked' | 'complete' | 'cap-reached'
+export type LoopState = 'running' | 'blocked' | 'complete' | 'cap-reached' | 'paused'
 export type LoopPhase = 'implementing' | 'verifying' | 'reviewing' | 'committing'
 
 export interface LoopStatus {
@@ -66,6 +66,7 @@ export interface LoopReporter {
   blocked(reason: string): void
   complete(progress: Progress): void
   capReached(progress: Progress): void
+  paused(progress: Progress): void
 }
 
 export interface ReporterOpts {
@@ -124,6 +125,11 @@ export function makeReporter(
         progress, updatedAt: now().toISOString() },
         'cap-reached', `◾ iteration cap reached — ${progress.passed}/${progress.total}`)
     },
+    paused(progress) {
+      persist({ ...(current ?? emptyStatus(now().toISOString())), state: 'paused', phase: undefined,
+        progress, updatedAt: now().toISOString() },
+        'paused', `⏸ loop paused — ${progress.passed}/${progress.total}`)
+    },
   }
 }
 
@@ -132,5 +138,5 @@ function emptyStatus(ts: string): LoopStatus {
 }
 
 export const noopReporter: LoopReporter = {
-  storyStart() {}, phase() {}, blocked() {}, complete() {}, capReached() {},
+  storyStart() {}, phase() {}, blocked() {}, complete() {}, capReached() {}, paused() {},
 }

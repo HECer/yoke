@@ -138,6 +138,16 @@ describe('yoke loop CLI', () => {
     expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(false)
   })
 
+  it('run exits 3 when a pause file stops the loop, consuming it and releasing the lock', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    writeFileSync(join(dir, '.yoke', 'loop.pause'), '')
+    const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })
+    expect(code).toBe(3)
+    expect(existsSync(join(dir, '.yoke', 'loop.pause'))).toBe(false)  // signal consumed
+    expect(existsSync(join(dir, '.yoke', 'loop.lock'))).toBe(false)   // lock released
+    expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(false) // paused before any story
+  })
+
   it('releases the lock after a run', () => {
     saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
     const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })

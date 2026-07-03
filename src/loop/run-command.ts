@@ -152,7 +152,10 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     if (result.reason && /api key|please run \/login|not logged in/i.test(result.reason)) {
       say('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY or log the agent in for headless use.')
     }
-    return result.status === 'complete' ? 0 : 1
+    // Exit codes: 0 complete · 1 blocked/cap-reached · 2 config error (handled above) · 3 paused (loop.pause consumed at a story boundary)
+    if (result.status === 'complete') return 0
+    if (result.status === 'paused') return 3
+    return 1
   } finally {
     releaseLock(targetDir)
   }

@@ -26,6 +26,8 @@ When enabled and run, each iteration:
    `passes: true`, committed atomically, and a decision logged. If verify fails: `blocked`.
 6. Stop when all stories `passes: true` (`complete`), or the iteration cap is reached (`cap-reached`).
 
+A supervisor can pause the loop by creating `.yoke/loop.pause`: at the next story boundary (before the next story is selected — the running story always finishes) the loop consumes the file, records `paused` in the status file and log, and exits with code `3`. Running `yoke loop run` again resumes.
+
 State lives outside the model context: the PRD file + git. The agent runner is pluggable.
 
 ## Limitations

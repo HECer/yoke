@@ -100,7 +100,7 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke prd draft [dir] --idea= [--runner=] [--force]` | Idea → 5–12 stories with testable acceptance criteria | `0` · `1` invalid/guarded · `2` agent unavailable |
 | `yoke prd check [dir]` | PRD lint gate (schema, duplicate ids, empty acceptance) | `0` valid · `1` violations |
 | `yoke context init\|status [dir]` | Durable context layer (`PROJECT/DECISIONS/KNOWLEDGE.md`) | `0` |
-| `yoke loop on\|off\|status\|run\|cleanup [dir]` | The autonomous loop (see below) | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked |
+| `yoke loop on\|off\|status\|run\|cleanup [dir]` | The autonomous loop (see below) | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
 | `yoke review [dir] [--reviewer=] [--base=] [--focus=]` | A **second model** reviews your diff | `0` approved · `1` findings · `2` no reviewer CLI |
 | `yoke design-scan [dir] [--max=N] [--report]` | Static AI-slop design gate | `0` within budget · `1` over |
 | `yoke flow-smoke [dir] [--url=] [--label=]` | Browser gate with screenshot/video proofs | `0` green · `1` failures · `2` not runnable |
@@ -303,6 +303,14 @@ Every iteration emits token-free, harness-side feedback (Node console + local fi
   NDJSON line on stdout (`{"type":"status","state":"running","phase":"verifying",…}` — the
   same shape as `loop-status.json`), the human narrative moves off stdout (the final summary
   goes to stderr), and a consumer can follow the stream line by line instead of polling the file.
+
+### Pausing a run
+
+Drop a **`.yoke/loop.pause`** file (contents irrelevant) while the loop is running and it
+stops at the **next story boundary** — the running story still finishes, verifies, and
+commits; no story is ever cut off mid-flight. The loop consumes the pause file, writes
+`state: "paused"` to `loop-status.json` (log label `paused`), releases the lock, and exits
+with code `3`. Resume by simply running `yoke loop run` again.
 
 A per-iteration **idle timeout** guards against a genuinely hung agent: if the agent produces
 **no output at all** for `--timeout` minutes (default 20; `0` disables), the loop kills it

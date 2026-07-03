@@ -1,3 +1,4 @@
+import { existsSync, unlinkSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { loadPrd, savePrd, selectNextStory, allPass, progress } from './prd.js'
 import { stopTheLineGate, preDispatchGate, type GitOps } from './gates.js'
@@ -27,10 +28,16 @@ export interface LoopOptions {
 }
 
 export interface LoopResult {
-  status: 'complete' | 'blocked' | 'cap-reached'
+  status: 'complete' | 'blocked' | 'cap-reached' | 'paused'
   iterations: number
   reason?: string
   finalProgress: { passed: number; total: number }
+}
+
+// Control file a supervisor drops to pause the loop at the next story boundary.
+// The loop consumes (deletes) it and stops with state 'paused' — never mid-story.
+export function pauseFilePath(targetDir: string): string {
+  return join(targetDir, '.yoke', 'loop.pause')
 }
 
 export function runLoop(opts: LoopOptions): LoopResult {
@@ -53,6 +60,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
     if (iterations >= opts.maxIterations) {
       reporter.capReached(progress(stories))
       return { status: 'cap-reached', iterations, finalProgress: progress(stories) }
+    }
+
+    // Story boundary: honour a pause signal before selecting the next story.
+    // complete/cap-reached above still win — pausing an already-finished loop is meaningless.
+    const pauseFile = pauseFilePath(opts.targetDir)
+    if (existsSync(pauseFile)) {
+      try { unlinkSync(pauseFile) } catch { /* consumed best-effort — pausing still wins */ }
+      reporter.paused(progress(stories))
+      return { status: 'paused', iterations, finalProgress: progress(stories) }
     }
 
     const pre = preDispatchGate(opts.targetDir, opts.git)
