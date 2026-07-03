@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { pathToFileURL } from 'node:url'
+import { realpathSync } from 'node:fs'
 import { validateCanon } from './canon/validate.js'
 import type { Agent } from './retrofit/config.js'
 import { runRetrofit } from './retrofit/command.js'
@@ -210,7 +211,17 @@ function main(argv: string[]): number | Promise<number> {
   }
 }
 
-const isMain = process.argv[1] ? pathToFileURL(process.argv[1]).href === import.meta.url : false
-if (isMain) {
+// Is this module the process entry point? Node realpaths the ESM entry for
+// import.meta.url but argv[1] keeps the path as typed — a globally npm-installed
+// CLI reaches this file THROUGH the node_modules/yoke symlink, so argv[1] must be
+// realpathed before comparing or the global binary silently exits without running.
+export function isMainEntry(argv1: string | undefined, moduleUrl: string): boolean {
+  if (!argv1) return false
+  let resolved = argv1
+  try { resolved = realpathSync(argv1) } catch { /* nonexistent path — compare as given */ }
+  return pathToFileURL(resolved).href === moduleUrl
+}
+
+if (isMainEntry(process.argv[1], import.meta.url)) {
   process.exit(await main(process.argv.slice(2)))
 }
