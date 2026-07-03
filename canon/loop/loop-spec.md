@@ -28,7 +28,7 @@ When enabled and run, each iteration:
 
 A supervisor can pause the loop by creating `.yoke/loop.pause`: at the next story boundary (before the next story is selected — the running story always finishes) the loop consumes the file, records `paused` in the status file and log, and exits with code `3`. Running `yoke loop run` again resumes.
 
-State lives outside the model context: the PRD file + git. The agent runner is pluggable.
+State lives outside the model context: the PRD file + git. The agent runner is pluggable. The PRD is re-read from disk at every story boundary, so stories appended to `.yoke/prd.yaml` mid-run are picked up at the next iteration without a restart.
 
 ## Limitations
 - The loop verifies via the project's test command and an optional agent review; it has no formal merge-queue or multi-reviewer quorum.

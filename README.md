@@ -285,7 +285,7 @@ yoke loop off .                 # disable
   passes: false                  # the loop sets this true only on green tests
 ```
 
-The loop stops when every story is `passes: true`. State lives **outside the model context** — the PRD file plus git — so each iteration is fresh.
+The loop stops when every story is `passes: true`. State lives **outside the model context** — the PRD file plus git — so each iteration is fresh. The PRD is re-read from disk at every story boundary, so new stories appended to `.yoke/prd.yaml` **while the loop is running** are picked up at the next iteration — no restart needed.
 
 ### Watching a run
 

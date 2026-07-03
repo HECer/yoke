@@ -206,12 +206,16 @@ export function runLoop(opts: LoopOptions): LoopResult {
       title: story.title,
       summary,
     })
-    const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
+    // Re-read the PRD from disk before persisting passes:true — a story injected
+    // mid-iteration (hot-reload) must survive this save, not be clobbered by the
+    // stale top-of-iteration copy.
+    const onDisk = loadPrd(opts.prdPath)
+    const updated = onDisk.map(s => (s.id === story.id ? { ...s, passes: true } : s))
     savePrd(opts.prdPath, updated)
     try {
       opts.git.commitAll(opts.targetDir, `yoke: complete ${story.id} ${story.title}`)
     } catch (e) {
-      savePrd(opts.prdPath, stories) // revert — never persist passes:true without a commit
+      savePrd(opts.prdPath, onDisk) // revert — never persist passes:true without a commit
       dec.rollback()                 // and never leave an orphan decision
       const reason = blockReason(`commit failed for ${story.id}: ${(e as Error).message}`, opts.targetDir, opts.git)
       reporter.blocked(reason)

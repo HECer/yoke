@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync, copyFileSync, existsSync, readFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, copyFileSync, existsSync, readFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runLoop } from '../../src/loop/loop.js'
@@ -135,6 +135,24 @@ describe('runLoop', () => {
   it('completes when the reviewer approves', () => {
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, review: reviewOk, maxIterations: 10 })
     expect(res.status).toBe('complete')
+  })
+
+  it('picks up a story injected into the PRD mid-run at the next iteration (hot-reload)', () => {
+    writeFileSync(prd(), `- { id: S1, title: First, priority: 1, acceptance: ["x"], passes: false }\n`)
+    // A supervisor appends a story WHILE iteration 1 is running — the loop must
+    // neither clobber it when persisting S1's passes:true nor need a restart.
+    const injectingRunner: AgentRunner = (ctx) => {
+      if (ctx.story.id === 'S1') {
+        appendFileSync(prd(), `- { id: S9, title: Injected, priority: 5, acceptance: ["z"], passes: false }\n`)
+      }
+      return { success: true, summary: 'done' }
+    }
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: injectingRunner, git: cleanGit(), verify: verifyOk, maxIterations: 10 })
+    expect(res.status).toBe('complete')
+    expect(res.iterations).toBe(2)                                     // S1, then the injected S9
+    const stories = loadPrd(prd())
+    expect(stories.map(s => s.id).sort()).toEqual(['S1', 'S9'])        // injection survived the save
+    expect(stories.every(s => s.passes)).toBe(true)
   })
 
   it('pauses at the next story boundary when .yoke/loop.pause exists, consuming the file', () => {
