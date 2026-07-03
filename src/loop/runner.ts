@@ -85,10 +85,16 @@ export interface Invocation {
   cwd: string
 }
 
+// Headless agents must run non-interactively: with plain `-p` the CLI denies
+// every file-write/permission prompt, so the implementer "runs" (exit 0) but
+// produces NOTHING. The loop then sees a clean tree + green pre-existing tests
+// and falsely marks the story done. Granting autonomous permissions makes the
+// implementer actually able to write files and run the verify command.
+// (The loop is opt-in and scoped to the target project dir.)
 const AGENT_SPECS: Record<Agent, { command: string; baseArgs: string[] }> = {
-  claude: { command: 'claude', baseArgs: ['-p'] },
-  codex: { command: 'codex', baseArgs: ['exec'] },
-  gemini: { command: 'gemini', baseArgs: ['-p'] },
+  claude: { command: 'claude', baseArgs: ['-p', '--dangerously-skip-permissions'] },
+  codex: { command: 'codex', baseArgs: ['exec', '--dangerously-bypass-approvals-and-sandbox'] },
+  gemini: { command: 'gemini', baseArgs: ['-p', '--yolo'] },
 }
 
 export function agentInvocation(agent: Agent, prompt: string, cwd: string): Invocation {
@@ -102,8 +108,9 @@ export function claudeInvocation(prompt: string, cwd: string): Invocation {
 
 // Token-reporting variant: stream-json makes claude emit per-message usage on stdout
 // (--verbose is required by the CLI for stream-json in -p mode). Prompt still via stdin.
+// Derived from the base spec so the headless permission-bypass flag rides along.
 export function claudeStreamJsonInvocation(prompt: string, cwd: string): Invocation {
-  return { command: 'claude', args: ['-p', '--output-format', 'stream-json', '--verbose'], input: prompt, cwd }
+  return { command: 'claude', args: [...AGENT_SPECS.claude.baseArgs, '--output-format', 'stream-json', '--verbose'], input: prompt, cwd }
 }
 
 // Pick the runner invocation: token reporting only exists for claude — every other

@@ -30,7 +30,7 @@ describe('claudeInvocation', () => {
   it('passes the prompt as input, not as a CLI arg', () => {
     const inv = claudeInvocation('PROMPT TEXT', '/work')
     expect(inv.command).toBe('claude')
-    expect(inv.args).toEqual(['-p'])
+    expect(inv.args).toEqual(['-p', '--dangerously-skip-permissions'])
     expect(inv.input).toBe('PROMPT TEXT')
     expect(inv.args).not.toContain('PROMPT TEXT')
     expect((inv as Record<string, unknown>).shell).toBeUndefined()
@@ -41,7 +41,7 @@ describe('agentInvocation', () => {
   it('maps codex to `codex exec` with the prompt as input', () => {
     const inv = agentInvocation('codex', 'P', '/w')
     expect(inv.command).toBe('codex')
-    expect(inv.args).toEqual(['exec'])
+    expect(inv.args).toEqual(['exec', '--dangerously-bypass-approvals-and-sandbox'])
     expect(inv.input).toBe('P')
     expect(inv.args).not.toContain('P')
   })
@@ -49,8 +49,16 @@ describe('agentInvocation', () => {
   it('maps gemini to `gemini -p` with the prompt as input', () => {
     const inv = agentInvocation('gemini', 'P', '/w')
     expect(inv.command).toBe('gemini')
-    expect(inv.args).toEqual(['-p'])
+    expect(inv.args).toEqual(['-p', '--yolo'])
     expect(inv.input).toBe('P')
+  })
+
+  it('every agent runs non-interactively (a headless permission-bypass flag is present)', () => {
+    // Without these flags a headless CLI denies every write prompt: the runner
+    // "succeeds" (exit 0) while producing nothing, and the loop falsely passes.
+    expect(agentInvocation('claude', 'P', '/w').args).toContain('--dangerously-skip-permissions')
+    expect(agentInvocation('codex', 'P', '/w').args).toContain('--dangerously-bypass-approvals-and-sandbox')
+    expect(agentInvocation('gemini', 'P', '/w').args).toContain('--yolo')
   })
 
   it('claude back-compat: claudeInvocation equals agentInvocation(claude)', () => {
@@ -232,9 +240,14 @@ describe('runnerInvocation (token-report wiring)', () => {
   it('claude with tokenReport uses stream-json output with --verbose, prompt still on stdin', () => {
     const inv = runnerInvocation('claude', 'P', '/w', true)
     expect(inv.command).toBe('claude')
-    expect(inv.args).toEqual(['-p', '--output-format', 'stream-json', '--verbose'])
+    expect(inv.args).toEqual(['-p', '--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose'])
     expect(inv.input).toBe('P')
     expect(inv.cwd).toBe('/w')
+  })
+  it('the stream-json path keeps the headless permission-bypass flag', () => {
+    // The token hook must not silently drop the non-interactive flag — a claude
+    // that cannot write files "succeeds" while doing nothing.
+    expect(runnerInvocation('claude', 'P', '/w', true).args).toContain('--dangerously-skip-permissions')
   })
   it('claude without tokenReport is the plain -p invocation', () => {
     expect(runnerInvocation('claude', 'P', '/w', false)).toEqual(agentInvocation('claude', 'P', '/w'))
@@ -289,7 +302,7 @@ describe('makeRunner with tokenReport', () => {
     rmSync(d, { recursive: true, force: true })
     expect(captured).toBe(0)                 // capture path is claude-only
     expect(invs).toHaveLength(1)
-    expect(invs[0].args).toEqual(['exec'])   // plain codex invocation, no stream-json flags
+    expect(invs[0].args).toEqual(['exec', '--dangerously-bypass-approvals-and-sandbox'])   // plain codex invocation, no stream-json flags
     expect(res.success).toBe(true)
     expect(res.tokens).toBeUndefined()
   })
