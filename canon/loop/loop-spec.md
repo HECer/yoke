@@ -10,6 +10,8 @@ Pass `--isolate` to run each iteration in a fresh git worktree: the agent works 
 
 Pass `--review` (or `--reviewer=<claude|codex|gemini>` for a different agent) to add a role-separated review step: after the tests pass, an independent reviewer agent must approve the change before the story is committed and marked done. A rejection blocks the story (no commit). The reviewer is a fresh agent pass — the implementer never reviews its own work.
 
+Pass `--json` for machine mode: each status transition is emitted as one NDJSON line on stdout (the `.yoke/loop-status.json` shape, tagged `"type":"status"`) instead of the human narrative, so a supervisor can consume the stream instead of polling the file.
+
 When enabled and run, each iteration:
 
 1. Pre-dispatch gate: the git worktree must be clean, else `blocked`.
@@ -24,7 +26,9 @@ When enabled and run, each iteration:
    `passes: true`, committed atomically, and a decision logged. If verify fails: `blocked`.
 6. Stop when all stories `passes: true` (`complete`), or the iteration cap is reached (`cap-reached`).
 
-State lives outside the model context: the PRD file + git. The agent runner is pluggable.
+A supervisor can pause the loop by creating `.yoke/loop.pause`: at the next story boundary (before the next story is selected — the running story always finishes) the loop consumes the file, records `paused` in the status file and log, and exits with code `3`. Running `yoke loop run` again resumes.
+
+State lives outside the model context: the PRD file + git. The agent runner is pluggable. The PRD is re-read from disk at every story boundary, so stories appended to `.yoke/prd.yaml` mid-run are picked up at the next iteration without a restart.
 
 ## Limitations
 - The loop verifies via the project's test command and an optional agent review; it has no formal merge-queue or multi-reviewer quorum.

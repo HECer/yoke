@@ -71,12 +71,114 @@ describe('makeReporter', () => {
     r.complete({ passed: 2, total: 2 })
     expect(readStatus(dir)).toMatchObject({ state: 'complete', progress: { passed: 2, total: 2 } })
   })
+  it('paused() records state paused and a "paused" log label', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.paused({ passed: 1, total: 2 })
+    expect(readStatus(dir)).toMatchObject({ state: 'paused', progress: { passed: 1, total: 2 } })
+    expect(readStatus(dir)?.phase).toBeUndefined()
+    const log = readFileSync(join(dir, '.yoke', 'loop.log'), 'utf8')
+    expect(log).toMatch(/paused/)
+  })
   it('quiet suppresses the console callback but still writes files', () => {
     const lines: string[] = []
     const r = makeReporter(dir, { log: (s) => lines.push(s), quiet: true }, fixedNow)
     r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
     expect(lines).toEqual([])
     expect(readStatus(dir)?.story).toBe('S1')
+  })
+})
+
+describe('makeReporter json mode', () => {
+  it('emits exactly one JSON line per transition instead of the narrative', () => {
+    const lines: string[] = []
+    const r = makeReporter(dir, { log: (s) => lines.push(s), json: true }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.phase('verifying')
+    r.complete({ passed: 2, total: 2 })
+    expect(lines).toHaveLength(3)
+    for (const line of lines) {
+      expect(line).not.toContain('\n')          // one event = one line
+      expect(JSON.parse(line).type).toBe('status')
+    }
+    expect(JSON.parse(lines[0])).toMatchObject({
+      type: 'status', state: 'running', phase: 'implementing', story: 'S1',
+      iteration: 1, progress: { passed: 0, total: 2 },
+    })
+    expect(JSON.parse(lines[1])).toMatchObject({ type: 'status', phase: 'verifying' })
+    expect(JSON.parse(lines[2])).toMatchObject({ type: 'status', state: 'complete', progress: { passed: 2, total: 2 } })
+  })
+  it('emits a JSON line for blocked with the reason', () => {
+    const lines: string[] = []
+    const r = makeReporter(dir, { log: (s) => lines.push(s), json: true }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.blocked('verify failed')
+    expect(JSON.parse(lines[1])).toMatchObject({ type: 'status', state: 'blocked', reason: 'verify failed' })
+  })
+  it('still writes the status file and log in json mode', () => {
+    const r = makeReporter(dir, { log: () => {}, json: true }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    expect(readStatus(dir)).toMatchObject({ state: 'running', story: 'S1' })
+    expect(readFileSync(join(dir, '.yoke', 'loop.log'), 'utf8')).toContain('implementing')
+  })
+})
+
+describe('makeReporter token accounting', () => {
+  it('includes cumulative tokens in status writes after addTokens', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    expect(readStatus(dir)?.tokens).toBeUndefined()   // no usage reported yet
+    r.addTokens({ inputTokens: 10, outputTokens: 5 })
+    r.phase('verifying')
+    expect(readStatus(dir)?.tokens).toEqual({ inputTokens: 10, outputTokens: 5 })
+    r.addTokens({ inputTokens: 3, outputTokens: 2 })
+    r.phase('committing')
+    expect(readStatus(dir)?.tokens).toEqual({ inputTokens: 13, outputTokens: 7 })  // cumulative across the run
+  })
+  it('includes tokens in NDJSON lines in json mode', () => {
+    const lines: string[] = []
+    const r = makeReporter(dir, { log: (s) => lines.push(s), json: true }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.addTokens({ inputTokens: 7, outputTokens: 4 })
+    r.complete({ passed: 2, total: 2 })
+    const last = JSON.parse(lines[lines.length - 1])
+    expect(last).toMatchObject({ type: 'status', state: 'complete', tokens: { inputTokens: 7, outputTokens: 4 } })
+  })
+
+  it('carries the model id on tokens once reported', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.addTokens({ inputTokens: 10, outputTokens: 5, model: 'claude-opus-4-6-20260501' })
+    r.phase('verifying')
+    expect(readStatus(dir)?.tokens).toEqual({ inputTokens: 10, outputTokens: 5, model: 'claude-opus-4-6-20260501' })
+  })
+
+  it('the LAST seen model id wins across multiple addTokens calls', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.addTokens({ inputTokens: 10, outputTokens: 5, model: 'claude-opus-4-6-20260501' })
+    r.addTokens({ inputTokens: 3, outputTokens: 2, model: 'claude-sonnet-5-20260615' })
+    r.phase('verifying')
+    expect(readStatus(dir)?.tokens).toEqual({ inputTokens: 13, outputTokens: 7, model: 'claude-sonnet-5-20260615' })
+  })
+
+  it('keeps the previously seen model id when a later addTokens call omits it', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.addTokens({ inputTokens: 10, outputTokens: 5, model: 'claude-opus-4-6-20260501' })
+    r.addTokens({ inputTokens: 3, outputTokens: 2 })
+    r.phase('verifying')
+    expect(readStatus(dir)?.tokens).toEqual({ inputTokens: 13, outputTokens: 7, model: 'claude-opus-4-6-20260501' })
+  })
+
+  it('omits model entirely when no addTokens call ever reported one', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.addTokens({ inputTokens: 10, outputTokens: 5 })
+    r.phase('verifying')
+    const tokens = readStatus(dir)?.tokens
+    expect(tokens).toEqual({ inputTokens: 10, outputTokens: 5 })
+    expect(tokens && 'model' in tokens).toBe(false)
   })
 })
 

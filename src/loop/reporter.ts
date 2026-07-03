@@ -20,8 +20,12 @@ export function appendLog(dir: string, line: string, capBytes: number = LOG_CAP_
   writeFileSync(file, `# … loop.log truncated …\n${trimmed}`)
 }
 
-export type LoopState = 'running' | 'blocked' | 'complete' | 'cap-reached'
+export type LoopState = 'running' | 'blocked' | 'complete' | 'cap-reached' | 'paused'
 export type LoopPhase = 'implementing' | 'verifying' | 'reviewing' | 'committing'
+
+// Cumulative runner token usage across the run (claude stream-json runners only).
+// model is the last-seen model id from the stream (absent if the CLI never reported one).
+export interface TokenUsage { inputTokens: number; outputTokens: number; model?: string }
 
 export interface LoopStatus {
   state: LoopState
@@ -33,6 +37,7 @@ export interface LoopStatus {
   progress: { passed: number; total: number }
   startedAt: string
   updatedAt: string
+  tokens?: TokenUsage
 }
 
 function statusPath(dir: string): string {
@@ -66,11 +71,16 @@ export interface LoopReporter {
   blocked(reason: string): void
   complete(progress: Progress): void
   capReached(progress: Progress): void
+  paused(progress: Progress): void
+  /** Accumulate runner token usage; totals ride along on every subsequent status write. */
+  addTokens(usage: TokenUsage): void
 }
 
 export interface ReporterOpts {
   log?: (line: string) => void
   quiet?: boolean
+  /** Machine mode: emit one `{"type":"status",…}` NDJSON line per status write instead of the human narrative. */
+  json?: boolean
 }
 
 export function makeReporter(
@@ -81,14 +91,18 @@ export function makeReporter(
   const sink = opts.log ?? ((line: string) => process.stdout.write(line + '\n'))
   const emitConsole = (line: string) => { if (!opts.quiet) sink(line) }
   let current: LoopStatus | null = null
+  let tokens: TokenUsage | undefined
 
-  const persist = (next: LoopStatus, logLabel: string, consoleLine: string) => {
+  const persist = (status: LoopStatus, logLabel: string, consoleLine: string) => {
+    const next = tokens ? { ...status, tokens: { ...tokens } } : status
     current = next
     try {
       writeStatus(dir, next)
       appendLog(dir, `${next.updatedAt}  ${logLabel}  ${next.story ?? '-'}  ${next.reason ?? ''}`.trimEnd())
     } catch { /* observability must never abort the loop */ }
-    emitConsole(consoleLine)
+    // json mode owns stdout: one machine-readable line per status write, no narrative.
+    if (opts.json) sink(JSON.stringify({ type: 'status', ...next }))
+    else emitConsole(consoleLine)
   }
 
   return {
@@ -120,6 +134,19 @@ export function makeReporter(
         progress, updatedAt: now().toISOString() },
         'cap-reached', `◾ iteration cap reached — ${progress.passed}/${progress.total}`)
     },
+    paused(progress) {
+      persist({ ...(current ?? emptyStatus(now().toISOString())), state: 'paused', phase: undefined,
+        progress, updatedAt: now().toISOString() },
+        'paused', `⏸ loop paused — ${progress.passed}/${progress.total}`)
+    },
+    addTokens(usage) {
+      const model = usage.model ?? tokens?.model
+      tokens = {
+        inputTokens: (tokens?.inputTokens ?? 0) + usage.inputTokens,
+        outputTokens: (tokens?.outputTokens ?? 0) + usage.outputTokens,
+        ...(model ? { model } : {}),
+      }
+    },
   }
 }
 
@@ -128,5 +155,5 @@ function emptyStatus(ts: string): LoopStatus {
 }
 
 export const noopReporter: LoopReporter = {
-  storyStart() {}, phase() {}, blocked() {}, complete() {}, capReached() {},
+  storyStart() {}, phase() {}, blocked() {}, complete() {}, capReached() {}, paused() {}, addTokens() {},
 }

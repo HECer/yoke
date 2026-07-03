@@ -100,7 +100,7 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke prd draft [dir] --idea= [--runner=] [--force]` | Idea → 5–12 stories with testable acceptance criteria | `0` · `1` invalid/guarded · `2` agent unavailable |
 | `yoke prd check [dir]` | PRD lint gate (schema, duplicate ids, empty acceptance) | `0` valid · `1` violations |
 | `yoke context init\|status [dir]` | Durable context layer (`PROJECT/DECISIONS/KNOWLEDGE.md`) | `0` |
-| `yoke loop on\|off\|status\|run\|cleanup [dir]` | The autonomous loop (see below) | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked |
+| `yoke loop on\|off\|status\|run\|cleanup [dir]` | The autonomous loop (see below) | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
 | `yoke review [dir] [--reviewer=] [--base=] [--focus=]` | A **second model** reviews your diff | `0` approved · `1` findings · `2` no reviewer CLI |
 | `yoke design-scan [dir] [--max=N] [--report]` | Static AI-slop design gate | `0` within budget · `1` over |
 | `yoke flow-smoke [dir] [--url=] [--label=]` | Browser gate with screenshot/video proofs | `0` green · `1` failures · `2` not runnable |
@@ -285,7 +285,7 @@ yoke loop off .                 # disable
   passes: false                  # the loop sets this true only on green tests
 ```
 
-The loop stops when every story is `passes: true`. State lives **outside the model context** — the PRD file plus git — so each iteration is fresh.
+The loop stops when every story is `passes: true`. State lives **outside the model context** — the PRD file plus git — so each iteration is fresh. The PRD is re-read from disk at every story boundary, so new stories appended to `.yoke/prd.yaml` **while the loop is running** are picked up at the next iteration — no restart needed.
 
 ### Watching a run
 
@@ -299,6 +299,23 @@ Every iteration emits token-free, harness-side feedback (Node console + local fi
     reason: story did not verify (working tree has uncommitted changes — review/clean before re-running)
   ```
 - **`.yoke/loop.log`** — an append-only timeline of every phase transition.
+- **`--json`** — machine mode for supervisors: every status write is *also* emitted as one
+  NDJSON line on stdout (`{"type":"status","state":"running","phase":"verifying",…}` — the
+  same shape as `loop-status.json`), the human narrative moves off stdout (the final summary
+  goes to stderr), and a consumer can follow the stream line by line instead of polling the file.
+  With a **claude** runner, json mode also switches the agent to `--output-format stream-json`
+  and accounts its usage: statuses (file + stream) carry a cumulative
+  `tokens: { inputTokens, outputTokens, model? }` field for the whole run — `model` is the
+  last model id seen on the stream (e.g. `claude-opus-4-6-20260501`), omitted if the CLI
+  never reported one.
+
+### Pausing a run
+
+Drop a **`.yoke/loop.pause`** file (contents irrelevant) while the loop is running and it
+stops at the **next story boundary** — the running story still finishes, verifies, and
+commits; no story is ever cut off mid-flight. The loop consumes the pause file, writes
+`state: "paused"` to `loop-status.json` (log label `paused`), releases the lock, and exits
+with code `3`. Resume by simply running `yoke loop run` again.
 
 A per-iteration **idle timeout** guards against a genuinely hung agent: if the agent produces
 **no output at all** for `--timeout` minutes (default 20; `0` disables), the loop kills it

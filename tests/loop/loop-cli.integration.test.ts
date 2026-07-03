@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -138,11 +138,59 @@ describe('yoke loop CLI', () => {
     expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(false)
   })
 
+  it('run exits 3 when a pause file stops the loop, consuming it and releasing the lock', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    writeFileSync(join(dir, '.yoke', 'loop.pause'), '')
+    const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })
+    expect(code).toBe(3)
+    expect(existsSync(join(dir, '.yoke', 'loop.pause'))).toBe(false)  // signal consumed
+    expect(existsSync(join(dir, '.yoke', 'loop.lock'))).toBe(false)   // lock released
+    expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(false) // paused before any story
+  })
+
   it('releases the lock after a run', () => {
     saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
     const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })
     expect(code).toBe(0)
     expect(existsSync(join(dir, '.yoke', 'loop.lock'))).toBe(false)
+  })
+
+  it('run with json:true emits NDJSON status lines on stdout and keeps the narrative off it', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    const chunks: string[] = []
+    const logged: string[] = []
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation((c) => { chunks.push(String(c)); return true })
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((...a) => { logged.push(a.join(' ')) })
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let code: number
+    try {
+      code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk, json: true })
+    } finally {
+      outSpy.mockRestore(); logSpy.mockRestore(); errSpy.mockRestore()
+    }
+    expect(code).toBe(0)
+    const lines = chunks.join('').split('\n').filter(l => l.trim() !== '')
+    expect(lines.length).toBeGreaterThanOrEqual(3) // implementing, verifying, committing, complete
+    for (const line of lines) expect(JSON.parse(line)).toMatchObject({ type: 'status' })
+    expect(lines.map(l => JSON.parse(l).state)).toContain('complete')
+    expect(logged).toEqual([]) // machine consumers own stdout in json mode
+  })
+
+  it('run without json keeps the human narrative on stdout (no JSON lines)', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    const chunks: string[] = []
+    const logged: string[] = []
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation((c) => { chunks.push(String(c)); return true })
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((...a) => { logged.push(a.join(' ')) })
+    try {
+      runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })
+    } finally {
+      outSpy.mockRestore(); logSpy.mockRestore()
+    }
+    const all = chunks.join('')
+    expect(all).toContain('implementing')            // narrative present
+    expect(all).not.toContain('"type":"status"')     // no machine lines
+    expect(logged.join('\n')).toMatch(/Loop complete/) // final summary via console.log
   })
 
   it('passes isolate:true through to runLoop (addWorktree is called)', () => {

@@ -1,3 +1,4 @@
+import { existsSync, unlinkSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { loadPrd, savePrd, selectNextStory, allPass, progress } from './prd.js'
 import { stopTheLineGate, preDispatchGate, type GitOps } from './gates.js'
@@ -27,10 +28,16 @@ export interface LoopOptions {
 }
 
 export interface LoopResult {
-  status: 'complete' | 'blocked' | 'cap-reached'
+  status: 'complete' | 'blocked' | 'cap-reached' | 'paused'
   iterations: number
   reason?: string
   finalProgress: { passed: number; total: number }
+}
+
+// Control file a supervisor drops to pause the loop at the next story boundary.
+// The loop consumes (deletes) it and stops with state 'paused' — never mid-story.
+export function pauseFilePath(targetDir: string): string {
+  return join(targetDir, '.yoke', 'loop.pause')
 }
 
 export function runLoop(opts: LoopOptions): LoopResult {
@@ -53,6 +60,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
     if (iterations >= opts.maxIterations) {
       reporter.capReached(progress(stories))
       return { status: 'cap-reached', iterations, finalProgress: progress(stories) }
+    }
+
+    // Story boundary: honour a pause signal before selecting the next story.
+    // complete/cap-reached above still win — pausing an already-finished loop is meaningless.
+    const pauseFile = pauseFilePath(opts.targetDir)
+    if (existsSync(pauseFile)) {
+      try { unlinkSync(pauseFile) } catch { /* consumed best-effort — pausing still wins */ }
+      reporter.paused(progress(stories))
+      return { status: 'paused', iterations, finalProgress: progress(stories) }
     }
 
     const pre = preDispatchGate(opts.targetDir, opts.git)
@@ -82,6 +98,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         opts.git.addWorktree(opts.targetDir, wt)
         const result = opts.runner({ targetDir: wt, story })
         iterations++
+        if (result.tokens) reporter.addTokens(result.tokens)
         // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
         // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
         reporter.phase('verifying')
@@ -139,6 +156,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
 
     const result = opts.runner({ targetDir: opts.targetDir, story })
     iterations++
+    if (result.tokens) reporter.addTokens(result.tokens)
 
     // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
     // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
@@ -190,12 +208,16 @@ export function runLoop(opts: LoopOptions): LoopResult {
       title: story.title,
       summary,
     })
-    const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
+    // Re-read the PRD from disk before persisting passes:true — a story injected
+    // mid-iteration (hot-reload) must survive this save, not be clobbered by the
+    // stale top-of-iteration copy.
+    const onDisk = loadPrd(opts.prdPath)
+    const updated = onDisk.map(s => (s.id === story.id ? { ...s, passes: true } : s))
     savePrd(opts.prdPath, updated)
     try {
       opts.git.commitAll(opts.targetDir, `yoke: complete ${story.id} ${story.title}`)
     } catch (e) {
-      savePrd(opts.prdPath, stories) // revert — never persist passes:true without a commit
+      savePrd(opts.prdPath, onDisk) // revert — never persist passes:true without a commit
       dec.rollback()                 // and never leave an orphan decision
       const reason = blockReason(`commit failed for ${story.id}: ${(e as Error).message}`, opts.targetDir, opts.git)
       reporter.blocked(reason)

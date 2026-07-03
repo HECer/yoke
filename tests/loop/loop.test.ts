@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync, copyFileSync, existsSync, readFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, copyFileSync, existsSync, readFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runLoop } from '../../src/loop/loop.js'
@@ -137,6 +137,46 @@ describe('runLoop', () => {
     expect(res.status).toBe('complete')
   })
 
+  it('picks up a story injected into the PRD mid-run at the next iteration (hot-reload)', () => {
+    writeFileSync(prd(), `- { id: S1, title: First, priority: 1, acceptance: ["x"], passes: false }\n`)
+    // A supervisor appends a story WHILE iteration 1 is running — the loop must
+    // neither clobber it when persisting S1's passes:true nor need a restart.
+    const injectingRunner: AgentRunner = (ctx) => {
+      if (ctx.story.id === 'S1') {
+        appendFileSync(prd(), `- { id: S9, title: Injected, priority: 5, acceptance: ["z"], passes: false }\n`)
+      }
+      return { success: true, summary: 'done' }
+    }
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: injectingRunner, git: cleanGit(), verify: verifyOk, maxIterations: 10 })
+    expect(res.status).toBe('complete')
+    expect(res.iterations).toBe(2)                                     // S1, then the injected S9
+    const stories = loadPrd(prd())
+    expect(stories.map(s => s.id).sort()).toEqual(['S1', 'S9'])        // injection survived the save
+    expect(stories.every(s => s.passes)).toBe(true)
+  })
+
+  it('pauses at the next story boundary when .yoke/loop.pause exists, consuming the file', () => {
+    const pauseFile = join(dir, '.yoke', 'loop.pause')
+    // The pause signal lands mid-story (as a supervisor would drop it): the loop must
+    // finish the running story, then stop before selecting the next one.
+    const pausingRunner: AgentRunner = () => {
+      mkdirSync(join(dir, '.yoke'), { recursive: true })
+      writeFileSync(pauseFile, '')
+      return { success: true, summary: 'done' }
+    }
+    const { reporter, events } = recordingReporter()
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: pausingRunner, git: cleanGit(), verify: verifyOk, maxIterations: 10, reporter })
+    expect(res.status).toBe('paused')
+    expect(res.iterations).toBe(1)
+    expect(res.finalProgress).toEqual({ passed: 1, total: 2 })
+    const stories = loadPrd(prd())
+    expect(stories.find(s => s.id === 'S1')?.passes).toBe(true)   // story 1 finished + committed
+    expect(stories.find(s => s.id === 'S2')?.passes).toBe(false)  // story 2 never started
+    expect(existsSync(pauseFile)).toBe(false)                     // signal consumed
+    expect(events[events.length - 1]).toBe('paused')
+    expect(events).not.toContain('start:S2')
+  })
+
   const decisionsFile = () => join(contextDir(dir), 'DECISIONS.md')
 
   it('appends a decision per completed story, in the commit', () => {
@@ -183,6 +223,8 @@ function recordingReporter(): { reporter: LoopReporter; events: string[] } {
     blocked: (r) => events.push(`blocked:${r}`),
     complete: () => events.push('complete'),
     capReached: () => events.push('cap'),
+    paused: () => events.push('paused'),
+    addTokens: (u) => events.push(`tokens:${u.inputTokens}/${u.outputTokens}`),
   }
   return { reporter, events }
 }
@@ -195,6 +237,14 @@ describe('runLoop reporter', () => {
     expect(events).toContain('phase:verifying')
     expect(events).toContain('phase:committing')
     expect(events[events.length - 1]).toBe('complete')
+  })
+
+  it('forwards runner token usage to the reporter before verifying', () => {
+    const { reporter, events } = recordingReporter()
+    const tokenRunner: AgentRunner = () => ({ success: true, summary: 'done', tokens: { inputTokens: 5, outputTokens: 2 } })
+    runLoop({ prdPath: prd(), targetDir: dir, runner: tokenRunner, git: cleanGit(), verify: verifyOk, maxIterations: 10, reporter })
+    expect(events).toContain('tokens:5/2')
+    expect(events.indexOf('tokens:5/2')).toBeLessThan(events.indexOf('phase:verifying'))
   })
 
   it('reports blocked with a leftover hint when the tree is dirty after a block', () => {

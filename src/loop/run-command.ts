@@ -77,6 +77,8 @@ export interface RunLoopCommandOptions {
   review?: boolean
   reporter?: LoopReporter
   timeoutMinutes?: number
+  /** Emit NDJSON status lines on stdout instead of the human narrative (machine consumers own stdout). */
+  json?: boolean
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -110,7 +112,9 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       console.error(`Agent CLI "${runnerAgent}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
       return 2
     }
-    runner = makeRunner(runnerAgent, idleMs)
+    // Token reporting is part of the machine interface: in --json mode a claude
+    // runner switches to stream-json so cumulative usage rides on every status.
+    runner = makeRunner(runnerAgent, idleMs, { tokenReport: opts.json === true })
   }
 
   let review = opts.reviewRunner
@@ -141,14 +145,19 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       maxIterations: opts.maxIterations,
       isolate: opts.isolate ?? false,
       review,
-      reporter: opts.reporter ?? makeReporter(targetDir),
+      reporter: opts.reporter ?? makeReporter(targetDir, { json: opts.json }),
     })
-    console.log(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
-    if (result.reason) console.log(`Reason: ${result.reason}`)
+    // In json mode stdout belongs to the NDJSON stream — route the narrative summary to stderr.
+    const say = opts.json ? (line: string) => console.error(line) : (line: string) => console.log(line)
+    say(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
+    if (result.reason) say(`Reason: ${result.reason}`)
     if (result.reason && /api key|please run \/login|not logged in/i.test(result.reason)) {
-      console.log('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY or log the agent in for headless use.')
+      say('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY or log the agent in for headless use.')
     }
-    return result.status === 'complete' ? 0 : 1
+    // Exit codes: 0 complete · 1 blocked/cap-reached · 2 config error (handled above) · 3 paused (loop.pause consumed at a story boundary)
+    if (result.status === 'complete') return 0
+    if (result.status === 'paused') return 3
+    return 1
   } finally {
     releaseLock(targetDir)
   }
