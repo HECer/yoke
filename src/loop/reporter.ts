@@ -71,6 +71,8 @@ export interface LoopReporter {
 export interface ReporterOpts {
   log?: (line: string) => void
   quiet?: boolean
+  /** Machine mode: emit one `{"type":"status",…}` NDJSON line per status write instead of the human narrative. */
+  json?: boolean
 }
 
 export function makeReporter(
@@ -88,7 +90,9 @@ export function makeReporter(
       writeStatus(dir, next)
       appendLog(dir, `${next.updatedAt}  ${logLabel}  ${next.story ?? '-'}  ${next.reason ?? ''}`.trimEnd())
     } catch { /* observability must never abort the loop */ }
-    emitConsole(consoleLine)
+    // json mode owns stdout: one machine-readable line per status write, no narrative.
+    if (opts.json) sink(JSON.stringify({ type: 'status', ...next }))
+    else emitConsole(consoleLine)
   }
 
   return {

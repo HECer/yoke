@@ -77,6 +77,8 @@ export interface RunLoopCommandOptions {
   review?: boolean
   reporter?: LoopReporter
   timeoutMinutes?: number
+  /** Emit NDJSON status lines on stdout instead of the human narrative (machine consumers own stdout). */
+  json?: boolean
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -141,12 +143,14 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       maxIterations: opts.maxIterations,
       isolate: opts.isolate ?? false,
       review,
-      reporter: opts.reporter ?? makeReporter(targetDir),
+      reporter: opts.reporter ?? makeReporter(targetDir, { json: opts.json }),
     })
-    console.log(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
-    if (result.reason) console.log(`Reason: ${result.reason}`)
+    // In json mode stdout belongs to the NDJSON stream — route the narrative summary to stderr.
+    const say = opts.json ? (line: string) => console.error(line) : (line: string) => console.log(line)
+    say(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
+    if (result.reason) say(`Reason: ${result.reason}`)
     if (result.reason && /api key|please run \/login|not logged in/i.test(result.reason)) {
-      console.log('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY or log the agent in for headless use.')
+      say('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY or log the agent in for headless use.')
     }
     return result.status === 'complete' ? 0 : 1
   } finally {

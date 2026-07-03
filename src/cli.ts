@@ -98,6 +98,7 @@ function main(argv: string[]): number | Promise<number> {
           reviewer = reviewerArg as Agent
         }
         const review = rest.includes('--review')
+        const json = rest.includes('--json')
         const toArg = rest.find(a => a.startsWith('--timeout='))
         let timeoutMinutes: number | undefined
         if (toArg) {
@@ -105,9 +106,9 @@ function main(argv: string[]): number | Promise<number> {
           if (!Number.isFinite(v) || v < 0) { console.error(`Invalid --timeout value: ${toArg}`); return 1 }
           timeoutMinutes = v
         }
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review, timeoutMinutes })
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review, timeoutMinutes, json })
       }
-      console.log('usage: yoke loop <on|off|status|cleanup|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate] [--timeout=<minutes>]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|cleanup|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate] [--timeout=<minutes>] [--json]> [targetDir]')
       return 1
     }
     case 'new': {

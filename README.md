@@ -299,6 +299,10 @@ Every iteration emits token-free, harness-side feedback (Node console + local fi
     reason: story did not verify (working tree has uncommitted changes — review/clean before re-running)
   ```
 - **`.yoke/loop.log`** — an append-only timeline of every phase transition.
+- **`--json`** — machine mode for supervisors: every status write is *also* emitted as one
+  NDJSON line on stdout (`{"type":"status","state":"running","phase":"verifying",…}` — the
+  same shape as `loop-status.json`), the human narrative moves off stdout (the final summary
+  goes to stderr), and a consumer can follow the stream line by line instead of polling the file.
 
 A per-iteration **idle timeout** guards against a genuinely hung agent: if the agent produces
 **no output at all** for `--timeout` minutes (default 20; `0` disables), the loop kills it

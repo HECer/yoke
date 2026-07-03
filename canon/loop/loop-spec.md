@@ -10,6 +10,8 @@ Pass `--isolate` to run each iteration in a fresh git worktree: the agent works 
 
 Pass `--review` (or `--reviewer=<claude|codex|gemini>` for a different agent) to add a role-separated review step: after the tests pass, an independent reviewer agent must approve the change before the story is committed and marked done. A rejection blocks the story (no commit). The reviewer is a fresh agent pass — the implementer never reviews its own work.
 
+Pass `--json` for machine mode: each status transition is emitted as one NDJSON line on stdout (the `.yoke/loop-status.json` shape, tagged `"type":"status"`) instead of the human narrative, so a supervisor can consume the stream instead of polling the file.
+
 When enabled and run, each iteration:
 
 1. Pre-dispatch gate: the git worktree must be clean, else `blocked`.

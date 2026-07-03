@@ -80,6 +80,40 @@ describe('makeReporter', () => {
   })
 })
 
+describe('makeReporter json mode', () => {
+  it('emits exactly one JSON line per transition instead of the narrative', () => {
+    const lines: string[] = []
+    const r = makeReporter(dir, { log: (s) => lines.push(s), json: true }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.phase('verifying')
+    r.complete({ passed: 2, total: 2 })
+    expect(lines).toHaveLength(3)
+    for (const line of lines) {
+      expect(line).not.toContain('\n')          // one event = one line
+      expect(JSON.parse(line).type).toBe('status')
+    }
+    expect(JSON.parse(lines[0])).toMatchObject({
+      type: 'status', state: 'running', phase: 'implementing', story: 'S1',
+      iteration: 1, progress: { passed: 0, total: 2 },
+    })
+    expect(JSON.parse(lines[1])).toMatchObject({ type: 'status', phase: 'verifying' })
+    expect(JSON.parse(lines[2])).toMatchObject({ type: 'status', state: 'complete', progress: { passed: 2, total: 2 } })
+  })
+  it('emits a JSON line for blocked with the reason', () => {
+    const lines: string[] = []
+    const r = makeReporter(dir, { log: (s) => lines.push(s), json: true }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.blocked('verify failed')
+    expect(JSON.parse(lines[1])).toMatchObject({ type: 'status', state: 'blocked', reason: 'verify failed' })
+  })
+  it('still writes the status file and log in json mode', () => {
+    const r = makeReporter(dir, { log: () => {}, json: true }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    expect(readStatus(dir)).toMatchObject({ state: 'running', story: 'S1' })
+    expect(readFileSync(join(dir, '.yoke', 'loop.log'), 'utf8')).toContain('implementing')
+  })
+})
+
 describe('noopReporter', () => {
   it('does nothing and writes no files', () => {
     noopReporter.storyStart({ id: 'S1', title: 'x' }, 1, prog)
