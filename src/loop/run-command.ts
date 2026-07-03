@@ -112,7 +112,9 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       console.error(`Agent CLI "${runnerAgent}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
       return 2
     }
-    runner = makeRunner(runnerAgent, idleMs)
+    // Token reporting is part of the machine interface: in --json mode a claude
+    // runner switches to stream-json so cumulative usage rides on every status.
+    runner = makeRunner(runnerAgent, idleMs, { tokenReport: opts.json === true })
   }
 
   let review = opts.reviewRunner

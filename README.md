@@ -303,6 +303,9 @@ Every iteration emits token-free, harness-side feedback (Node console + local fi
   NDJSON line on stdout (`{"type":"status","state":"running","phase":"verifying",…}` — the
   same shape as `loop-status.json`), the human narrative moves off stdout (the final summary
   goes to stderr), and a consumer can follow the stream line by line instead of polling the file.
+  With a **claude** runner, json mode also switches the agent to `--output-format stream-json`
+  and accounts its usage: statuses (file + stream) carry a cumulative
+  `tokens: { inputTokens, outputTokens }` field for the whole run.
 
 ### Pausing a run
 

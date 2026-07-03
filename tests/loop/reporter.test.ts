@@ -123,6 +123,29 @@ describe('makeReporter json mode', () => {
   })
 })
 
+describe('makeReporter token accounting', () => {
+  it('includes cumulative tokens in status writes after addTokens', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    expect(readStatus(dir)?.tokens).toBeUndefined()   // no usage reported yet
+    r.addTokens({ inputTokens: 10, outputTokens: 5 })
+    r.phase('verifying')
+    expect(readStatus(dir)?.tokens).toEqual({ inputTokens: 10, outputTokens: 5 })
+    r.addTokens({ inputTokens: 3, outputTokens: 2 })
+    r.phase('committing')
+    expect(readStatus(dir)?.tokens).toEqual({ inputTokens: 13, outputTokens: 7 })  // cumulative across the run
+  })
+  it('includes tokens in NDJSON lines in json mode', () => {
+    const lines: string[] = []
+    const r = makeReporter(dir, { log: (s) => lines.push(s), json: true }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.addTokens({ inputTokens: 7, outputTokens: 4 })
+    r.complete({ passed: 2, total: 2 })
+    const last = JSON.parse(lines[lines.length - 1])
+    expect(last).toMatchObject({ type: 'status', state: 'complete', tokens: { inputTokens: 7, outputTokens: 4 } })
+  })
+})
+
 describe('noopReporter', () => {
   it('does nothing and writes no files', () => {
     noopReporter.storyStart({ id: 'S1', title: 'x' }, 1, prog)

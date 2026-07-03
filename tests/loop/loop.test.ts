@@ -224,6 +224,7 @@ function recordingReporter(): { reporter: LoopReporter; events: string[] } {
     complete: () => events.push('complete'),
     capReached: () => events.push('cap'),
     paused: () => events.push('paused'),
+    addTokens: (u) => events.push(`tokens:${u.inputTokens}/${u.outputTokens}`),
   }
   return { reporter, events }
 }
@@ -236,6 +237,14 @@ describe('runLoop reporter', () => {
     expect(events).toContain('phase:verifying')
     expect(events).toContain('phase:committing')
     expect(events[events.length - 1]).toBe('complete')
+  })
+
+  it('forwards runner token usage to the reporter before verifying', () => {
+    const { reporter, events } = recordingReporter()
+    const tokenRunner: AgentRunner = () => ({ success: true, summary: 'done', tokens: { inputTokens: 5, outputTokens: 2 } })
+    runLoop({ prdPath: prd(), targetDir: dir, runner: tokenRunner, git: cleanGit(), verify: verifyOk, maxIterations: 10, reporter })
+    expect(events).toContain('tokens:5/2')
+    expect(events.indexOf('tokens:5/2')).toBeLessThan(events.indexOf('phase:verifying'))
   })
 
   it('reports blocked with a leftover hint when the tree is dirty after a block', () => {

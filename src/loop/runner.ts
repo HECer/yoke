@@ -2,6 +2,7 @@ import type { Story } from './prd.js'
 import { execFileSync, execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import type { Agent } from '../retrofit/config.js'
+import type { TokenUsage } from './reporter.js'
 import { loadContext, formatForPrompt, contextDir } from '../context/context.js'
 
 export interface AgentContext {
@@ -12,6 +13,8 @@ export interface AgentContext {
 export interface AgentResult {
   success: boolean
   summary: string
+  /** Cumulative token usage of this invocation (claude stream-json runners only). */
+  tokens?: TokenUsage
 }
 
 export type AgentRunner = (ctx: AgentContext) => AgentResult
@@ -97,6 +100,50 @@ export function claudeInvocation(prompt: string, cwd: string): Invocation {
   return agentInvocation('claude', prompt, cwd)
 }
 
+// Token-reporting variant: stream-json makes claude emit per-message usage on stdout
+// (--verbose is required by the CLI for stream-json in -p mode). Prompt still via stdin.
+export function claudeStreamJsonInvocation(prompt: string, cwd: string): Invocation {
+  return { command: 'claude', args: ['-p', '--output-format', 'stream-json', '--verbose'], input: prompt, cwd }
+}
+
+// Pick the runner invocation: token reporting only exists for claude — every other
+// agent (and claude without tokenReport) gets the plain invocation, unchanged.
+export function runnerInvocation(agent: Agent, prompt: string, cwd: string, tokenReport = false): Invocation {
+  if (tokenReport && agent === 'claude') return claudeStreamJsonInvocation(prompt, cwd)
+  return agentInvocation(agent, prompt, cwd)
+}
+
+// Parse claude stream-json output into cumulative token usage. Defensive by design:
+// non-JSON lines and unknown message shapes are ignored. The final "result" message
+// carries the run's cumulative usage — prefer it (last one wins); if it is absent
+// (e.g. the process died mid-run), fall back to summing assistant-message usage.
+export function parseClaudeStreamUsage(lines: string[]): TokenUsage {
+  const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  const usageOf = (v: unknown): { input: number; output: number } | null => {
+    if (typeof v !== 'object' || v === null) return null
+    const u = v as Record<string, unknown>
+    if (u.input_tokens === undefined && u.output_tokens === undefined) return null
+    return { input: num(u.input_tokens), output: num(u.output_tokens) }
+  }
+  let assistantIn = 0
+  let assistantOut = 0
+  let result: TokenUsage | undefined
+  for (const line of lines) {
+    let msg: unknown
+    try { msg = JSON.parse(line) } catch { continue }
+    if (typeof msg !== 'object' || msg === null || Array.isArray(msg)) continue
+    const m = msg as Record<string, unknown>
+    if (m.type === 'result') {
+      const u = usageOf(m.usage)
+      if (u) result = { inputTokens: u.input, outputTokens: u.output }
+    } else if (m.type === 'assistant') {
+      const u = usageOf((m.message as Record<string, unknown> | undefined)?.usage)
+      if (u) { assistantIn += u.input; assistantOut += u.output }
+    }
+  }
+  return result ?? { inputTokens: assistantIn, outputTokens: assistantOut }
+}
+
 function watchdogPath(): string {
   // runner.js and watchdog.js sit side by side (dist/loop/ at runtime, src/loop/ under tsx)
   return fileURLToPath(new URL('./watchdog.js', import.meta.url))
@@ -144,6 +191,17 @@ function runCli(inv: Invocation): void {
   }
 }
 
+// Like runCli, but with stdout PIPED and returned (stderr stays inherited) — for
+// token reporting, where the agent's stdout is a machine-readable stream-json feed.
+// The watchdog wrapper forwards the child's stdout to its own, so piping still works
+// through it. Throws on a non-zero exit; the error carries the partial stdout.
+function runCliCapture(inv: Invocation): string {
+  const opts = { cwd: inv.cwd, input: inv.input, stdio: ['pipe', 'pipe', 'inherit'] as ['pipe', 'pipe', 'inherit'], encoding: 'utf8' as const, maxBuffer: 64 * 1024 * 1024 }
+  return process.platform === 'win32'
+    ? execSync(win32CommandString(inv.command, inv.args), opts)
+    : execFileSync(inv.command, inv.args, opts)
+}
+
 // Probe whether a CLI is on PATH via `<command> --version`. Same win32/other split
 // as runCli to stay DEP0190-free. Never throws.
 function probeVersion(command: string): boolean {
@@ -170,14 +228,37 @@ export function runAgent(inv: Invocation): AgentResult {
   }
 }
 
-export function makeRunner(agent: Agent, idleTimeoutMs = 0): AgentRunner {
+export interface RunnerOpts {
+  /** Run claude in stream-json mode and report cumulative token usage on the AgentResult. */
+  tokenReport?: boolean
+  /** Test seam for the normal (inherit-stdio) execution path. */
+  exec?: (inv: Invocation) => void
+  /** Test seam for the captured (piped-stdout) execution path. */
+  execCapture?: (inv: Invocation) => string
+}
+
+export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {}): AgentRunner {
+  // Token reporting only exists for claude (stream-json); other agents keep inherit stdio.
+  const captureTokens = opts.tokenReport === true && agent === 'claude'
   return (ctx: AgentContext): AgentResult => {
-    const base = agentInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir)), ctx.targetDir)
+    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir)), ctx.targetDir, captureTokens)
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
+    if (captureTokens) {
+      const capture = opts.execCapture ?? runCliCapture
+      try {
+        const out = capture(inv)
+        return { success: true, summary: `${agent} implemented ${ctx.story.id}`, tokens: parseClaudeStreamUsage(out.split(/\r?\n/)) }
+      } catch (e) {
+        // Salvage usage from whatever the agent streamed before dying — those tokens were spent.
+        const partial = (e as { stdout?: unknown }).stdout
+        const tokens = partial == null ? undefined : parseClaudeStreamUsage(String(partial).split(/\r?\n/))
+        return { success: false, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}`, tokens }
+      }
+    }
     try {
       // NOTE: the loop trusts the agent's exit code as a proxy for "it ran".
       // Independent verification happens in the loop (Baustein C2), not here.
-      runCli(inv)
+      ;(opts.exec ?? runCli)(inv)
       return { success: true, summary: `${agent} implemented ${ctx.story.id}` }
     } catch (e) {
       return { success: false, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}` }

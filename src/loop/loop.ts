@@ -98,6 +98,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         opts.git.addWorktree(opts.targetDir, wt)
         const result = opts.runner({ targetDir: wt, story })
         iterations++
+        if (result.tokens) reporter.addTokens(result.tokens)
         // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
         // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
         reporter.phase('verifying')
@@ -155,6 +156,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
 
     const result = opts.runner({ targetDir: opts.targetDir, story })
     iterations++
+    if (result.tokens) reporter.addTokens(result.tokens)
 
     // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
     // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
