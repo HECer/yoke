@@ -1,0 +1,18 @@
+{
+  "name": "yoke",
+  "owner": { "name": "HECer" },
+  "metadata": { "description": "Yoke — cross-agent coding harness for Claude Code, Codex CLI, and Gemini CLI" },
+  "plugins": [
+    {
+      "name": "yoke",
+      "source": "./",
+      "description": "One curated skill canon plus mechanical safety gates and an autonomous loop (yoke CLI: npm i -g @hecer/yoke).",
+      "author": { "name": "HECer" },
+      "homepage": "https://github.com/HECer/yoke",
+      "repository": "https://github.com/HECer/yoke",
+      "license": "MIT",
+      "keywords": ["harness", "cross-agent", "tdd", "code-review", "codex", "gemini-cli"],
+      "category": "development"
+    }
+  ]
+}

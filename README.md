@@ -60,8 +60,8 @@ Every claim in that transcript is enforced by code paths with tests behind them 
 ## 🚀 Quickstart
 
 ```bash
-git clone https://github.com/HECer/yoke.git && cd yoke
-npm install && npm run build && npm link   # → global `yoke` on your PATH
+npm install -g @hecer/yoke                 # → global `yoke` on your PATH
+# (or from source: git clone https://github.com/HECer/yoke.git && cd yoke && npm install && npm run build && npm link)
 
 # Greenfield: idea → loop-ready project in one command
 yoke new my-app --idea="a CLI that tracks reading lists"
@@ -74,7 +74,18 @@ yoke loop on /path/to/project                                # 3) optional: the 
 yoke loop run /path/to/project --isolate --reviewer=codex --max=20
 ```
 
-> Requires Node ≥ 20 and git. No global install? `node /path/to/yoke/dist/cli.js …` or `npm --prefix /path/to/yoke run yoke -- …` work too. The MCP tools (rtk, graphify/Serena, Playwright MCP) are wired by Yoke but installed separately — the generated config is a clearly-labelled, adjustable template. *(npm package `@hecer/yoke` is prepared; until it's published, clone as above.)*
+> Requires Node ≥ 20 and git. No global install? `node /path/to/yoke/dist/cli.js …` or `npm --prefix /path/to/yoke run yoke -- …` work too. The MCP tools (rtk, graphify/Serena, Playwright MCP) are wired by Yoke but installed separately — the generated config is a clearly-labelled, adjustable template.
+
+### Or install the skills as a Claude Code plugin
+
+The canon is also packaged as a Claude Code plugin — the repo is its own marketplace:
+
+```text
+/plugin marketplace add HECer/yoke
+/plugin install yoke@yoke
+```
+
+That gives you all canon skills under the `yoke:` namespace (e.g. `yoke:tdd`, `yoke:review`) inside Claude Code — no retrofit needed. The `yoke` CLI (loop, gates, retrofit for Codex/Gemini) still comes from `npm i -g @hecer/yoke`. Gemini CLI users can likewise `gemini extensions install https://github.com/HECer/yoke`.
 
 ## 🤖 Driving it through an agent
 
@@ -461,6 +472,13 @@ Yoke attacks tokens on two complementary surfaces:
 
 - **rtk** compresses noisy command/tool output before it enters context (wired as a hook/instruction per agent).
 - The **`minimal-code`** skill installs a YAGNI / "lazy senior dev" ladder so agents write the least code that solves the task — fewer output tokens, smaller review surface. *(Adapted from the MIT-licensed [ponytail](https://github.com/DietrichGebert/ponytail) ruleset.)*
+
+## 🧩 Optional companions
+
+Two external tools pair well with Yoke and are documented (not bundled) in `canon/tools/` — each has its own installer and update cadence, so Yoke wires the boundary instead of vendoring a copy:
+
+- **[claude-mem](https://github.com/thedotmack/claude-mem)** — persistent cross-session memory for interactive work. Deliberate boundary: the autonomous loop keeps its memory **explicit and versioned** (`context/*.md` + PRD, fresh context per story), so claude-mem's automatic injection stays out of loop runs.
+- **[ui-ux-pro-max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)** — data-driven design intelligence (styles, palettes, industry rules) for the *generation* side. Yoke's `unslop-ui`, `design-scan`, and `visual-verification` remain the *verification* side: generate with pro-max, gate with Yoke.
 
 ## 🌱 Why & how it was built
 
