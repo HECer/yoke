@@ -45,3 +45,6 @@ tools:
   - { id: graphify, path: tools/graphify.md }
   - { id: playwright-mcp, path: tools/playwright-mcp.md }
   - { id: serena, path: tools/serena.md }
+  # optional companions (external installers; documented wiring only)
+  - { id: claude-mem, path: tools/claude-mem.md }
+  - { id: ui-ux-pro-max, path: tools/ui-ux-pro-max.md }
