@@ -1,0 +1,40 @@
+{
+  "runner": "claude",
+  "label": null,
+  "yokeVersion": "0.3.0",
+  "fixture": "string-kit",
+  "startedAt": "2026-07-09T22:34:02.042Z",
+  "wallClockMs": 268351,
+  "exitCode": 0,
+  "finalState": "complete",
+  "progress": {
+    "passed": 3,
+    "total": 3
+  },
+  "tokens": {
+    "inputTokens": 42957,
+    "outputTokens": 9817,
+    "model": "claude-opus-4-8"
+  },
+  "stories": [
+    {
+      "id": "STORY-1",
+      "durationMs": 72246,
+      "iterations": 1,
+      "finalTestsPass": true
+    },
+    {
+      "id": "STORY-2",
+      "durationMs": 114239,
+      "iterations": 1,
+      "finalTestsPass": true
+    },
+    {
+      "id": "STORY-3",
+      "durationMs": 81328,
+      "iterations": 1,
+      "finalTestsPass": true
+    }
+  ],
+  "srcLoc": 39
+}

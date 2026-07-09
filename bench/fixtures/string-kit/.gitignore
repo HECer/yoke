@@ -1,0 +1,8 @@
+# Yoke runtime artifacts (managed by yoke retrofit)
+.yoke/worktrees/
+.yoke/backup/
+.yoke/loop-status.json
+.yoke/loop.log
+.yoke/loop.lock
+.yoke/proof/
+node_modules/

@@ -1,0 +1,32 @@
+- id: STORY-1
+  title: "slugify(text): URL-safe slugs"
+  priority: 1
+  acceptance:
+    - "Export `slugify(text)` from src/index.mjs"
+    - "Lowercases input and joins words with single dashes"
+    - "Strips characters that are not alphanumeric, dash, or space (apostrophes vanish: \"What's Up, Doc?\" -> \"whats-up-doc\")"
+    - "Collapses runs of spaces/dashes into one dash; trims leading/trailing dashes"
+    - "Input with no usable characters returns the empty string"
+    - "node bench-verify.mjs exits 0"
+  passes: false
+- id: STORY-2
+  title: "truncate(text, max): word-boundary truncation with ellipsis"
+  priority: 2
+  acceptance:
+    - "Export `truncate(text, max)` from src/index.mjs"
+    - "Strings with length <= max are returned unchanged"
+    - "Longer strings are cut at a word boundary and end with the single character … (U+2026); result length never exceeds max"
+    - "If even the first word does not fit, hard-cut mid-word so the result (incl. …) has exactly max characters"
+    - "max < 1 throws RangeError"
+    - "node bench-verify.mjs exits 0"
+  passes: false
+- id: STORY-3
+  title: "titleCase(text): English title casing"
+  priority: 3
+  acceptance:
+    - "Export `titleCase(text)` from src/index.mjs"
+    - "Capitalizes the first letter of each significant word; rest of each word lowercased (handles ALL-CAPS input)"
+    - "Small words (a, an, the, and, but, or, for, nor, of, on, in, to, at, by, up) stay lowercase mid-title"
+    - "The first and the last word are always capitalized, even if small"
+    - "node bench-verify.mjs exits 0"
+  passes: false

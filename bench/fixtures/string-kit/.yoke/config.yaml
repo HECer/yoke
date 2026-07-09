@@ -1,0 +1,6 @@
+canonVersion: 0.1.0
+agents: []
+loop:
+  enabled: true
+verify:
+  command: node bench-verify.mjs
