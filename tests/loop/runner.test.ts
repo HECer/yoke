@@ -46,10 +46,10 @@ describe('agentInvocation', () => {
     expect(inv.args).not.toContain('P')
   })
 
-  it('maps gemini to `gemini -p` with the prompt as input', () => {
+  it('maps gemini to stdin-driven headless mode (no bare -p: current gemini requires a value after -p)', () => {
     const inv = agentInvocation('gemini', 'P', '/w')
     expect(inv.command).toBe('gemini')
-    expect(inv.args).toEqual(['-p', '--yolo'])
+    expect(inv.args).toEqual(['--yolo'])
     expect(inv.input).toBe('P')
   })
 

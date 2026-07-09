@@ -94,7 +94,9 @@ export interface Invocation {
 const AGENT_SPECS: Record<Agent, { command: string; baseArgs: string[] }> = {
   claude: { command: 'claude', baseArgs: ['-p', '--dangerously-skip-permissions'] },
   codex: { command: 'codex', baseArgs: ['exec', '--dangerously-bypass-approvals-and-sandbox'] },
-  gemini: { command: 'gemini', baseArgs: ['-p', '--yolo'] },
+  // gemini: no `-p` — current Gemini CLI (0.33+) requires a value after -p, and
+  // piped (non-TTY) stdin already selects headless mode on its own.
+  gemini: { command: 'gemini', baseArgs: ['--yolo'] },
 }
 
 export function agentInvocation(agent: Agent, prompt: string, cwd: string): Invocation {
@@ -219,13 +221,15 @@ function runCliCapture(inv: Invocation): string {
 }
 
 // Probe whether a CLI is on PATH via `<command> --version`. Same win32/other split
-// as runCli to stay DEP0190-free. Never throws.
+// as runCli to stay DEP0190-free. Never throws. Timeout is generous because some
+// agent CLIs cold-start slowly (gemini needs ~6s on Windows; 5s misreported it
+// as "not installed").
 function probeVersion(command: string): boolean {
   try {
     if (process.platform === 'win32') {
-      execSync(`${command} --version`, { stdio: 'pipe', timeout: 5000 })
+      execSync(`${command} --version`, { stdio: 'pipe', timeout: 20000 })
     } else {
-      execFileSync(command, ['--version'], { stdio: 'pipe', timeout: 5000 })
+      execFileSync(command, ['--version'], { stdio: 'pipe', timeout: 20000 })
     }
     return true
   } catch {
