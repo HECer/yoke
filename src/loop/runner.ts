@@ -38,6 +38,13 @@ export function buildClaudePrompt(story: Story, context: string): string {
     '',
     "When done, ensure the project's full test suite passes.",
     'Do NOT commit — the loop commits on your behalf after verifying.',
+    '',
+    'Working rules:',
+    '- Add nothing beyond what the story requires: no extra features, abstractions, comments, or defensive code for cases that cannot happen.',
+    '- Do not create summary, plan, or analysis documents — only files the story itself needs.',
+    '- If a check fails, fix the root cause; never bypass it (e.g. --no-verify) or pass by weakening tests.',
+    '- Report the outcome faithfully: if a criterion is unmet or tests fail, say so plainly instead of claiming success.',
+    '- Keep your final message to a few short sentences: what changed and what you verified.',
   )
   return lines.join('\n')
 }
@@ -57,7 +64,9 @@ export function buildReviewPrompt(story: Story, context: string): string {
     '',
     'Approve by exiting 0 ONLY if every acceptance criterion is met and the change is sound.',
     'If you find ANY blocking issue (an unmet criterion, a bug, a missing test), exit non-zero to reject.',
+    'Base your verdict only on what the diff and test runs actually show — never assume unverified behavior.',
     'Do not modify files. Do not commit.',
+    'Keep your verdict to a few short sentences.',
   )
   return lines.join('\n')
 }
@@ -73,7 +82,9 @@ export function buildStandaloneReviewPrompt(scope: string, focus?: string): stri
     '',
     'Approve by exiting 0 ONLY if the change is sound and complete.',
     'If you find ANY blocking issue, exit non-zero to reject and explain what is wrong.',
+    'Base your verdict only on what the diff and test runs actually show — never assume unverified behavior.',
     'Do not modify files. Do not commit.',
+    'Keep your verdict to a few short sentences.',
   )
   return lines.join('\n')
 }

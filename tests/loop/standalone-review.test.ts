@@ -17,4 +17,9 @@ describe('buildStandaloneReviewPrompt', () => {
   it('omits the focus line when no focus is given', () => {
     expect(buildStandaloneReviewPrompt('x')).not.toMatch(/Pay particular attention/i)
   })
+  it('grounds the verdict in observed evidence and keeps output brief', () => {
+    const p = buildStandaloneReviewPrompt('x')
+    expect(p).toMatch(/actually (show|verified|observe)/i)
+    expect(p).toMatch(/few short sentences/i)
+  })
 })

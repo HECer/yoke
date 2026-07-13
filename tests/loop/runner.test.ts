@@ -24,6 +24,23 @@ describe('buildClaudePrompt', () => {
     expect(p).toMatch(/only this story/i)
     expect(p).toMatch(/not commit/i)
   })
+
+  it('enforces scope discipline and forbids summary/analysis documents', () => {
+    const p = buildClaudePrompt(story, '')
+    expect(p).toMatch(/beyond what the story requires/i)
+    expect(p).toMatch(/summary, plan, or analysis documents/i)
+  })
+
+  it('demands faithful reporting and root-cause fixes instead of bypasses', () => {
+    const p = buildClaudePrompt(story, '')
+    expect(p).toMatch(/report the outcome faithfully/i)
+    expect(p).toMatch(/root cause/i)
+    expect(p).toMatch(/--no-verify|weaken(ing)? tests/i)
+  })
+
+  it('bounds the final message to a few sentences', () => {
+    expect(buildClaudePrompt(story, '')).toMatch(/final message .*few short sentences/i)
+  })
 })
 
 describe('claudeInvocation', () => {
@@ -92,6 +109,12 @@ describe('buildReviewPrompt', () => {
     const p = buildReviewPrompt(story, '')
     expect(p).toMatch(/exit non-zero|reject/i)
     expect(p).toMatch(/do not modify|do not commit/i)
+  })
+
+  it('grounds the verdict in observed evidence and keeps output brief', () => {
+    const p = buildReviewPrompt(story, '')
+    expect(p).toMatch(/actually (show|verified|observe)/i)
+    expect(p).toMatch(/few short sentences/i)
   })
 })
 
