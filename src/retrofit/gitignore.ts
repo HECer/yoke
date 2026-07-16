@@ -7,6 +7,7 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/loop-status.json',
   '.yoke/loop.log',
   '.yoke/loop.lock',
+  '.yoke/loop.pause',
   '.yoke/proof/',
 ]
 

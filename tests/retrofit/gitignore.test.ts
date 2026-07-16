@@ -44,6 +44,14 @@ describe('ensureGitignore', () => {
     ensureGitignore(dir)
     expect(readFileSync(gi(), 'utf8')).toContain('.yoke/proof/')
   })
+  it('ensures the pause control file is ignored', () => {
+    // Missing from the list, the loop's own `git add -A` story commit swept
+    // the pause file into history; its removal then dirtied the tree and the
+    // pre-dispatch gate blocked the resume run.
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/loop.pause')
+    ensureGitignore(dir)
+    expect(readFileSync(gi(), 'utf8')).toContain('.yoke/loop.pause')
+  })
   it('appends cleanly when the existing file has no trailing newline (no glued lines)', () => {
     writeFileSync(gi(), 'node_modules/') // no trailing newline — the load-bearing prefix branch
     ensureGitignore(dir)
