@@ -24,6 +24,20 @@ export interface WatchdogOpts {
   stdin?: Readable
   out?: (d: unknown) => void
   err?: (d: unknown) => void
+  /**
+   * Kill the child's WHOLE process tree. Defaults to `taskkill /T` on win32,
+   * where child.kill() only terminates the spawned shell (shell: true) and
+   * orphans the actual agent process — which then keeps writing to the
+   * worktree, holds file handles, and burns API tokens. Injectable for tests.
+   */
+  killTree?: (pid: number, force: boolean) => void
+}
+
+// win32 default: kill the whole tree. Console apps have no reliable soft-close
+// on Windows, so both phases force (/F) — the grace pass is a retry, not an
+// escalation. Best-effort by design: taskkill is a standard Windows component.
+function taskkillTree(pid: number, _force: boolean): void {
+  try { spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }) } catch { /* best-effort */ }
 }
 
 export function runWatchdog(opts: WatchdogOpts): Promise<number> {
@@ -37,6 +51,15 @@ export function runWatchdog(opts: WatchdogOpts): Promise<number> {
   }
 
   const graceMs = opts.graceMs ?? 5000
+  // Explicitly-passed killTree wins (including an explicit undefined, which pins
+  // the per-process signal path — tests use this to be platform-independent).
+  const killTree = 'killTree' in opts ? opts.killTree : (process.platform === 'win32' ? taskkillTree : undefined)
+  // Terminate the child — via the tree-killer when we have one and a pid,
+  // otherwise per-process signals (POSIX default; SIGKILL is uncatchable).
+  const terminate = (child: { pid?: number; kill(signal?: string): void }, force: boolean): void => {
+    if (killTree && child.pid !== undefined) { killTree(child.pid, force); return }
+    try { child.kill(force ? 'SIGKILL' : 'SIGTERM') } catch { /* already gone */ }
+  }
 
   return new Promise<number>((resolve) => {
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -59,15 +82,15 @@ export function runWatchdog(opts: WatchdogOpts): Promise<number> {
       timer = setTimeout(() => {
         timer = undefined
         killedForIdle = true
-        try { child.kill('SIGTERM') } catch { /* already gone */ }
-        // Escalation: a child that catches/ignores SIGTERM would never emit
+        terminate(child, false)
+        // Escalation: a child that catches/ignores the soft kill would never emit
         // 'close' and the promise would hang forever — defeating the watchdog.
-        // SIGKILL is uncatchable, so the child must close and we resolve.
-        // win32 limitation: with shell:true, SIGKILL on the shell may orphan
-        // grandchild processes (a resource-cleanup edge, not a hang) — not fixed here.
+        // POSIX: SIGKILL is uncatchable. win32: taskkill /T /F again as a retry —
+        // and crucially the TREE dies, not just the shell, so no orphaned agent
+        // keeps writing to the worktree or burning API tokens.
         graceTimer = setTimeout(() => {
           graceTimer = undefined
-          try { child.kill('SIGKILL') } catch { /* already gone */ }
+          terminate(child, true)
         }, graceMs)
       }, opts.idleMs)
     }

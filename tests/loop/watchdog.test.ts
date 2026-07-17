@@ -28,7 +28,8 @@ describe('runWatchdog', () => {
 
   it('kills a silent child after the idle window and resolves 124', async () => {
     const child = fakeChild()
-    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, spawnFn: () => child, stdin: new EventEmitter() as any })
+    // killTree: undefined pins the per-process signal path (POSIX behavior) on any host platform.
+    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, spawnFn: () => child, stdin: new EventEmitter() as any, killTree: undefined })
     vi.advanceTimersByTime(150)
     expect(child.kill).toHaveBeenCalled()
     child.emit('close', null)
@@ -37,7 +38,7 @@ describe('runWatchdog', () => {
 
   it('escalates SIGTERM then SIGKILL after the grace window and resolves 124', async () => {
     const child = fakeChild()
-    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, graceMs: 200, spawnFn: () => child, stdin: new EventEmitter() as any })
+    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, graceMs: 200, spawnFn: () => child, stdin: new EventEmitter() as any, killTree: undefined })
     vi.advanceTimersByTime(150)
     expect(child.kill).toHaveBeenCalledWith('SIGTERM')
     expect(child.kill).not.toHaveBeenCalledWith('SIGKILL')
@@ -63,7 +64,7 @@ describe('runWatchdog', () => {
   it('does NOT let death-throes output rescind the committed idle-kill', async () => {
     const child = fakeChild()
     const out = vi.fn()
-    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, graceMs: 200, spawnFn: () => child, stdin: new EventEmitter() as any, out })
+    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, graceMs: 200, spawnFn: () => child, stdin: new EventEmitter() as any, out, killTree: undefined })
     vi.advanceTimersByTime(150)
     expect(child.kill).toHaveBeenCalledWith('SIGTERM')
     // A child that caught SIGTERM coughs out one last byte before the grace window ends.
@@ -90,6 +91,33 @@ describe('runWatchdog', () => {
     expect(child.kill).not.toHaveBeenCalled()
     child.emit('close', 3)
     await expect(p).resolves.toBe(3)
+  })
+})
+
+describe('runWatchdog process-tree kill (win32 orphan fix)', () => {
+  it('uses killTree with the child pid instead of child.kill, soft then forced', async () => {
+    const child = fakeChild()
+    const killTree = vi.fn()
+    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, graceMs: 200, spawnFn: () => child, stdin: new EventEmitter() as any, killTree })
+    vi.advanceTimersByTime(150)
+    expect(killTree).toHaveBeenCalledWith(4242, false)
+    expect(child.kill).not.toHaveBeenCalled() // killing only the shell orphans the real agent
+    vi.advanceTimersByTime(250)
+    expect(killTree).toHaveBeenCalledWith(4242, true)
+    child.emit('close', null)
+    await expect(p).resolves.toBe(124)
+  })
+
+  it('falls back to child.kill when the child has no pid', async () => {
+    const child = fakeChild()
+    child.pid = undefined
+    const killTree = vi.fn()
+    const p = runWatchdog({ command: 'x', args: [], idleMs: 100, spawnFn: () => child, stdin: new EventEmitter() as any, killTree })
+    vi.advanceTimersByTime(150)
+    expect(killTree).not.toHaveBeenCalled()
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM')
+    child.emit('close', null)
+    await expect(p).resolves.toBe(124)
   })
 })
 
