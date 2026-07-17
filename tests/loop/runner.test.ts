@@ -272,13 +272,28 @@ describe('runnerInvocation (token-report wiring)', () => {
     // that cannot write files "succeeds" while doing nothing.
     expect(runnerInvocation('claude', 'P', '/w', true).args).toContain('--dangerously-skip-permissions')
   })
-  it('claude without tokenReport is the plain -p invocation', () => {
-    expect(runnerInvocation('claude', 'P', '/w', false)).toEqual(agentInvocation('claude', 'P', '/w'))
-    expect(runnerInvocation('claude', 'P', '/w')).toEqual(agentInvocation('claude', 'P', '/w'))
+  it('claude ALWAYS uses stream-json — the idle watchdog needs liveness output, and plain -p is silent until done', () => {
+    // Regression guard: with the plain -p invocation, healthy stories longer than
+    // the idle window emitted no output and were killed at exactly idle-timeout.
+    expect(runnerInvocation('claude', 'P', '/w', false).args).toEqual(['-p', '--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose'])
+    expect(runnerInvocation('claude', 'P', '/w')).toEqual(runnerInvocation('claude', 'P', '/w', true))
   })
   it('non-claude agents are unchanged even when tokenReport is requested', () => {
     expect(runnerInvocation('codex', 'P', '/w', true)).toEqual(agentInvocation('codex', 'P', '/w'))
     expect(runnerInvocation('gemini', 'P', '/w', true)).toEqual(agentInvocation('gemini', 'P', '/w'))
+  })
+})
+
+describe('makeRunner claude default (no tokenReport flag)', () => {
+  it('captures stream-json and reports tokens even without tokenReport', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-tok0-'))
+    const seen: Invocation[] = []
+    const runner = makeRunner('claude', 0, { execCapture: (inv) => { seen.push(inv); return '{"type":"result","subtype":"success","usage":{"input_tokens":3,"output_tokens":2}}' } })
+    const res = runner({ targetDir: d, story })
+    rmSync(d, { recursive: true, force: true })
+    expect(res.success).toBe(true)
+    expect(res.tokens).toEqual({ inputTokens: 3, outputTokens: 2 })
+    expect(seen[0].args).toContain('stream-json')
   })
 })
 

@@ -126,10 +126,14 @@ export function claudeStreamJsonInvocation(prompt: string, cwd: string): Invocat
   return { command: 'claude', args: [...AGENT_SPECS.claude.baseArgs, '--output-format', 'stream-json', '--verbose'], input: prompt, cwd }
 }
 
-// Pick the runner invocation: token reporting only exists for claude — every other
-// agent (and claude without tokenReport) gets the plain invocation, unchanged.
-export function runnerInvocation(agent: Agent, prompt: string, cwd: string, tokenReport = false): Invocation {
-  if (tokenReport && agent === 'claude') return claudeStreamJsonInvocation(prompt, cwd)
+// Pick the runner invocation. Claude ALWAYS runs in stream-json mode: plain `-p`
+// prints nothing until the run finishes, so the idle watchdog saw a healthy
+// long story as a dead process and killed it at exactly the idle window — and
+// the user saw dead air the whole time. stream-json emits per-message output,
+// which doubles as liveness. Token usage rides along for free. Other agents
+// keep their plain invocation (no machine-readable stream to gain).
+export function runnerInvocation(agent: Agent, prompt: string, cwd: string, _tokenReport = false): Invocation {
+  if (agent === 'claude') return claudeStreamJsonInvocation(prompt, cwd)
   return agentInvocation(agent, prompt, cwd)
 }
 
@@ -269,8 +273,10 @@ export interface RunnerOpts {
 }
 
 export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {}): AgentRunner {
-  // Token reporting only exists for claude (stream-json); other agents keep inherit stdio.
-  const captureTokens = opts.tokenReport === true && agent === 'claude'
+  // Claude always streams (see runnerInvocation) — capture the stream so tokens are
+  // always reported; other agents keep inherit stdio. opts.tokenReport is now
+  // redundant for claude and meaningless elsewhere; kept for caller compatibility.
+  const captureTokens = agent === 'claude'
   return (ctx: AgentContext): AgentResult => {
     const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir)), ctx.targetDir, captureTokens)
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
