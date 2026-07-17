@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0 — 2026-07-17
+
+### Added
+- **Update check + `yoke upgrade`.** Every CLI invocation ends with a non-blocking
+  version hint (npm/gh-style): a detached background refresher caches the registry's
+  latest at most once a day; when it is newer, a one-line stderr hint suggests
+  `yoke upgrade` (which runs `npm install -g @hecer/yoke@latest`). Silent in CI,
+  `--json` runs, non-TTY pipes, and under `YOKE_NO_UPDATE_CHECK=1`.
+- **Opt-in auto-upgrade** (`update.auto: true` in `.yoke/config.yaml`): evaluated at
+  loop START only — never mid-run; the running process finishes on its version and
+  the upgrade applies from the next invocation. Deliberately NOT the default:
+  a gate harness must not change itself mid-project (determinism), and unreviewed
+  auto-installs are a supply-chain hazard.
+
 ## 0.6.0 — 2026-07-17
 
 ### Added

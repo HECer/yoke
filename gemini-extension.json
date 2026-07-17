@@ -1,6 +1,6 @@
 {
   "name": "yoke",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Cross-agent coding harness: curated skill canon, mechanical safety gates, autonomous loop with proof artifacts. CLI: npm i -g @hecer/yoke",
   "contextFileName": "GEMINI-EXTENSION.md"
 }
