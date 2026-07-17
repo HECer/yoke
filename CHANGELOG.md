@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.0 — 2026-07-17
+
+Root-cause fixes for the two "yoke keeps hanging" failure modes observed in the field
+(orphaned `claude.exe` runners piling up, healthy long stories dying at exactly the
+idle window):
+
+### Fixed
+- **Watchdog now kills the whole process tree on Windows** (`taskkill /T /F`).
+  Previously it killed only the spawned shell (`shell: true`), orphaning the actual
+  agent process — which kept writing to the worktree (dirty-tree blocks, failing
+  worktree removal) and kept burning API tokens. Observed in the field as ~10
+  zombie `claude.exe` per machine plus surviving dev servers.
+- **Claude runner always runs in stream-json mode.** Plain `-p` prints nothing until
+  the run finishes, so the idle watchdog mistook healthy >20-minute stories for dead
+  processes and killed them at exactly the idle timeout — while the user saw dead air.
+  The stream doubles as liveness; token usage is now reported on every run (not just
+  `--json` mode).
+
+### Changed
+- README: operating notes for driving the loop from inside an agent session
+  (background execution, small `--max` batches, `yoke loop cleanup` after interrupts) —
+  outer shell-tool timeouts killing a foreground `yoke loop run` were the third
+  observed "hang" pattern.
+
 ## 0.4.0 — 2026-07-17
 
 ### Added
