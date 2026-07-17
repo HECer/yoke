@@ -87,6 +87,23 @@ The canon is also packaged as a Claude Code plugin — the repo is its own marke
 
 That gives you all canon skills under the `yoke:` namespace (e.g. `yoke:tdd`, `yoke:review`) inside Claude Code — no retrofit needed. The `yoke` CLI (loop, gates, retrofit for Codex/Gemini) still comes from `npm i -g @hecer/yoke`. Gemini CLI users can likewise `gemini extensions install https://github.com/HECer/yoke`.
 
+### Staying up to date
+
+Yoke checks for new releases npm/gh-style: a **non-blocking background check** (at most once a day, detached, offline-safe) prints a one-line hint when a newer version exists — upgrading itself is always an explicit act:
+
+```bash
+yoke upgrade                    # npm install -g @hecer/yoke@latest
+```
+
+Disable the check with `YOKE_NO_UPDATE_CHECK=1` (it is also silent in CI, `--json` runs, and piped output). Projects that want the loop to self-update can opt in via `.yoke/config.yaml`:
+
+```yaml
+update:
+  auto: true   # upgrade at loop START only — never mid-run; applies from the next invocation
+```
+
+Auto-upgrade is deliberately **not** the default: a gate harness shouldn't change itself mid-project, and unreviewed auto-installs are a supply-chain hazard.
+
 ## 🤖 Driving it through an agent
 
 Yoke is meant to be operated *by* your coding agent — after a retrofit, the agent has the skills, the safety policy, and the routing, so it knows the methodology. Copy-paste prompts (identical wording works for Claude Code, Codex CLI, and Gemini CLI):

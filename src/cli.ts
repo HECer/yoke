@@ -12,6 +12,8 @@ import { runNew } from './new/command.js'
 import { runPrdDraft, runPrdCheck } from './prd/command.js'
 import { runLoopCleanup } from './loop/cleanup.js'
 import { runFlowSmoke } from './smoke/command.js'
+import { maybeNotifyUpdate, currentYokeVersion } from './update/check.js'
+import { runUpgrade } from './update/upgrade.js'
 
 export { runRetrofit } from './retrofit/command.js'
 
@@ -205,8 +207,10 @@ function main(argv: string[]): number | Promise<number> {
       if (!Number.isFinite(max) || max < 0) { console.error(`Invalid --max value: ${maxArg}`); return 1 }
       return runDesignScan(targetDir, { max, report })
     }
+    case 'upgrade':
+      return runUpgrade()
     default:
-      console.log('usage: yoke <new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | prd <draft|check> [dir] | loop <on|off|status|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>]>')
+      console.log('usage: yoke <new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | prd <draft|check> [dir] | loop <on|off|status|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>')
       return cmd ? 1 : 0
   }
 }
@@ -223,5 +227,9 @@ export function isMainEntry(argv1: string | undefined, moduleUrl: string): boole
 }
 
 if (isMainEntry(process.argv[1], import.meta.url)) {
-  process.exit(await main(process.argv.slice(2)))
+  const code = await main(process.argv.slice(2))
+  // Non-blocking version hint (npm/gh-style): reads a cache, maybe spawns a
+  // detached refresher. Never allowed to affect the command's outcome.
+  try { maybeNotifyUpdate(currentYokeVersion()) } catch { /* never fatal */ }
+  process.exit(code)
 }

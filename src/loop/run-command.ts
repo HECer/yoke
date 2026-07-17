@@ -10,6 +10,7 @@ import type { GitOps } from './gates.js'
 import { commandVerifier, retryingVerifier, type Verifier } from './verify.js'
 import { readStatus, makeReporter, type LoopReporter } from './reporter.js'
 import { acquireLock, releaseLock } from './lock.js'
+import { maybeAutoUpgrade } from '../update/upgrade.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -101,6 +102,10 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }
     verify = retryingVerifier(commandVerifier(command), config.verify?.retries ?? 1)
   }
+  // Opt-in self-update, loop START only — this run keeps executing the version
+  // it started with; a fetched upgrade applies from the next invocation.
+  maybeAutoUpgrade(config.update?.auto)
+
   const available = opts.isAvailable ?? isAgentAvailable
   const runnerAgent: Agent = opts.agent ?? config.agents[0] ?? 'claude'
 

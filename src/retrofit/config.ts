@@ -19,6 +19,8 @@ export const YokeConfigSchema = z.object({
   verify: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
   codeGraph: CodeGraphSchema.optional(),
   smoke: SmokeSchema.optional(),
+  // Opt-in: upgrade yoke at loop START when a newer version is cached (never mid-run).
+  update: z.object({ auto: z.boolean() }).optional(),
 })
 
 export interface SmokeFlow { name: string; path: string; landmark?: string }
@@ -31,6 +33,7 @@ export interface YokeConfig {
   verify?: { command: string; retries?: number }
   codeGraph?: CodeGraph
   smoke?: SmokeConfig
+  update?: { auto: boolean }
 }
 
 export function defaultConfig(canonVersion: string): YokeConfig {
