@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.0 — 2026-07-17
+
+### Added
+- **Hardened runner prompts** — distilled agent-harness patterns for headless runs:
+  scope discipline (nothing beyond the story), no unsolicited summary/plan/analysis
+  documents, root-cause fixes instead of gate bypasses, faithful outcome reporting,
+  bounded final messages (cuts output-token waste). Review prompts now ground verdicts
+  in observed evidence only and keep them brief.
+
+### Fixed
+- `.yoke/loop.pause` is now gitignored by retrofit. Previously the loop's own
+  `git add -A` story commit swept the pause control file into history in
+  un-retrofitted targets; removing it dirtied the tree and the clean-tree gate
+  blocked the resume run — the loop locked itself out.
+
+> Note: 0.3.0 was tagged and released on GitHub but never reached npm (2FA re-login
+> was pending), so for npm users 0.4.0 is the first release with the 0.3.0 changes below.
+
 ## 0.3.0 — 2026-07-10
 
 ### Added
