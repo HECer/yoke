@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "yoke",
   "displayName": "Yoke",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Cross-agent coding harness: one curated skill canon (TDD, brainstorming, plans, reviews, shipping, design verification) plus mechanical safety gates and an autonomous loop via the yoke CLI.",
   "author": { "name": "HECer", "url": "https://github.com/HECer" },
   "homepage": "https://github.com/HECer/yoke#readme",

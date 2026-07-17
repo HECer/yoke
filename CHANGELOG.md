@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 — 2026-07-17
+
+### Added
+- **Project-scoped orphan reaping.** The watchdog now records its pids in the project's
+  `.yoke/runner.pid` (main dir and per-story worktrees; removed on clean exit), and
+  `yoke loop cleanup` kills exactly those recorded process trees — and only while no
+  live loop holds the lock. Background: without a scoped mechanism, users and agents
+  resorted to machine-wide pattern kills (every process matching
+  `dangerously-skip-permissions`), which took down *healthy* runners of other projects
+  mid-story and stalled their loops. Never kill by pattern; `yoke loop cleanup` is the
+  safe path. `.yoke/runner.pid` is gitignored by retrofit.
+
 ## 0.5.0 — 2026-07-17
 
 Root-cause fixes for the two "yoke keeps hanging" failure modes observed in the field
