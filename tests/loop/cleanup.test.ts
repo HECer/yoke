@@ -34,6 +34,32 @@ describe('runLoopCleanup', () => {
     expect(n).toBeGreaterThan(0)
   })
 
+  it('kills only the pids recorded in runner.pid files (project-scoped, never pattern-based)', () => {
+    // Main-dir runner + one worktree runner left behind by a dead loop.
+    mkdirSync(join(dir, '.yoke', 'worktrees', 'A', '.yoke'), { recursive: true })
+    writeFileSync(join(dir, '.yoke', 'runner.pid'), JSON.stringify({ watchdogPid: 111, childPid: 222 }))
+    writeFileSync(join(dir, '.yoke', 'worktrees', 'A', '.yoke', 'runner.pid'), JSON.stringify({ watchdogPid: 333, childPid: 444 }))
+    const killed: number[] = []
+    const code = runLoopCleanup(dir, {
+      git: () => {},
+      isAlive: (pid) => pid === 222 || pid === 333, // 111 and 444 already exited
+      killTree: (pid) => { killed.push(pid) },
+    })
+    expect(code).toBe(0)
+    expect(killed.sort()).toEqual([222, 333]) // only recorded-and-alive pids — nothing else on the machine
+    expect(existsSync(join(dir, '.yoke', 'runner.pid'))).toBe(false) // consumed
+  })
+
+  it('does NOT kill recorded runners while the loop lock holder is alive', () => {
+    mkdirSync(join(dir, '.yoke'), { recursive: true })
+    writeFileSync(lockPath(dir), JSON.stringify({ pid: process.pid, startedAt: 'x' }))
+    writeFileSync(join(dir, '.yoke', 'runner.pid'), JSON.stringify({ watchdogPid: 111, childPid: 222 }))
+    const killed: number[] = []
+    runLoopCleanup(dir, { git: () => {}, isAlive: () => true, killTree: (pid) => { killed.push(pid) } })
+    expect(killed).toEqual([]) // that runner belongs to a live, healthy loop
+    expect(existsSync(join(dir, '.yoke', 'runner.pid'))).toBe(true) // left for the live loop
+  })
+
   it('removes a stale lock but keeps a live one', () => {
     mkdirSync(join(dir, '.yoke'), { recursive: true })
     writeFileSync(lockPath(dir), JSON.stringify({ pid: 4194304 + 999, startedAt: 'x' }))

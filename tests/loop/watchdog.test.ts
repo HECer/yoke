@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
+import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { runWatchdog, parseWatchdogArgs, type SpawnLike } from '../../src/loop/watchdog.js'
 
 function fakeChild() {
@@ -121,11 +124,42 @@ describe('runWatchdog process-tree kill (win32 orphan fix)', () => {
   })
 })
 
+describe('runWatchdog pid file (scoped-cleanup contract)', () => {
+  it('records watchdog + child pids on spawn and removes the file on close', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yoke-wd-pid-'))
+    const pidFile = join(dir, 'runner.pid')
+    const child = fakeChild()
+    const p = runWatchdog({ command: 'x', args: [], idleMs: 0, spawnFn: () => child, stdin: new EventEmitter() as any, pidFile })
+    const rec = JSON.parse(readFileSync(pidFile, 'utf8'))
+    expect(rec.childPid).toBe(4242)
+    expect(rec.watchdogPid).toBe(process.pid)
+    child.emit('close', 0)
+    await expect(p).resolves.toBe(0)
+    expect(existsSync(pidFile)).toBe(false)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('removes the pid file on spawn error too', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yoke-wd-pid2-'))
+    const pidFile = join(dir, 'runner.pid')
+    const child = fakeChild()
+    const p = runWatchdog({ command: 'x', args: [], idleMs: 0, spawnFn: () => child, stdin: new EventEmitter() as any, pidFile })
+    child.emit('error', new Error('ENOENT'))
+    await expect(p).resolves.toBe(127)
+    expect(existsSync(pidFile)).toBe(false)
+    rmSync(dir, { recursive: true, force: true })
+  })
+})
+
 describe('parseWatchdogArgs', () => {
   it('splits flags from the command after --', () => {
     expect(parseWatchdogArgs(['--idle-ms=500', '--', 'claude', '-p'])).toEqual({ idleMs: 500, command: 'claude', args: ['-p'] })
   })
   it('defaults idleMs to 0 when absent', () => {
     expect(parseWatchdogArgs(['--', 'node']).idleMs).toBe(0)
+  })
+  it('parses --pid-file', () => {
+    expect(parseWatchdogArgs(['--idle-ms=5', '--pid-file=/tmp/r.pid', '--', 'x']).pidFile).toBe('/tmp/r.pid')
+    expect(parseWatchdogArgs(['--', 'x']).pidFile).toBeUndefined()
   })
 })

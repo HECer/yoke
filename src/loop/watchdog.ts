@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { writeFileSync, rmSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import type { Readable } from 'node:stream'
 
@@ -31,6 +32,23 @@ export interface WatchdogOpts {
    * worktree, holds file handles, and burns API tokens. Injectable for tests.
    */
   killTree?: (pid: number, force: boolean) => void
+  /**
+   * Record {watchdogPid, childPid} here on spawn, remove on exit. This is the
+   * scoped-cleanup contract: `yoke loop cleanup` kills ONLY pids recorded in
+   * the project's own pid files — never by process-name or command-line
+   * pattern, which would take down runners belonging to other projects.
+   */
+  pidFile?: string
+}
+
+// Kill one recorded process tree, platform-appropriately. Exported for
+// `yoke loop cleanup` (scoped reaping of recorded runner pids).
+export function killProcessTree(pid: number): void {
+  if (process.platform === 'win32') {
+    try { spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }) } catch { /* best-effort */ }
+  } else {
+    try { process.kill(pid, 'SIGKILL') } catch { /* already gone */ }
+  }
 }
 
 // win32 default: kill the whole tree. Console apps have no reliable soft-close
@@ -48,6 +66,15 @@ export function runWatchdog(opts: WatchdogOpts): Promise<number> {
 
   if (opts.stdin && (child.stdin as unknown)) {
     try { (opts.stdin as Readable).pipe(child.stdin as never) } catch { /* no stdin */ }
+  }
+
+  if (opts.pidFile && child.pid !== undefined) {
+    try {
+      writeFileSync(opts.pidFile, JSON.stringify({ watchdogPid: process.pid, childPid: child.pid, startedAt: new Date().toISOString() }))
+    } catch { /* best-effort — cleanup falls back to worktree/lock handling */ }
+  }
+  const removePidFile = () => {
+    if (opts.pidFile) { try { rmSync(opts.pidFile, { force: true }) } catch { /* best-effort */ } }
   }
 
   const graceMs = opts.graceMs ?? 5000
@@ -96,25 +123,26 @@ export function runWatchdog(opts: WatchdogOpts): Promise<number> {
     }
     child.stdout.on('data', (d) => { out(d); arm() })
     child.stderr.on('data', (d) => { err(d); arm() })
-    child.on('error', () => { clear(); resolve(127) })
-    child.on('close', (code) => { clear(); resolve(killedForIdle ? 124 : (code ?? 0)) })
+    child.on('error', () => { clear(); removePidFile(); resolve(127) })
+    child.on('close', (code) => { clear(); removePidFile(); resolve(killedForIdle ? 124 : (code ?? 0)) })
     arm()
   })
 }
 
-export function parseWatchdogArgs(argv: string[]): { idleMs: number; command: string; args: string[] } {
+export function parseWatchdogArgs(argv: string[]): { idleMs: number; command: string; args: string[]; pidFile?: string } {
   const sep = argv.indexOf('--')
   const flags = sep === -1 ? argv : argv.slice(0, sep)
   const rest = sep === -1 ? [] : argv.slice(sep + 1)
   const idleArg = flags.find((a) => a.startsWith('--idle-ms='))
   const idleMs = idleArg ? Number(idleArg.slice('--idle-ms='.length)) : 0
+  const pidFile = flags.find((a) => a.startsWith('--pid-file='))?.slice('--pid-file='.length)
   const [command, ...args] = rest
-  return { idleMs: Number.isFinite(idleMs) ? idleMs : 0, command: command ?? '', args }
+  return { idleMs: Number.isFinite(idleMs) ? idleMs : 0, command: command ?? '', args, ...(pidFile ? { pidFile } : {}) }
 }
 
 const isMain = process.argv[1] ? pathToFileURL(process.argv[1]).href === import.meta.url : false
 if (isMain) {
-  const { idleMs, command, args } = parseWatchdogArgs(process.argv.slice(2))
+  const { idleMs, command, args, pidFile } = parseWatchdogArgs(process.argv.slice(2))
   if (!command) { process.stderr.write('watchdog: no command given\n'); process.exit(2) }
-  runWatchdog({ command, args, idleMs, stdin: process.stdin }).then((code) => process.exit(code))
+  runWatchdog({ command, args, idleMs, stdin: process.stdin, pidFile }).then((code) => process.exit(code))
 }

@@ -52,6 +52,11 @@ describe('ensureGitignore', () => {
     ensureGitignore(dir)
     expect(readFileSync(gi(), 'utf8')).toContain('.yoke/loop.pause')
   })
+  it('ensures the runner pid file is ignored', () => {
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/runner.pid')
+    ensureGitignore(dir)
+    expect(readFileSync(gi(), 'utf8')).toContain('.yoke/runner.pid')
+  })
   it('appends cleanly when the existing file has no trailing newline (no glued lines)', () => {
     writeFileSync(gi(), 'node_modules/') // no trailing newline — the load-bearing prefix branch
     ensureGitignore(dir)

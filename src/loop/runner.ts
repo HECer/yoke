@@ -1,5 +1,7 @@
 import type { Story } from './prd.js'
 import { execFileSync, execSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Agent } from '../retrofit/config.js'
 import type { TokenUsage } from './reporter.js'
@@ -184,11 +186,18 @@ function watchdogPath(): string {
 
 // When idleTimeoutMs > 0, run the agent THROUGH the watchdog so a silent hang is
 // killed after idleTimeoutMs of no output. The prompt still flows via stdin.
+// If the run dir has a .yoke dir, the watchdog also records its pids in
+// .yoke/runner.pid so `yoke loop cleanup` can reap orphans PROJECT-SCOPED —
+// killing by process-name/command-line pattern takes down other projects'
+// runners too. (Plain repos, e.g. `yoke review` outside a yoke project, get
+// no pid file rather than a littered .yoke dir.)
 export function buildWatchdogInvocation(inv: Invocation, idleTimeoutMs: number): Invocation {
   if (idleTimeoutMs <= 0) return inv
+  const yokeDir = join(inv.cwd, '.yoke')
+  const pidArgs = existsSync(yokeDir) ? [`--pid-file=${join(yokeDir, 'runner.pid')}`] : []
   return {
     command: 'node',
-    args: [watchdogPath(), `--idle-ms=${idleTimeoutMs}`, '--', inv.command, ...inv.args],
+    args: [watchdogPath(), `--idle-ms=${idleTimeoutMs}`, ...pidArgs, '--', inv.command, ...inv.args],
     input: inv.input,
     cwd: inv.cwd,
   }

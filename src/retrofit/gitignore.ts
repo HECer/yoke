@@ -8,6 +8,7 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/loop.log',
   '.yoke/loop.lock',
   '.yoke/loop.pause',
+  '.yoke/runner.pid',
   '.yoke/proof/',
 ]
 

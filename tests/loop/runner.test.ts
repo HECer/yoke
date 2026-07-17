@@ -154,6 +154,19 @@ describe('prompt context injection', () => {
 })
 
 describe('idle-timeout wiring', () => {
+  it('passes --pid-file into the watchdog when the run dir has a .yoke dir', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-pidwire-'))
+    mkdirSync(join(d, '.yoke'), { recursive: true })
+    const inv = buildWatchdogInvocation({ command: 'claude', args: ['-p'], input: 'hi', cwd: d }, 1200000)
+    expect(inv.args.some(a => a.startsWith('--pid-file=') && a.includes('runner.pid'))).toBe(true)
+    rmSync(d, { recursive: true, force: true })
+  })
+  it('omits --pid-file when the run dir has no .yoke dir (e.g. yoke review in a plain repo)', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-nopid-'))
+    const inv = buildWatchdogInvocation({ command: 'claude', args: ['-p'], input: 'hi', cwd: d }, 1200000)
+    expect(inv.args.some(a => a.startsWith('--pid-file='))).toBe(false)
+    rmSync(d, { recursive: true, force: true })
+  })
   it('wraps the agent command in the watchdog when idleTimeoutMs > 0', () => {
     const inv = buildWatchdogInvocation({ command: 'claude', args: ['-p'], input: 'hi', cwd: '.' }, 1200000)
     expect(inv.command).toBe('node')

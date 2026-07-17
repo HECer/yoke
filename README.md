@@ -101,6 +101,8 @@ Yoke is meant to be operated *by* your coding agent — after a retrofit, the ag
 
 > ⚠️ **Long runs from inside an agent session:** a multi-story `yoke loop run` outlives most agents' shell-tool timeouts (Claude Code's Bash tool defaults to 2 minutes). If the outer tool call is killed mid-run, you get a stale lock and possibly half-finished state — which *looks* like a hang. Rules of thumb: run the loop **in the background** (e.g. Claude Code's `run_in_background`), keep batches small (`--max=3..5`), poll with `yoke loop status`, and after any interrupted run do `yoke loop cleanup` before the next one. A `running` status with no update for 20+ minutes on a claude runner is worth checking — since 0.5.0 the runner streams continuously, so prolonged true silence is no longer normal.
 
+> ⚠️ **Never kill agent processes by name or command-line pattern** (e.g. every process matching `dangerously-skip-permissions`): on a machine running several yoke projects, that takes down the *healthy* runners of the other projects mid-story — they stall and their loops block. `yoke loop cleanup` is the scoped alternative: each watchdog records its pids in the project's `.yoke/runner.pid`, and cleanup kills exactly those recorded trees — nothing else on the machine.
+
 ### Agent cheat sheet — every command is an exit-code contract
 
 Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) can branch on exit codes without parsing prose.
