@@ -9,6 +9,8 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/loop.lock',
   '.yoke/loop.pause',
   '.yoke/runner.pid',
+  '.yoke/ambiguity.md',
+  '.yoke/story-durations.json',
   '.yoke/proof/',
 ]
 

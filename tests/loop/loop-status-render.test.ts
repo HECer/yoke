@@ -46,6 +46,16 @@ describe('loopStatus with a status file', () => {
     const now = () => new Date('2026-06-29T10:05:00.000Z') // 5m later, < 20m
     expect(loopStatus(dir, now)).not.toMatch(/possibly stuck/i)
   })
+  it('shows percent and a remaining-time estimate for a running loop', () => {
+    writeStatus(dir, { state: 'running', phase: 'implementing', story: 'S3', storyTitle: 'x',
+      iteration: 3, progress: { passed: 2, total: 8 }, percent: 25,
+      eta: { avgStoryMs: 240_000, remainingStories: 6, etaMs: 1_440_000 },
+      startedAt: '2026-06-29T10:00:00.000Z', updatedAt: '2026-06-29T10:00:00.000Z' })
+    const out = loopStatus(dir, () => new Date('2026-06-29T10:01:00.000Z'))
+    expect(out).toContain('(25%)')
+    expect(out).toContain('~24m remaining')
+    expect(out).toContain('4m/story')
+  })
   it('does NOT show the stuck hint for a blocked status even if old', () => {
     writeStatus(dir, { state: 'blocked', reason: 'verify failed', story: 'S5', storyTitle: 'x',
       iteration: 19, progress: { passed: 18, total: 45 },

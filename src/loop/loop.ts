@@ -1,4 +1,4 @@
-import { existsSync, unlinkSync } from 'node:fs'
+import { existsSync, unlinkSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { loadPrd, savePrd, selectNextStory, allPass, progress } from './prd.js'
 import { stopTheLineGate, preDispatchGate, type GitOps } from './gates.js'
@@ -38,6 +38,24 @@ export interface LoopResult {
 // The loop consumes (deletes) it and stops with state 'paused' — never mid-story.
 export function pauseFilePath(targetDir: string): string {
   return join(targetDir, '.yoke', 'loop.pause')
+}
+
+// Abort channel for an agent that hits genuinely undecidable acceptance criteria
+// (only instructed to use it under loop.onAmbiguity: abort). Honoured whenever
+// present: without this check, an agent that stopped without changes would sail
+// through verify on pre-existing green tests and be falsely marked done.
+export function ambiguityFilePath(dir: string): string {
+  return join(dir, '.yoke', 'ambiguity.md')
+}
+
+function consumeAmbiguity(dir: string): string | null {
+  const file = ambiguityFilePath(dir)
+  if (!existsSync(file)) return null
+  let content = ''
+  try { content = readFileSync(file, 'utf8') } catch { /* the signal alone still blocks */ }
+  try { unlinkSync(file) } catch { /* best-effort consume */ }
+  const compact = content.replace(/\s+/g, ' ').trim().slice(0, 500)
+  return compact || 'agent reported ambiguous acceptance criteria without details'
 }
 
 export function runLoop(opts: LoopOptions): LoopResult {
@@ -94,11 +112,18 @@ export function runLoop(opts: LoopOptions): LoopResult {
     if (opts.isolate) {
       const wt = join(opts.targetDir, '.yoke', 'worktrees', story.id)
       const wtPrd = join(wt, relative(opts.targetDir, opts.prdPath))
+      let landed: { passed: number; total: number } | null = null
       try {
         opts.git.addWorktree(opts.targetDir, wt)
         const result = opts.runner({ targetDir: wt, story })
         iterations++
         if (result.tokens) reporter.addTokens(result.tokens)
+        const ambiguity = consumeAmbiguity(wt)
+        if (ambiguity) {
+          const reason = `story ${story.id} stopped: ambiguous acceptance criteria — ${ambiguity}`
+          reporter.blocked(reason)
+          return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+        }
         // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
         // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
         reporter.phase('verifying')
@@ -144,6 +169,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         savePrd(wtPrd, updated)
         opts.git.commitAll(wt, `yoke: complete ${story.id} ${story.title}`)
         opts.git.integrate(opts.targetDir, wt)
+        landed = progress(updated)
       } catch (e) {
         const reason = blockReason(`isolated iteration failed for ${story.id}: ${(e as Error).message}`, opts.targetDir, opts.git)
         reporter.blocked(reason)
@@ -151,12 +177,20 @@ export function runLoop(opts: LoopOptions): LoopResult {
       } finally {
         try { opts.git.removeWorktree(opts.targetDir, wt) } catch { /* cleanup is best-effort */ }
       }
+      if (landed) reporter.storyDone({ id: story.id, title: story.title }, landed)
       continue
     }
 
     const result = opts.runner({ targetDir: opts.targetDir, story })
     iterations++
     if (result.tokens) reporter.addTokens(result.tokens)
+
+    const ambiguity = consumeAmbiguity(opts.targetDir)
+    if (ambiguity) {
+      const reason = `story ${story.id} stopped: ambiguous acceptance criteria — ${ambiguity}`
+      reporter.blocked(reason)
+      return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+    }
 
     // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
     // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
@@ -228,5 +262,6 @@ export function runLoop(opts: LoopOptions): LoopResult {
         finalProgress: progress(stories),
       }
     }
+    reporter.storyDone({ id: story.id, title: story.title }, progress(updated))
   }
 }

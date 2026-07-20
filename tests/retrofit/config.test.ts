@@ -90,6 +90,21 @@ describe('yoke config', () => {
     expect(loadConfig(dir)?.smoke).toBeUndefined()
   })
 
+  it('accepts loop.onAmbiguity abort and round-trips it', () => {
+    const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true, onAmbiguity: 'abort' as const } }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)!.loop.onAmbiguity).toBe('abort')
+  })
+
+  it('leaves loop.onAmbiguity undefined when omitted (default: do not stop)', () => {
+    saveConfig(dir, defaultConfig('1.0.0'))
+    expect(loadConfig(dir)!.loop.onAmbiguity).toBeUndefined()
+  })
+
+  it('rejects an unknown loop.onAmbiguity value', () => {
+    expect(() => YokeConfigSchema.parse({ canonVersion: '1', agents: [], loop: { enabled: true, onAmbiguity: 'ask' } })).toThrow()
+  })
+
   it('rejects a smoke section with empty flows', () => {
     mkdirSync(join(dir, '.yoke'), { recursive: true })
     writeFileSync(join(dir, '.yoke', 'config.yaml'), 'canonVersion: "1"\nagents: []\nloop:\n  enabled: false\nsmoke:\n  baseUrl: http://x\n  flows: []\n')

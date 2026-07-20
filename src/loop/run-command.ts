@@ -4,11 +4,11 @@ import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand } from '../
 import { loadPrd, progress } from './prd.js'
 import { runLoop } from './loop.js'
 import { realGitOps } from './git.js'
-import { makeRunner, makeReviewRunner, isAgentAvailable, type AgentRunner } from './runner.js'
+import { makeRunner, makeReviewRunner, isAgentAvailable, type AgentRunner, type AmbiguityPolicy } from './runner.js'
 import type { Agent } from '../retrofit/config.js'
 import type { GitOps } from './gates.js'
 import { commandVerifier, retryingVerifier, type Verifier } from './verify.js'
-import { readStatus, makeReporter, type LoopReporter } from './reporter.js'
+import { readStatus, makeReporter, fmtDuration, type LoopReporter } from './reporter.js'
 import { acquireLock, releaseLock } from './lock.js'
 import { maybeAutoUpgrade } from '../update/upgrade.js'
 
@@ -49,9 +49,13 @@ export function loopStatus(targetDir: string, now: () => Date = () => new Date()
   const st = readStatus(targetDir)
   if (!st) return `Loop: ${enabled ? 'enabled' : 'disabled'}\nPRD: ${prog}`
   const head = `Loop: ${st.state.toUpperCase()}${st.story ? ` on ${st.story}${st.storyTitle ? ` "${st.storyTitle}"` : ''}` : ''}`
-  const meta = [st.phase, `iteration ${st.iteration}`, `${st.progress.passed}/${st.progress.total}`, `updated ${relativeTime(st.updatedAt, now())}`]
+  const pct = st.percent !== undefined ? ` (${st.percent}%)` : ''
+  const meta = [st.phase, `iteration ${st.iteration}`, `${st.progress.passed}/${st.progress.total}${pct}`, `updated ${relativeTime(st.updatedAt, now())}`]
     .filter(Boolean).join(' · ')
   const lines = [head, `  ${meta}`]
+  if (st.state === 'running' && st.eta && st.eta.remainingStories > 0) {
+    lines.push(`  ~${fmtDuration(st.eta.etaMs)} remaining (Ø ${fmtDuration(st.eta.avgStoryMs)}/story)`)
+  }
   if (st.reason) lines.push(`  reason: ${st.reason}`)
   const ageMs = now().getTime() - Date.parse(st.updatedAt)
   if (st.state === 'running' && ageMs > STALE_MINUTES * 60_000) {
@@ -80,6 +84,8 @@ export interface RunLoopCommandOptions {
   timeoutMinutes?: number
   /** Emit NDJSON status lines on stdout instead of the human narrative (machine consumers own stdout). */
   json?: boolean
+  /** Ambiguous-criteria handling; flag beats config.loop.onAmbiguity; default 'resolve' (never stop). */
+  onAmbiguity?: AmbiguityPolicy
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -119,7 +125,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }
     // Token reporting is part of the machine interface: in --json mode a claude
     // runner switches to stream-json so cumulative usage rides on every status.
-    runner = makeRunner(runnerAgent, idleMs, { tokenReport: opts.json === true })
+    runner = makeRunner(runnerAgent, idleMs, { tokenReport: opts.json === true, onAmbiguity: opts.onAmbiguity ?? config.loop.onAmbiguity })
   }
 
   let review = opts.reviewRunner

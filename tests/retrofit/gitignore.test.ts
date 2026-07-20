@@ -57,6 +57,14 @@ describe('ensureGitignore', () => {
     ensureGitignore(dir)
     expect(readFileSync(gi(), 'utf8')).toContain('.yoke/runner.pid')
   })
+  it('ensures the ambiguity abort file and story duration history are ignored', () => {
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/ambiguity.md')
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/story-durations.json')
+    ensureGitignore(dir)
+    const text = readFileSync(gi(), 'utf8')
+    expect(text).toContain('.yoke/ambiguity.md')
+    expect(text).toContain('.yoke/story-durations.json')
+  })
   it('appends cleanly when the existing file has no trailing newline (no glued lines)', () => {
     writeFileSync(gi(), 'node_modules/') // no trailing newline — the load-bearing prefix branch
     ensureGitignore(dir)

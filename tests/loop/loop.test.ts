@@ -225,6 +225,7 @@ function recordingReporter(): { reporter: LoopReporter; events: string[] } {
     capReached: () => events.push('cap'),
     paused: () => events.push('paused'),
     addTokens: (u) => events.push(`tokens:${u.inputTokens}/${u.outputTokens}`),
+    storyDone: (s, p) => events.push(`done:${s.id}:${p.passed}/${p.total}`),
   }
   return { reporter, events }
 }
@@ -260,6 +261,46 @@ describe('runLoop reporter', () => {
     runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: dirtyAfter, verify: verifyOk, maxIterations: 10, reporter })
     const blocked = events.find(e => e.startsWith('blocked:'))!
     expect(blocked).toMatch(/uncommitted changes/i)
+  })
+})
+
+describe('runLoop storyDone reporting', () => {
+  it('reports storyDone after each committed story with updated progress', () => {
+    const { reporter, events } = recordingReporter()
+    runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, maxIterations: 10, reporter })
+    expect(events).toContain('done:S1:1/2')
+    expect(events).toContain('done:S2:2/2')
+    expect(events.indexOf('done:S1:1/2')).toBeGreaterThan(events.indexOf('phase:committing'))
+  })
+
+  it('does not report storyDone when the story blocks at verify', () => {
+    const { reporter, events } = recordingReporter()
+    const verifyRed: Verifier = () => ({ passed: false, summary: 'red' })
+    runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyRed, maxIterations: 10, reporter })
+    expect(events.some(e => e.startsWith('done:'))).toBe(false)
+  })
+})
+
+describe('runLoop ambiguity abort channel', () => {
+  const ambiguousRunner: AgentRunner = (ctx) => {
+    mkdirSync(join(ctx.targetDir, '.yoke'), { recursive: true })
+    writeFileSync(join(ctx.targetDir, '.yoke', 'ambiguity.md'), 'Which auth provider should S1 use?')
+    return { success: true, summary: 'stopped on ambiguity' }
+  }
+
+  it('blocks with the agent question, consumes the file, and never verifies or commits', () => {
+    const commits: string[] = []
+    let verified = 0
+    const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m), addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
+    const verify: Verifier = () => { verified += 1; return { passed: true, summary: 'green' } }
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: ambiguousRunner, git, verify, maxIterations: 10 })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/ambiguous/i)
+    expect(res.reason).toContain('Which auth provider')
+    expect(verified).toBe(0)                                            // no green-wash of an unimplemented story
+    expect(commits).toHaveLength(0)
+    expect(loadPrd(prd()).every(s => !s.passes)).toBe(true)
+    expect(existsSync(join(dir, '.yoke', 'ambiguity.md'))).toBe(false)  // signal consumed
   })
 })
 
@@ -332,6 +373,22 @@ describe('runLoop with isolation', () => {
     })
     expect(seen).toBe('S1')
     expect(process.env.YOKE_STORY).toBeUndefined()
+  })
+
+  it('honours the ambiguity file written inside an isolated worktree', () => {
+    const removed: string[] = []
+    const ambiguousRunner: AgentRunner = (ctx) => {
+      writeFileSync(join(ctx.targetDir, '.yoke', 'ambiguity.md'), 'Undecidable criterion')
+      return { success: true, summary: 'stopped' }
+    }
+    const res = runLoop({
+      prdPath: isoPrd(), targetDir: isoDir, runner: ambiguousRunner, git: fsWorktreeGit(isoDir, removed),
+      verify: verifyOk, isolate: true, maxIterations: 5,
+    })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toContain('Undecidable criterion')
+    expect(loadPrd(isoPrd())[0].passes).toBe(false)  // main tree untouched
+    expect(removed.length).toBe(1)                    // worktree still cleaned up
   })
 
   it('blocks (does not crash) when addWorktree throws, leaving the main PRD untouched', () => {

@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, readdirSync, rmSync, mkdirSync, readFileSyn
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { statSync } from 'node:fs'
-import { writeStatus, readStatus, makeReporter, noopReporter, appendLog, type LoopStatus, type LoopReporter } from '../../src/loop/reporter.js'
+import { writeStatus, readStatus, makeReporter, noopReporter, appendLog, fmtDuration, type LoopStatus, type LoopReporter } from '../../src/loop/reporter.js'
 
 let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-rep-')) })
@@ -187,6 +187,108 @@ describe('noopReporter', () => {
     noopReporter.storyStart({ id: 'S1', title: 'x' }, 1, prog)
     noopReporter.blocked('x')
     expect(existsSync(join(dir, '.yoke', 'loop-status.json'))).toBe(false)
+  })
+})
+
+function tickingClock(startIso: string) {
+  let t = Date.parse(startIso)
+  return { now: () => new Date(t), advance: (ms: number) => { t += ms } }
+}
+
+describe('progress percent + ETA', () => {
+  it('adds percent to every status write', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, { passed: 1, total: 4 })
+    expect(readStatus(dir)?.percent).toBe(25)
+  })
+
+  it('storyDone records the duration and reports progress + remaining estimate', () => {
+    const clock = tickingClock('2026-06-29T10:00:00.000Z')
+    const lines: string[] = []
+    const r = makeReporter(dir, { log: (s) => lines.push(s) }, clock.now)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, { passed: 0, total: 4 })
+    clock.advance(120_000) // the story took 2 minutes
+    r.storyDone({ id: 'S1', title: 'First' }, { passed: 1, total: 4 })
+    const st = readStatus(dir)!
+    expect(st.state).toBe('running')
+    expect(st.percent).toBe(25)
+    expect(st.eta).toEqual({ avgStoryMs: 120_000, remainingStories: 3, etaMs: 360_000 })
+    const done = lines[lines.length - 1]
+    expect(done).toContain('S1')
+    expect(done).toContain('done in 2m')
+    expect(done).toContain('1/4')
+    expect(done).toContain('~6m left')
+  })
+
+  it('averages completed-story durations for the estimate', () => {
+    const clock = tickingClock('2026-06-29T10:00:00.000Z')
+    const r = makeReporter(dir, { log: () => {} }, clock.now)
+    r.storyStart({ id: 'S1', title: 'a' }, 1, { passed: 0, total: 4 })
+    clock.advance(120_000)
+    r.storyDone({ id: 'S1', title: 'a' }, { passed: 1, total: 4 })
+    r.storyStart({ id: 'S2', title: 'b' }, 2, { passed: 1, total: 4 })
+    clock.advance(240_000)
+    r.storyDone({ id: 'S2', title: 'b' }, { passed: 2, total: 4 })
+    // avg(2m, 4m) = 3m; 2 stories remain → ~6m
+    expect(readStatus(dir)?.eta).toEqual({ avgStoryMs: 180_000, remainingStories: 2, etaMs: 360_000 })
+  })
+
+  it('persists durations to .yoke/story-durations.json for later runs', () => {
+    const clock = tickingClock('2026-06-29T10:00:00.000Z')
+    const r = makeReporter(dir, { log: () => {} }, clock.now)
+    r.storyStart({ id: 'S1', title: 'a' }, 1, { passed: 0, total: 2 })
+    clock.advance(60_000)
+    r.storyDone({ id: 'S1', title: 'a' }, { passed: 1, total: 2 })
+    const recorded = JSON.parse(readFileSync(join(dir, '.yoke', 'story-durations.json'), 'utf8'))
+    expect(recorded).toEqual([{ storyId: 'S1', ms: 60_000 }])
+  })
+
+  it('a fresh reporter estimates from persisted history (experience across runs)', () => {
+    const clock = tickingClock('2026-06-29T10:00:00.000Z')
+    const r1 = makeReporter(dir, { log: () => {} }, clock.now)
+    r1.storyStart({ id: 'S1', title: 'a' }, 1, { passed: 0, total: 2 })
+    clock.advance(60_000)
+    r1.storyDone({ id: 'S1', title: 'a' }, { passed: 1, total: 2 })
+    // new process, new reporter — history comes from disk
+    const lines: string[] = []
+    const r2 = makeReporter(dir, { log: (s) => lines.push(s) }, fixedNow)
+    r2.storyStart({ id: 'S2', title: 'b' }, 1, { passed: 1, total: 2 })
+    expect(readStatus(dir)?.eta).toEqual({ avgStoryMs: 60_000, remainingStories: 1, etaMs: 60_000 })
+    expect(lines[0]).toContain('~1m left')
+  })
+
+  it('storyStart shows no estimate when no durations exist yet', () => {
+    const lines: string[] = []
+    const r = makeReporter(dir, { log: (s) => lines.push(s) }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'a' }, 1, prog)
+    expect(readStatus(dir)?.eta).toBeUndefined()
+    expect(lines[0]).not.toContain('left')
+  })
+
+  it('emits a storyDone NDJSON status line in json mode', () => {
+    const clock = tickingClock('2026-06-29T10:00:00.000Z')
+    const lines: string[] = []
+    const r = makeReporter(dir, { log: (s) => lines.push(s), json: true }, clock.now)
+    r.storyStart({ id: 'S1', title: 'a' }, 1, { passed: 0, total: 2 })
+    clock.advance(90_000)
+    r.storyDone({ id: 'S1', title: 'a' }, { passed: 1, total: 2 })
+    const last = JSON.parse(lines[lines.length - 1])
+    expect(last).toMatchObject({ type: 'status', state: 'running', story: 'S1', progress: { passed: 1, total: 2 }, percent: 50 })
+    expect(last.eta).toEqual({ avgStoryMs: 90_000, remainingStories: 1, etaMs: 90_000 })
+  })
+
+  it('noopReporter.storyDone does nothing', () => {
+    noopReporter.storyDone({ id: 'S1', title: 'x' }, { passed: 1, total: 2 })
+    expect(existsSync(join(dir, '.yoke', 'story-durations.json'))).toBe(false)
+  })
+})
+
+describe('fmtDuration', () => {
+  it('formats seconds, minutes and hours compactly', () => {
+    expect(fmtDuration(45_000)).toBe('45s')
+    expect(fmtDuration(120_000)).toBe('2m')
+    expect(fmtDuration(268_000)).toBe('4m28s')
+    expect(fmtDuration(4_320_000)).toBe('1h12m')
   })
 })
 

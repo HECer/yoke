@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.0 — 2026-07-20
+
+### Added
+- **Live progress + ETA.** Story completions are now first-class events: the console shows
+  `✓ S6 done in 4m28s — 20/45 (44%) · ~1h40m left`, every status (file, NDJSON stream,
+  `yoke loop status`) carries `percent` and an `eta` block. The estimate averages the
+  durations of stories completed **in this run** (current velocity) and falls back to the
+  persisted history of previous runs (`.yoke/story-durations.json`, last 50, gitignored).
+  No data → no estimate, never an invented one.
+- **Ambiguity policy** (`loop.onAmbiguity` / `--on-ambiguity=<resolve|abort>`). The runner
+  prompt now always forbids asking questions (a loop run has nobody to answer). Default
+  `resolve`: the agent settles ambiguous criteria itself, states the interpretation, and the
+  loop never stops. Opt-in `abort`: the agent writes its open questions to
+  `.yoke/ambiguity.md` and stops; the loop consumes the file, skips verify (an unimplemented
+  story would otherwise pass on pre-existing green tests), and blocks with the question as
+  the reason. Companion principle: clarifying questions belong in the planning round, before
+  the loop starts.
+
 ## 0.7.0 — 2026-07-17
 
 ### Added

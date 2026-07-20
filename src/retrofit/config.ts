@@ -15,7 +15,13 @@ const SmokeSchema = z.object({ baseUrl: z.string().min(1), flows: z.array(SmokeF
 export const YokeConfigSchema = z.object({
   canonVersion: z.string().min(1),
   agents: z.array(AgentSchema),
-  loop: z.object({ enabled: z.boolean(), timeoutMinutes: z.number().optional() }),
+  loop: z.object({
+    enabled: z.boolean(),
+    timeoutMinutes: z.number().optional(),
+    // Ambiguous acceptance criteria: 'resolve' (default — agent decides and continues)
+    // or 'abort' (agent stops the story via .yoke/ambiguity.md for a human decision).
+    onAmbiguity: z.enum(['resolve', 'abort']).optional(),
+  }),
   verify: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
   codeGraph: CodeGraphSchema.optional(),
   smoke: SmokeSchema.optional(),
@@ -29,7 +35,7 @@ export interface SmokeConfig { baseUrl: string; flows: SmokeFlow[] }
 export interface YokeConfig {
   canonVersion: string
   agents: Agent[]
-  loop: { enabled: boolean; timeoutMinutes?: number }
+  loop: { enabled: boolean; timeoutMinutes?: number; onAmbiguity?: 'resolve' | 'abort' }
   verify?: { command: string; retries?: number }
   codeGraph?: CodeGraph
   smoke?: SmokeConfig

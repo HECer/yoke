@@ -25,7 +25,13 @@ export function contextBlockFor(targetDir: string): string {
   return formatForPrompt(loadContext(contextDir(targetDir)))
 }
 
-export function buildClaudePrompt(story: Story, context: string): string {
+// How the agent handles ambiguous acceptance criteria: 'resolve' (default —
+// pick the most consistent interpretation and keep going) or 'abort' (stop the
+// story via .yoke/ambiguity.md so the human decides). All questions belong in
+// the planning round; a loop run never has anyone to ask.
+export type AmbiguityPolicy = 'resolve' | 'abort'
+
+export function buildClaudePrompt(story: Story, context: string, onAmbiguity: AmbiguityPolicy = 'resolve'): string {
   const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
   const lines = [
     'You are an autonomous coding agent running inside the Yoke loop.',
@@ -46,6 +52,10 @@ export function buildClaudePrompt(story: Story, context: string): string {
     '- Do not create summary, plan, or analysis documents — only files the story itself needs.',
     '- If a check fails, fix the root cause; never bypass it (e.g. --no-verify) or pass by weakening tests.',
     '- Report the outcome faithfully: if a criterion is unmet or tests fail, say so plainly instead of claiming success.',
+    '- Never ask questions or wait for input — you run unattended and nobody can answer.',
+    onAmbiguity === 'abort'
+      ? '- If an acceptance criterion is genuinely undecidable, do NOT guess: write the open question(s) to .yoke/ambiguity.md, change nothing else, and stop.'
+      : '- If an acceptance criterion is ambiguous, resolve it yourself in the way most consistent with the other criteria and the existing code, and state your interpretation in your final message.',
     '- Keep your final message to a few short sentences: what changed and what you verified.',
   )
   return lines.join('\n')
@@ -275,6 +285,8 @@ export function runAgent(inv: Invocation): AgentResult {
 export interface RunnerOpts {
   /** Run claude in stream-json mode and report cumulative token usage on the AgentResult. */
   tokenReport?: boolean
+  /** Ambiguous-criteria handling for the implementer prompt (default 'resolve': never stop). */
+  onAmbiguity?: AmbiguityPolicy
   /** Test seam for the normal (inherit-stdio) execution path. */
   exec?: (inv: Invocation) => void
   /** Test seam for the captured (piped-stdout) execution path. */
@@ -287,7 +299,7 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
   // redundant for claude and meaningless elsewhere; kept for caller compatibility.
   const captureTokens = agent === 'claude'
   return (ctx: AgentContext): AgentResult => {
-    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir)), ctx.targetDir, captureTokens)
+    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir), opts.onAmbiguity), ctx.targetDir, captureTokens)
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     if (captureTokens) {
       const capture = opts.execCapture ?? runCliCapture

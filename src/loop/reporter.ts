@@ -23,6 +23,44 @@ export function appendLog(dir: string, line: string, capBytes: number = LOG_CAP_
 export type LoopState = 'running' | 'blocked' | 'complete' | 'cap-reached' | 'paused'
 export type LoopPhase = 'implementing' | 'verifying' | 'reviewing' | 'committing'
 
+// Remaining-time estimate from observed story durations (current run first,
+// falling back to the persisted history of previous runs).
+export interface LoopEta { avgStoryMs: number; remainingStories: number; etaMs: number }
+
+export function fmtDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return s % 60 > 0 ? `${m}m${s % 60}s` : `${m}m`
+  const h = Math.floor(m / 60)
+  return m % 60 > 0 ? `${h}h${m % 60}m` : `${h}h`
+}
+
+export const DURATION_HISTORY_CAP = 50
+export interface StoryDuration { storyId: string; ms: number }
+
+function durationsPath(dir: string): string {
+  return join(dir, '.yoke', 'story-durations.json')
+}
+
+export function readDurations(dir: string): StoryDuration[] {
+  try {
+    const arr: unknown = JSON.parse(readFileSync(durationsPath(dir), 'utf8'))
+    if (!Array.isArray(arr)) return []
+    return arr.filter((d): d is StoryDuration => typeof (d as StoryDuration)?.ms === 'number' && (d as StoryDuration).ms > 0)
+  } catch {
+    return []
+  }
+}
+
+function appendDuration(dir: string, d: StoryDuration): void {
+  const all = [...readDurations(dir), d].slice(-DURATION_HISTORY_CAP)
+  try {
+    mkdirSync(join(dir, '.yoke'), { recursive: true })
+    writeFileSync(durationsPath(dir), JSON.stringify(all))
+  } catch { /* observability must never abort the loop */ }
+}
+
 // Cumulative runner token usage across the run (claude stream-json runners only).
 // model is the last-seen model id from the stream (absent if the CLI never reported one).
 export interface TokenUsage { inputTokens: number; outputTokens: number; model?: string }
@@ -35,6 +73,8 @@ export interface LoopStatus {
   reason?: string
   iteration: number
   progress: { passed: number; total: number }
+  percent?: number
+  eta?: LoopEta
   startedAt: string
   updatedAt: string
   tokens?: TokenUsage
@@ -67,6 +107,8 @@ export interface Progress { passed: number; total: number }
 
 export interface LoopReporter {
   storyStart(story: StoryRef, iteration: number, progress: Progress): void
+  /** A story landed (verified + committed): record its duration and refresh the estimate. */
+  storyDone(story: StoryRef, progress: Progress): void
   phase(phase: LoopPhase): void
   blocked(reason: string): void
   complete(progress: Progress): void
@@ -92,9 +134,24 @@ export function makeReporter(
   const emitConsole = (line: string) => { if (!opts.quiet) sink(line) }
   let current: LoopStatus | null = null
   let tokens: TokenUsage | undefined
+  // ETA source: durations of stories completed in THIS run beat the persisted
+  // history of earlier runs (current velocity over old experience).
+  const history = readDurations(dir).map(h => h.ms)
+  const runDurations: number[] = []
+  let storyStartedAt: number | null = null
+
+  const percentOf = (p: Progress): number => (p.total > 0 ? Math.round((p.passed / p.total) * 100) : 0)
+  const etaFor = (p: Progress): LoopEta | undefined => {
+    const pool = runDurations.length > 0 ? runDurations : history
+    if (pool.length === 0) return undefined
+    const avg = pool.reduce((a, b) => a + b, 0) / pool.length
+    const remainingStories = Math.max(0, p.total - p.passed)
+    return { avgStoryMs: Math.round(avg), remainingStories, etaMs: Math.round(avg * remainingStories) }
+  }
 
   const persist = (status: LoopStatus, logLabel: string, consoleLine: string) => {
-    const next = tokens ? { ...status, tokens: { ...tokens } } : status
+    const withPercent = { ...status, percent: percentOf(status.progress) }
+    const next = tokens ? { ...withPercent, tokens: { ...tokens } } : withPercent
     current = next
     try {
       writeStatus(dir, next)
@@ -108,11 +165,33 @@ export function makeReporter(
   return {
     storyStart(story, iteration, progress) {
       const ts = now().toISOString()
+      storyStartedAt = now().getTime()
+      const eta = etaFor(progress)
+      const hint = eta ? ` · ~${fmtDuration(eta.etaMs)} left (Ø ${fmtDuration(eta.avgStoryMs)}/story)` : ''
       persist(
         { state: 'running', phase: 'implementing', story: story.id, storyTitle: story.title,
-          iteration, progress, startedAt: ts, updatedAt: ts },
+          iteration, progress, ...(eta ? { eta } : {}), startedAt: ts, updatedAt: ts },
         'implementing',
-        `▶ ${story.id} (${progress.passed}/${progress.total}) — implementing…`,
+        `▶ ${story.id} (${progress.passed}/${progress.total} · ${percentOf(progress)}%) — implementing…${hint}`,
+      )
+    },
+    storyDone(story, progress) {
+      const t = now().getTime()
+      const ms = storyStartedAt !== null ? Math.max(0, t - storyStartedAt) : undefined
+      storyStartedAt = null
+      if (ms !== undefined) {
+        runDurations.push(ms)
+        appendDuration(dir, { storyId: story.id, ms })
+      }
+      const eta = etaFor(progress)
+      const base = current ?? emptyStatus(now().toISOString())
+      const took = ms !== undefined ? ` in ${fmtDuration(ms)}` : ''
+      const hint = eta && eta.remainingStories > 0 ? ` · ~${fmtDuration(eta.etaMs)} left` : ''
+      persist(
+        { ...base, state: 'running', phase: undefined, story: story.id, storyTitle: story.title,
+          progress, ...(eta ? { eta } : {}), updatedAt: now().toISOString() },
+        'story-done',
+        `✓ ${story.id} done${took} — ${progress.passed}/${progress.total} (${percentOf(progress)}%)${hint}`,
       )
     },
     phase(phase) {
@@ -155,5 +234,5 @@ function emptyStatus(ts: string): LoopStatus {
 }
 
 export const noopReporter: LoopReporter = {
-  storyStart() {}, phase() {}, blocked() {}, complete() {}, capReached() {}, paused() {}, addTokens() {},
+  storyStart() {}, storyDone() {}, phase() {}, blocked() {}, complete() {}, capReached() {}, paused() {}, addTokens() {},
 }

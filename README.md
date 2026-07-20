@@ -323,12 +323,18 @@ The loop stops when every story is `passes: true`. State lives **outside the mod
 
 Every iteration emits token-free, harness-side feedback (Node console + local files — **zero agent tokens**):
 
-- **Live console** — `▶ S6 (19/45) — implementing… · verifying… ✔ committed → 20/45`.
-- **`.yoke/loop-status.json`** — the current state; read it any time with `yoke loop status`:
+- **Live console with progress + ETA** —
+  `▶ S6 (19/45 · 42%) — implementing… · ~1h44m left (Ø 4m/story)` … `✓ S6 done in 4m28s — 20/45 (44%) · ~1h40m left`.
+  The estimate uses the **average duration of stories completed in this run** (current
+  velocity); before the first story lands it falls back to the recorded history of previous
+  runs (`.yoke/story-durations.json`, last 50 stories, gitignored). No data yet → no estimate,
+  never a made-up one.
+- **`.yoke/loop-status.json`** — the current state (now including `percent` and an `eta`
+  block); read it any time with `yoke loop status`:
   ```
-  Loop: BLOCKED on S5 "Segment schemas"
-    verifying · iteration 19 · 18/45 · updated 2026-06-29T10:00:00.000Z
-    reason: story did not verify (working tree has uncommitted changes — review/clean before re-running)
+  Loop: RUNNING on S6 "Weekly digest"
+    implementing · iteration 20 · 19/45 (42%) · updated 30s ago
+    ~1h44m remaining (Ø 4m/story)
   ```
 - **`.yoke/loop.log`** — an append-only timeline of every phase transition.
 - **`--json`** — machine mode for supervisors: every status write is *also* emitted as one
@@ -355,14 +361,34 @@ A per-iteration **idle timeout** guards against a genuinely hung agent: if the a
 output is **never** killed — the output stream *is* the liveness signal. Set a project default
 with `loop.timeoutMinutes` in `.yoke/config.yaml`.
 
+### Ambiguous stories: questions belong in planning
+
+A loop run has nobody to ask, so the runner prompt always forbids questions. What the agent
+does when an acceptance criterion is genuinely ambiguous is configurable:
+
+- **Default (`resolve`) — never stop:** the agent picks the interpretation most consistent
+  with the other criteria and the existing code, states it in its final message, and the loop
+  keeps going.
+- **Strict (`abort`):** the agent must not guess — it writes its open question(s) to
+  `.yoke/ambiguity.md` and stops. The loop consumes that file, skips verify (an unimplemented
+  story would otherwise sail through on pre-existing green tests), and blocks with the
+  question in the reason, e.g.
+  `story S6 stopped: ambiguous acceptance criteria — Which auth provider should S6 use?`
+  Answer by sharpening the story's acceptance criteria, then re-run.
+
+Enable strict mode per run with `yoke loop run . --on-ambiguity=abort` or per project with
+`loop.onAmbiguity: abort` in `.yoke/config.yaml`. Either way, the cheapest fix is upstream:
+put every clarifying question into the PRD **before** the loop starts (`yoke prd draft`
+criteria must be testable and decision-free).
+
 The loop trusts **verify**, not the agent's exit code: a story whose tests are green is
 committed even if the agent process exited non-zero (a common Windows `.cmd`-wrapper ghost).
 A failing verify is retried up to `verify.retries` times (default 1) so a transient flake
 self-heals while a real failure still blocks.
 
-`.yoke/loop-status.json`, `.yoke/loop.log`, and `.yoke/loop.lock` are runtime artifacts;
-`yoke retrofit` gitignores them (along with `.yoke/worktrees/`, `.yoke/backup/`, and
-`.yoke/proof/`) so they never trip the clean-tree gate.
+`.yoke/loop-status.json`, `.yoke/loop.log`, `.yoke/loop.lock`, `.yoke/story-durations.json`,
+and `.yoke/ambiguity.md` are runtime artifacts; `yoke retrofit` gitignores them (along with
+`.yoke/worktrees/`, `.yoke/backup/`, and `.yoke/proof/`) so they never trip the clean-tree gate.
 
 ### Single-flight guard + cleanup
 

@@ -43,6 +43,40 @@ describe('buildClaudePrompt', () => {
   })
 })
 
+describe('buildClaudePrompt ambiguity policy', () => {
+  it('always forbids asking questions — the run is unattended', () => {
+    expect(buildClaudePrompt(story, '')).toMatch(/never ask questions/i)
+  })
+
+  it('default (resolve): instructs self-resolution and mentions no abort channel', () => {
+    const p = buildClaudePrompt(story, '')
+    expect(p).toMatch(/resolve it yourself/i)
+    expect(p).not.toContain('ambiguity.md')
+  })
+
+  it('abort: instructs writing .yoke/ambiguity.md and stopping instead of guessing', () => {
+    const p = buildClaudePrompt(story, '', 'abort')
+    expect(p).toContain('.yoke/ambiguity.md')
+    expect(p).toMatch(/do not guess/i)
+    expect(p).not.toMatch(/resolve it yourself/i)
+  })
+
+  it('makeRunner threads the policy into the invocation prompt', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yoke-amb-'))
+    try {
+      const seen: Invocation[] = []
+      const abortRunner = makeRunner('codex', 0, { exec: (inv) => { seen.push(inv) }, onAmbiguity: 'abort' })
+      abortRunner({ targetDir: dir, story })
+      expect(seen[0].input).toContain('.yoke/ambiguity.md')
+      const defaultRunner = makeRunner('codex', 0, { exec: (inv) => { seen.push(inv) } })
+      defaultRunner({ targetDir: dir, story })
+      expect(seen[1].input).not.toContain('.yoke/ambiguity.md')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('claudeInvocation', () => {
   it('passes the prompt as input, not as a CLI arg', () => {
     const inv = claudeInvocation('PROMPT TEXT', '/work')

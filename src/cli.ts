@@ -109,9 +109,14 @@ function main(argv: string[]): number | Promise<number> {
           if (!Number.isFinite(v) || v < 0) { console.error(`Invalid --timeout value: ${toArg}`); return 1 }
           timeoutMinutes = v
         }
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review, timeoutMinutes, json })
+        const oaArg = rest.find(a => a.startsWith('--on-ambiguity='))?.slice('--on-ambiguity='.length)
+        if (oaArg && oaArg !== 'resolve' && oaArg !== 'abort') {
+          console.error(`Invalid --on-ambiguity value: ${oaArg} (expected resolve|abort)`)
+          return 1
+        }
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review, timeoutMinutes, json, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined })
       }
-      console.log('usage: yoke loop <on|off|status|cleanup|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate] [--timeout=<minutes>] [--json]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|cleanup|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate] [--timeout=<minutes>] [--on-ambiguity=<resolve|abort>] [--json]> [targetDir]')
       return 1
     }
     case 'new': {
