@@ -6,13 +6,17 @@
 
 **Yoke** installs one curated canon of skills, **mechanical safety gates**, and tool wiring into any project — natively for **Claude Code, OpenAI Codex CLI, and Gemini CLI**. Then, when you want it, an opt-in autonomous loop ships your spec story-by-story: tested, cross-model-reviewed, committed — **with a screenshot to prove every story and a video for every failure**.
 
+[![npm](https://img.shields.io/npm/v/%40hecer%2Fyoke?logo=npm&color=CB3837)](https://www.npmjs.com/package/@hecer/yoke)
+[![npm downloads](https://img.shields.io/npm/dm/%40hecer%2Fyoke?logo=npm)](https://www.npmjs.com/package/@hecer/yoke)
 [![CI](https://github.com/HECer/yoke/actions/workflows/ci.yml/badge.svg)](https://github.com/HECer/yoke/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-322%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-439%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
+
+**Install:** [`npm i -g @hecer/yoke`](https://www.npmjs.com/package/@hecer/yoke)
 
 </div>
 
@@ -46,16 +50,18 @@ $ yoke prd check reading-app
 
 $ yoke loop on reading-app
 $ yoke loop run reading-app --isolate --review --max=10
-▶ STORY-1 (0/8) — implementing… · verifying… · reviewing… ✔ committed → 1/8
-▶ STORY-2 (1/8) — implementing… · verifying… ✔ committed → 2/8
-▶ STORY-3 (2/8) — implementing… · verifying… ✘ blocked: story did not verify (tests red)
+▶ STORY-1 (0/8 · 0%) — implementing… · verifying… · reviewing… · committing…
+✓ STORY-1 done in 3m12s — 1/8 (13%) · ~22m left
+▶ STORY-2 (1/8 · 13%) — implementing… · ~22m left (Ø 3m12s/story)
+✓ STORY-2 done in 2m48s — 2/8 (25%) · ~18m left
+▶ STORY-3 (2/8 · 25%) — implementing… ✘ blocked: story did not verify (tests red)
                                               # nothing was committed. fix, then re-run.
 
 $ ls reading-app/.yoke/proof/STORY-2/
 home.png  list.png                            # photographic evidence, labelled per story
 ```
 
-Every claim in that transcript is enforced by code paths with tests behind them — 322 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
+Every claim in that transcript is enforced by code paths with tests behind them — 439 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
 
 ## 🚀 Quickstart
 
@@ -302,6 +308,7 @@ yoke loop run . \
   --runner=codex \               # implement with Codex…
   --reviewer=claude \            # …review with Claude (role separation)
   --isolate \                    # each story in a throwaway git worktree
+  --on-ambiguity=abort \         # strict: stop on undecidable criteria instead of guessing
   --max=20
 yoke loop off .                 # disable
 ```
