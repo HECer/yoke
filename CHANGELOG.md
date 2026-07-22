@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.0 — 2026-07-22
+
+### Added
+- **Performance budget gate** (`perf.command` in `.yoke/config.yaml`, optional `perf.retries`).
+  A benchmark command with the same contract as verify (exit 0 = within budget) runs **after
+  verify** on every story — new loop phase `perf`, `YOKE_STORY` exposed, worktree-aware in
+  `--isolate` mode. A red benchmark blocks the story
+  (`story S6 exceeded its performance budget: …`) no matter how clean the diff is. When the
+  gate is configured, the implementer prompt names the budget command so agents keep hot
+  paths efficient and never "simplify away" an optimization without re-running the benchmark.
+- **`performance` canon skill** (28 skills now): efficiency as a measured requirement —
+  clean-by-default with the decision ladder (minimal-code → measurable acceptance criterion →
+  project perf gate), profile-first, optimize leaves not boundaries, benchmarks committed as
+  tests, the *why* of every optimization versioned so future agents don't clean fast code
+  back to slow.
+- **`authoring-prd` guidance**: performance requirements belong in acceptance criteria as
+  numbers ("imports 1M rows in < 2s"), and every clarifying question belongs in the planning
+  round — a criterion still needing a decision is not loop-ready.
+
 ## 0.8.0 — 2026-07-20
 
 ### Added

@@ -34,6 +34,8 @@ skills:
   - { id: visual-verification, path: skills/visual-verification, kind: methodology }
   # zero-to-100 bootstrap (kind: methodology)
   - { id: authoring-prd, path: skills/authoring-prd, kind: methodology }
+  # measured efficiency (kind: methodology)
+  - { id: performance, path: skills/performance, kind: methodology }
 policy:
   - { path: policy/gates.md }
   - { path: policy/roles.md }

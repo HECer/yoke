@@ -21,6 +21,8 @@ export interface LoopOptions {
   runner: AgentRunner
   git: GitOps
   verify: Verifier
+  /** Optional performance budget gate — runs after verify; a red benchmark blocks the story. */
+  perf?: Verifier
   maxIterations: number
   isolate?: boolean
   review?: AgentRunner
@@ -46,6 +48,19 @@ export function pauseFilePath(targetDir: string): string {
 // through verify on pre-existing green tests and be falsely marked done.
 export function ambiguityFilePath(dir: string): string {
   return join(dir, '.yoke', 'ambiguity.md')
+}
+
+// Run a gate command with the story id exposed via YOKE_STORY (restored after),
+// so cumulative fixtures and story-aware benchmarks know which story is on trial.
+function runGate(gate: Verifier, dir: string, storyId: string) {
+  const prev = process.env.YOKE_STORY
+  process.env.YOKE_STORY = storyId
+  try {
+    return gate(dir)
+  } finally {
+    if (prev === undefined) delete process.env.YOKE_STORY
+    else process.env.YOKE_STORY = prev
+  }
 }
 
 function consumeAmbiguity(dir: string): string | null {
@@ -127,15 +142,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
         // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
         reporter.phase('verifying')
-        const prevStory = process.env.YOKE_STORY
-        process.env.YOKE_STORY = story.id
-        let verdict
-        try {
-          verdict = opts.verify(wt)
-        } finally {
-          if (prevStory === undefined) delete process.env.YOKE_STORY
-          else process.env.YOKE_STORY = prevStory
-        }
+        const verdict = runGate(opts.verify, wt, story.id)
         if (!verdict.passed) {
           const base = result.success
             ? `story ${story.id} did not verify: ${verdict.summary}`
@@ -143,6 +150,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
           const reason = blockReason(base, opts.targetDir, opts.git)
           reporter.blocked(reason)
           return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+        }
+        if (opts.perf) {
+          reporter.phase('perf')
+          const perfVerdict = runGate(opts.perf, wt, story.id)
+          if (!perfVerdict.passed) {
+            const reason = blockReason(`story ${story.id} exceeded its performance budget: ${perfVerdict.summary}`, opts.targetDir, opts.git)
+            reporter.blocked(reason)
+            return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+          }
         }
         const summary = result.success
           ? result.summary
@@ -195,15 +211,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
     // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
     // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
     reporter.phase('verifying')
-    const prevStory = process.env.YOKE_STORY
-    process.env.YOKE_STORY = story.id
-    let verdict
-    try {
-      verdict = opts.verify(opts.targetDir)
-    } finally {
-      if (prevStory === undefined) delete process.env.YOKE_STORY
-      else process.env.YOKE_STORY = prevStory
-    }
+    const verdict = runGate(opts.verify, opts.targetDir, story.id)
     if (!verdict.passed) {
       const base = result.success
         ? `story ${story.id} did not verify: ${verdict.summary}`
@@ -215,6 +223,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
         iterations,
         reason,
         finalProgress: progress(stories),
+      }
+    }
+    if (opts.perf) {
+      reporter.phase('perf')
+      const perfVerdict = runGate(opts.perf, opts.targetDir, story.id)
+      if (!perfVerdict.passed) {
+        const reason = blockReason(`story ${story.id} exceeded its performance budget: ${perfVerdict.summary}`, opts.targetDir, opts.git)
+        reporter.blocked(reason)
+        return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
       }
     }
     const summary = result.success

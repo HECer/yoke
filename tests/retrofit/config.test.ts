@@ -90,6 +90,21 @@ describe('yoke config', () => {
     expect(loadConfig(dir)?.smoke).toBeUndefined()
   })
 
+  it('round-trips an optional perf gate command', () => {
+    const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true }, perf: { command: 'node bench.mjs' } }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)!.perf?.command).toBe('node bench.mjs')
+  })
+
+  it('accepts an optional perf.retries', () => {
+    const parsed = YokeConfigSchema.parse({ canonVersion: '1', agents: [], loop: { enabled: true }, perf: { command: 'npm run bench', retries: 2 } })
+    expect(parsed.perf?.retries).toBe(2)
+  })
+
+  it('rejects a perf section with an empty command', () => {
+    expect(() => YokeConfigSchema.parse({ canonVersion: '1', agents: [], loop: { enabled: true }, perf: { command: '' } })).toThrow()
+  })
+
   it('accepts loop.onAmbiguity abort and round-trips it', () => {
     const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true, onAmbiguity: 'abort' as const } }
     saveConfig(dir, cfg)

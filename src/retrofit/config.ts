@@ -23,6 +23,9 @@ export const YokeConfigSchema = z.object({
     onAmbiguity: z.enum(['resolve', 'abort']).optional(),
   }),
   verify: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
+  // Optional performance budget gate: a benchmark command that must exit 0 for a
+  // story to land (runs after verify). Benchmarks are noisy → retried like verify.
+  perf: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
   codeGraph: CodeGraphSchema.optional(),
   smoke: SmokeSchema.optional(),
   // Opt-in: upgrade yoke at loop START when a newer version is cached (never mid-run).
@@ -37,6 +40,7 @@ export interface YokeConfig {
   agents: Agent[]
   loop: { enabled: boolean; timeoutMinutes?: number; onAmbiguity?: 'resolve' | 'abort' }
   verify?: { command: string; retries?: number }
+  perf?: { command: string; retries?: number }
   codeGraph?: CodeGraph
   smoke?: SmokeConfig
   update?: { auto: boolean }

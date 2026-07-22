@@ -21,7 +21,7 @@ export function appendLog(dir: string, line: string, capBytes: number = LOG_CAP_
 }
 
 export type LoopState = 'running' | 'blocked' | 'complete' | 'cap-reached' | 'paused'
-export type LoopPhase = 'implementing' | 'verifying' | 'reviewing' | 'committing'
+export type LoopPhase = 'implementing' | 'verifying' | 'perf' | 'reviewing' | 'committing'
 
 // Remaining-time estimate from observed story durations (current run first,
 // falling back to the persisted history of previous runs).

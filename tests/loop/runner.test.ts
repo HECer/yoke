@@ -77,6 +77,31 @@ describe('buildClaudePrompt ambiguity policy', () => {
   })
 })
 
+describe('buildClaudePrompt performance budget', () => {
+  it('mentions the budget command and forbids regressing it when a perf gate is configured', () => {
+    const p = buildClaudePrompt(story, '', 'resolve', 'node bench.mjs')
+    expect(p).toContain('performance budget')
+    expect(p).toContain('node bench.mjs')
+    expect(p).toMatch(/exit 0/i)
+  })
+
+  it('says nothing about performance budgets when no perf gate is configured', () => {
+    expect(buildClaudePrompt(story, '')).not.toMatch(/performance budget/i)
+  })
+
+  it('makeRunner threads the perf command into the invocation prompt', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yoke-perf-'))
+    try {
+      const seen: Invocation[] = []
+      const runner = makeRunner('codex', 0, { exec: (inv) => { seen.push(inv) }, perfCommand: 'npm run bench' })
+      runner({ targetDir: dir, story })
+      expect(seen[0].input).toContain('npm run bench')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('claudeInvocation', () => {
   it('passes the prompt as input, not as a CLI arg', () => {
     const inv = claudeInvocation('PROMPT TEXT', '/work')

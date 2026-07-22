@@ -31,7 +31,7 @@ export function contextBlockFor(targetDir: string): string {
 // the planning round; a loop run never has anyone to ask.
 export type AmbiguityPolicy = 'resolve' | 'abort'
 
-export function buildClaudePrompt(story: Story, context: string, onAmbiguity: AmbiguityPolicy = 'resolve'): string {
+export function buildClaudePrompt(story: Story, context: string, onAmbiguity: AmbiguityPolicy = 'resolve', perfCommand?: string): string {
   const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
   const lines = [
     'You are an autonomous coding agent running inside the Yoke loop.',
@@ -56,6 +56,13 @@ export function buildClaudePrompt(story: Story, context: string, onAmbiguity: Am
     onAmbiguity === 'abort'
       ? '- If an acceptance criterion is genuinely undecidable, do NOT guess: write the open question(s) to .yoke/ambiguity.md, change nothing else, and stop.'
       : '- If an acceptance criterion is ambiguous, resolve it yourself in the way most consistent with the other criteria and the existing code, and state your interpretation in your final message.',
+  )
+  if (perfCommand) {
+    lines.push(
+      `- This project enforces a performance budget: \`${perfCommand}\` must exit 0 or the story is blocked. Keep hot paths efficient, and never simplify away an existing optimization without re-running that benchmark.`,
+    )
+  }
+  lines.push(
     '- Keep your final message to a few short sentences: what changed and what you verified.',
   )
   return lines.join('\n')
@@ -287,6 +294,8 @@ export interface RunnerOpts {
   tokenReport?: boolean
   /** Ambiguous-criteria handling for the implementer prompt (default 'resolve': never stop). */
   onAmbiguity?: AmbiguityPolicy
+  /** Performance budget command (config perf.command) — surfaced to the implementer so it never regresses the budget blind. */
+  perfCommand?: string
   /** Test seam for the normal (inherit-stdio) execution path. */
   exec?: (inv: Invocation) => void
   /** Test seam for the captured (piped-stdout) execution path. */
@@ -299,7 +308,7 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
   // redundant for claude and meaningless elsewhere; kept for caller compatibility.
   const captureTokens = agent === 'claude'
   return (ctx: AgentContext): AgentResult => {
-    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir), opts.onAmbiguity), ctx.targetDir, captureTokens)
+    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens)
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     if (captureTokens) {
       const capture = opts.execCapture ?? runCliCapture

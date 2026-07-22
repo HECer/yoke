@@ -86,6 +86,8 @@ export interface RunLoopCommandOptions {
   json?: boolean
   /** Ambiguous-criteria handling; flag beats config.loop.onAmbiguity; default 'resolve' (never stop). */
   onAmbiguity?: AmbiguityPolicy
+  /** Test seam for the performance budget gate (production builds it from config.perf). */
+  perf?: Verifier
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -108,6 +110,12 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }
     verify = retryingVerifier(commandVerifier(command), config.verify?.retries ?? 1)
   }
+  // Optional performance budget gate: same contract as verify (exit 0 = within
+  // budget), same flake tolerance (benchmarks are noisy).
+  let perf = opts.perf
+  if (!perf && config.perf?.command) {
+    perf = retryingVerifier(commandVerifier(config.perf.command), config.perf.retries ?? 1)
+  }
   // Opt-in self-update, loop START only — this run keeps executing the version
   // it started with; a fetched upgrade applies from the next invocation.
   maybeAutoUpgrade(config.update?.auto)
@@ -125,7 +133,11 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }
     // Token reporting is part of the machine interface: in --json mode a claude
     // runner switches to stream-json so cumulative usage rides on every status.
-    runner = makeRunner(runnerAgent, idleMs, { tokenReport: opts.json === true, onAmbiguity: opts.onAmbiguity ?? config.loop.onAmbiguity })
+    runner = makeRunner(runnerAgent, idleMs, {
+      tokenReport: opts.json === true,
+      onAmbiguity: opts.onAmbiguity ?? config.loop.onAmbiguity,
+      perfCommand: config.perf?.command,
+    })
   }
 
   let review = opts.reviewRunner
@@ -153,6 +165,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       runner,
       git: opts.git ?? realGitOps,
       verify,
+      perf,
       maxIterations: opts.maxIterations,
       isolate: opts.isolate ?? false,
       review,

@@ -203,7 +203,7 @@ Three layers — **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) 
 > instructions (tech stack, workflow, `@`-includes) inside it. Works in any yoke-written file;
 > content *outside* the markers is still replaced (and backed up under `.yoke/backup/`).
 
-## 🧰 What's in the canon — 27 skills
+## 🧰 What's in the canon — 28 skills
 
 `yoke retrofit` installs all of these into each agent natively. Provenance is credited in [`canon/skills/ATTRIBUTION.md`](canon/skills/ATTRIBUTION.md).
 
@@ -239,13 +239,14 @@ To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.
 | `retro` | Engineering retrospective from commit history |
 | `document-release` | Post-ship documentation sync (README / CHANGELOG / …) |
 
-**Yoke-native** — *authored or adapted for this harness (7)*
+**Yoke-native** — *authored or adapted for this harness (8)*
 
 | Skill | What it does |
 |---|---|
 | `yoke-retrofit` | Set up the Yoke harness in a project (detect → plan → apply) |
 | `authoring-prd` | Slice a product idea into loop-ready stories with testable acceptance criteria |
 | `minimal-code` | Write the least code that solves the task (YAGNI; ponytail-derived) |
+| `performance` | Efficiency as a measured requirement: benchmarks as tests, budgets as gates, optimizations local + documented |
 | `maintaining-context` | Keep `.yoke/context/` the durable source of truth (the Context layer) |
 | `workflow` | The default order of operations, from idea to deploy |
 | `unslop-ui` | Detect & remove AI-slop design tells (purple gradients, neon glow, emoji-icons…) |
@@ -387,6 +388,30 @@ Enable strict mode per run with `yoke loop run . --on-ambiguity=abort` or per pr
 `loop.onAmbiguity: abort` in `.yoke/config.yaml`. Either way, the cheapest fix is upstream:
 put every clarifying question into the PRD **before** the loop starts (`yoke prd draft`
 criteria must be testable and decision-free).
+
+### Performance budgets: efficiency as a gate, not a style
+
+Clean code is the default (the `minimal-code` skill) — but when efficiency matters, "should
+be fast" is a vibe the loop cannot enforce. Yoke makes it mechanical, at two levels:
+
+- **Per story:** write the requirement as a **measurable acceptance criterion**
+  ("imports 1M rows in < 2s, asserted by the bench test") and let your verify tests measure
+  it — no new machinery needed.
+- **Per project:** wire a benchmark as a standing **perf gate** in `.yoke/config.yaml`:
+
+  ```yaml
+  perf:
+    command: node bench/check-budget.mjs   # exit 0 = within budget
+    retries: 1                             # benchmarks are noisy; same retry logic as verify
+  ```
+
+  The loop runs it **after verify** on every story (phase `perf`, with `YOKE_STORY` set); a
+  red benchmark blocks the story — `story S6 exceeded its performance budget: p95 62ms > budget 50ms` —
+  no matter how clean the diff was. The implementer prompt names the budget command, so the
+  agent knows not to trade hot-path efficiency for style and never "simplifies away" an
+  optimization without re-running the benchmark. The `performance` canon skill carries the
+  method: profile first, optimize leaves not boundaries, commit benchmarks as tests, version
+  the *why* of every optimization in `context/DECISIONS.md`.
 
 The loop trusts **verify**, not the agent's exit code: a story whose tests are green is
 committed even if the agent process exited non-zero (a common Windows `.cmd`-wrapper ghost).

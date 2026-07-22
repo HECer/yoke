@@ -21,6 +21,14 @@ good stories (small, testable, ordered) let it run overnight.
 5. **Greenfield: STORY-1 scaffolds.** Project skeleton + runnable test suite + a criterion
    that the verify command (`verify.command` in `.yoke/config.yaml`) exits 0. Every later
    story stands on a green pipeline.
+6. **Performance requirements are acceptance criteria — with numbers.** "Should be fast" is
+   a vibe the loop cannot gate; "imports 1M rows in < 2s (asserted by the bench test)" is a
+   criterion. If the whole project has a budget, wire `perf.command` in `.yoke/config.yaml`
+   (see the `performance` skill) instead of repeating it per story.
+7. **Ask everything now.** Clarifying questions belong in this planning round — a loop run
+   has nobody to ask. A criterion that still needs a decision ("TBD", "choose a provider")
+   is not loop-ready; resolve it here or the agent will either guess (default) or block
+   (`--on-ambiguity=abort`).
 
 ## Format (`.yoke/prd.yaml`)
 

@@ -281,6 +281,52 @@ describe('runLoop storyDone reporting', () => {
   })
 })
 
+describe('runLoop perf gate', () => {
+  it('runs the perf gate after verify and completes when both are green', () => {
+    const order: string[] = []
+    const verify: Verifier = () => { order.push('verify'); return { passed: true, summary: 'green' } }
+    const perf: Verifier = (d) => { order.push(`perf:${d === dir}`); return { passed: true, summary: 'within budget' } }
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify, perf, maxIterations: 10 })
+    expect(res.status).toBe('complete')
+    expect(order).toEqual(['verify', 'perf:true', 'verify', 'perf:true'])
+  })
+
+  it('blocks when the perf budget is exceeded — no commit, story stays open', () => {
+    const commits: string[] = []
+    const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m), addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
+    const perfRed: Verifier = () => ({ passed: false, summary: 'p95 62ms > budget 50ms' })
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git, verify: verifyOk, perf: perfRed, maxIterations: 10 })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/performance budget/i)
+    expect(res.reason).toContain('p95 62ms > budget 50ms')
+    expect(commits).toHaveLength(0)
+    expect(loadPrd(prd()).every(s => !s.passes)).toBe(true)
+  })
+
+  it('emits a perf phase between verifying and committing', () => {
+    const { reporter, events } = recordingReporter()
+    const perfOk: Verifier = () => ({ passed: true, summary: 'ok' })
+    runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, perf: perfOk, maxIterations: 10, reporter })
+    expect(events).toContain('phase:perf')
+    expect(events.indexOf('phase:perf')).toBeGreaterThan(events.indexOf('phase:verifying'))
+    expect(events.indexOf('phase:perf')).toBeLessThan(events.indexOf('phase:committing'))
+  })
+
+  it('skips the perf phase entirely when no perf gate is configured', () => {
+    const { reporter, events } = recordingReporter()
+    runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, maxIterations: 10, reporter })
+    expect(events).not.toContain('phase:perf')
+  })
+
+  it('exposes YOKE_STORY to the perf gate and unsets it after', () => {
+    const seen: (string | undefined)[] = []
+    const perf: Verifier = () => { seen.push(process.env.YOKE_STORY); return { passed: true, summary: 'ok' } }
+    runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, perf, maxIterations: 10 })
+    expect(seen).toEqual(['S1', 'S2'])
+    expect(process.env.YOKE_STORY).toBeUndefined()
+  })
+})
+
 describe('runLoop ambiguity abort channel', () => {
   const ambiguousRunner: AgentRunner = (ctx) => {
     mkdirSync(join(ctx.targetDir, '.yoke'), { recursive: true })
@@ -373,6 +419,21 @@ describe('runLoop with isolation', () => {
     })
     expect(seen).toBe('S1')
     expect(process.env.YOKE_STORY).toBeUndefined()
+  })
+
+  it('runs the perf gate against the worktree in isolated mode and blocks there on a miss', () => {
+    const removed: string[] = []
+    const perfDirs: boolean[] = []
+    const perfRed: Verifier = (d) => { perfDirs.push(d.includes('worktrees')); return { passed: false, summary: 'bench red' } }
+    const res = runLoop({
+      prdPath: isoPrd(), targetDir: isoDir, runner: alwaysPass, git: fsWorktreeGit(isoDir, removed),
+      verify: verifyOk, perf: perfRed, isolate: true, maxIterations: 5,
+    })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/performance budget/i)
+    expect(perfDirs).toEqual([true])                 // gate ran inside the worktree
+    expect(loadPrd(isoPrd())[0].passes).toBe(false)  // main tree untouched
+    expect(removed.length).toBe(1)
   })
 
   it('honours the ambiguity file written inside an isolated worktree', () => {
