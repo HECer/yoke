@@ -1,6 +1,6 @@
 {
   "name": "@hecer/yoke",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "description": "One harness, three agents, zero trust in \"done\" — cross-agent coding harness for Claude Code, Codex CLI, and Gemini CLI: one skill canon, mechanical safety gates, an autonomous loop with screenshot/video proofs.",
   "type": "module",
   "bin": {
@@ -9,6 +9,7 @@
   "files": [
     "dist",
     "canon",
+    "codex-plugin",
     "bench",
     "docs",
     "CHANGELOG.md",
@@ -49,9 +50,14 @@
   },
   "scripts": {
     "build": "tsc",
+    "lint": "tsc --noEmit",
     "test": "vitest run",
+    "docs:check": "node scripts/release-metadata.mjs --check",
+    "docs:update": "node scripts/release-metadata.mjs --write",
+    "audit:ci": "npm audit --audit-level=high",
+    "package:check": "npm pack --dry-run",
     "yoke": "tsx src/cli.ts",
-    "prepublishOnly": "npm run build && vitest run"
+    "prepublishOnly": "npm run lint && npm run build && vitest run && npm run docs:check && npm run package:check"
   },
   "dependencies": {
     "yaml": "^2.5.0",
@@ -62,6 +68,6 @@
     "smol-toml": "^1.7.0",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",
-    "vitest": "^2.1.1"
+    "vitest": "^4.1.10"
   }
 }

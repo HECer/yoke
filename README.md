@@ -2,6 +2,11 @@
 
 # 🐂 Yoke
 
+<!-- yoke:version:start -->1.0.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->453<!-- yoke:tests:end -->
+<!-- yoke:skills:start -->28<!-- yoke:skills:end -->
+<!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
+
 ### One harness, three agents — and zero trust in "done."
 
 **Yoke** installs one curated canon of skills, **mechanical safety gates**, and tool wiring into any project — natively for **Claude Code, OpenAI Codex CLI, and Gemini CLI**. Then, when you want it, an opt-in autonomous loop ships your spec story-by-story: tested, cross-model-reviewed, committed — **with a screenshot to prove every story and a video for every failure**.

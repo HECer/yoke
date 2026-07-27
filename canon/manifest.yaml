@@ -1,5 +1,5 @@
 name: yoke-canon
-version: 0.1.0
+version: 1.0.0
 agents: [claude, codex, gemini]
 skills:
   - { id: tdd, path: skills/tdd, kind: methodology }
