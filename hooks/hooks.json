@@ -1,0 +1,19 @@
+{
+  "description": "Yoke command compression for Codex",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/canon/tools/codex-rtk-hook.mjs\"",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"node (Join-Path $env:PLUGIN_ROOT 'canon/tools/codex-rtk-hook.mjs')\"",
+            "timeout": 5,
+            "statusMessage": "Compressing command output with RTK"
+          }
+        ]
+      }
+    ]
+  }
+}

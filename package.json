@@ -9,7 +9,9 @@
   "files": [
     "dist",
     "canon",
-    "codex-plugin",
+    ".codex-plugin",
+    "agents",
+    "hooks",
     "bench",
     "docs",
     "CHANGELOG.md",

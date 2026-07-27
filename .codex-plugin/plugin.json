@@ -1,0 +1,7 @@
+{
+  "name": "yoke",
+  "version": "1.0.0",
+  "description": "Cross-agent coding discipline, mechanical gates, and release workflows",
+  "skills": "./canon/skills/",
+  "hooks": "./hooks/hooks.json"
+}

@@ -21,6 +21,7 @@ tools: []
 `)
   w('AGENTS.md', '# Baseline\n')
   w('skills/tdd/SKILL.md', '---\nname: tdd\ndescription: d\n---\nbody')
+  w('tools/codex-rtk-hook.mjs', '#!/usr/bin/env node\n')
   w('context/PROJECT.md', '# Project\n')
   w('context/DECISIONS.md', '# Decisions\n')
   w('context/KNOWLEDGE.md', '# Knowledge\n')
