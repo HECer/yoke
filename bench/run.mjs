@@ -12,6 +12,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { validateResult } from './result-schema.mjs'
 
 const benchDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = dirname(benchDir)
@@ -94,19 +95,30 @@ const loc = (dir) => readdirSync(dir).reduce((n, f) => {
 }, 0)
 
 const result = {
+  schemaVersion: 1,
+  fixtureVersion: 'string-kit@1',
   runner,
-  label: args.label ?? null,
+  sampleLabel: String(args.label ?? `${runner}-${stamp}`),
+  permissionProfile: args.unsafe ? 'unsafe' : 'safe',
   yokeVersion: JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')).version,
   fixture: 'string-kit',
   startedAt: new Date(t0).toISOString(),
   wallClockMs,
   exitCode,
   finalState: last.state ?? null,
+  verdict: exitCode === 0 ? 'completed' : (/api key|login|auth/i.test(String(status.reason ?? '')) ? 'auth-failed' : 'blocked'),
+  blocker: exitCode === 0 ? null : (status.reason ?? 'runner exited without a diagnostic'),
+  conflicts: events.filter(e => /conflict/i.test(String(e.reason ?? e.summary ?? ''))).length,
+  iterations: stories.reduce((sum, story) => sum + story.iterations, 0),
+  finalTestsPass: stories.every(story => story.finalTestsPass),
   progress: last.progress ?? null,
-  tokens: status.tokens ?? null, // claude runner only; gemini/codex report none (documented gap)
+  usageAvailable: Number(status.tokens?.inputTokens ?? 0) + Number(status.tokens?.outputTokens ?? 0) > 0,
+  modelAvailable: typeof status.tokens?.model === 'string' && status.tokens.model !== '<synthetic>',
+  tokens: status.tokens ?? null,
   stories,
   srcLoc: loc(join(runDir, 'src')),
 }
+validateResult(result)
 
 mkdirSync(join(benchDir, 'results'), { recursive: true })
 const out = join(benchDir, 'results', `${runner}-${stamp}.json`)

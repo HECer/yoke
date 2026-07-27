@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "string-kit@1",
+  "runner": "codex",
+  "sampleLabel": "matrix-2026-07-27T18:03:26.202Z",
+  "permissionProfile": "safe",
+  "usageAvailable": false,
+  "modelAvailable": false,
+  "verdict": "unavailable",
+  "blocker": "Zugriff verweigert",
+  "conflicts": 0,
+  "wallClockMs": null,
+  "iterations": 0,
+  "finalTestsPass": false
+}

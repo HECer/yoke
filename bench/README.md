@@ -22,11 +22,14 @@ network.
 ```bash
 npm run build
 node bench/run.mjs --runner=claude   # or gemini / codex
+node bench/run-matrix.mjs --label=release-1.0
 ```
 
 Each run copies the fixture to `bench/.runs/<runner>-<stamp>` (git-ignored), git-inits it,
 drives `yoke loop run --json --max=6 --timeout=10`, and writes a result JSON to
 `bench/results/`. Runs are billed against your own accounts for the agent CLIs involved.
+The matrix is sequential to avoid cross-provider load distortion. Missing CLIs and authentication
+failures are stored as honest `unavailable`/`auth-failed` rows and never presented as quality measurements.
 
 ## Caveats (read before quoting numbers)
 

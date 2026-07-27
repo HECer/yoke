@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "string-kit@1",
+  "runner": "gemini",
+  "sampleLabel": "matrix-2026-07-27T18:03:26.202Z",
+  "permissionProfile": "safe",
+  "yokeVersion": "1.0.0",
+  "fixture": "string-kit",
+  "startedAt": "2026-07-27T18:03:45.223Z",
+  "wallClockMs": 13844,
+  "exitCode": 1,
+  "finalState": "blocked",
+  "verdict": "blocked",
+  "blocker": "Gemini runner exited before implementation; fixture verification remained red.",
+  "conflicts": 0,
+  "iterations": 1,
+  "finalTestsPass": false,
+  "progress": {
+    "passed": 0,
+    "total": 3
+  },
+  "usageAvailable": false,
+  "modelAvailable": false,
+  "tokens": null,
+  "stories": [
+    {
+      "id": "STORY-1",
+      "durationMs": 7040,
+      "iterations": 1,
+      "finalTestsPass": false
+    },
+    {
+      "id": "STORY-2",
+      "durationMs": null,
+      "iterations": 0,
+      "finalTestsPass": false
+    },
+    {
+      "id": "STORY-3",
+      "durationMs": null,
+      "iterations": 0,
+      "finalTestsPass": false
+    }
+  ],
+  "srcLoc": 3
+}

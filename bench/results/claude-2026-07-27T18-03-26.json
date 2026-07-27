@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "string-kit@1",
+  "runner": "claude",
+  "sampleLabel": "matrix-2026-07-27T18:03:26.202Z",
+  "permissionProfile": "safe",
+  "yokeVersion": "1.0.0",
+  "fixture": "string-kit",
+  "startedAt": "2026-07-27T18:03:26.598Z",
+  "wallClockMs": 11345,
+  "exitCode": 1,
+  "finalState": "blocked",
+  "verdict": "blocked",
+  "blocker": "Claude runner exited before implementation; fixture verification remained red.",
+  "conflicts": 0,
+  "iterations": 1,
+  "finalTestsPass": false,
+  "progress": {
+    "passed": 0,
+    "total": 3
+  },
+  "usageAvailable": false,
+  "modelAvailable": false,
+  "tokens": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "model": "<synthetic>"
+  },
+  "stories": [
+    {
+      "id": "STORY-1",
+      "durationMs": 10954,
+      "iterations": 1,
+      "finalTestsPass": false
+    },
+    {
+      "id": "STORY-2",
+      "durationMs": null,
+      "iterations": 0,
+      "finalTestsPass": false
+    },
+    {
+      "id": "STORY-3",
+      "durationMs": null,
+      "iterations": 0,
+      "finalTestsPass": false
+    }
+  ],
+  "srcLoc": 3
+}
