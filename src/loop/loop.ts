@@ -6,6 +6,7 @@ import type { AgentRunner } from './runner.js'
 import type { Verifier } from './verify.js'
 import { appendDecision, contextDir } from '../context/context.js'
 import { noopReporter, type LoopReporter } from './reporter.js'
+import type { CommitIdentity } from './identity.js'
 
 function blockReason(base: string, targetDir: string, git: GitOps): string {
   let dirty = false
@@ -27,6 +28,7 @@ export interface LoopOptions {
   isolate?: boolean
   review?: AgentRunner
   reporter?: LoopReporter
+  commitIdentity?: CommitIdentity
 }
 
 export interface LoopResult {
@@ -183,7 +185,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         })
         const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
         savePrd(wtPrd, updated)
-        opts.git.commitAll(wt, `yoke: complete ${story.id} ${story.title}`)
+        opts.git.commitAll(wt, `yoke: complete ${story.id} ${story.title}`, opts.commitIdentity)
         opts.git.integrate(opts.targetDir, wt)
         landed = progress(updated)
       } catch (e) {
@@ -266,7 +268,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
     const updated = onDisk.map(s => (s.id === story.id ? { ...s, passes: true } : s))
     savePrd(opts.prdPath, updated)
     try {
-      opts.git.commitAll(opts.targetDir, `yoke: complete ${story.id} ${story.title}`)
+      opts.git.commitAll(opts.targetDir, `yoke: complete ${story.id} ${story.title}`, opts.commitIdentity)
     } catch (e) {
       savePrd(opts.prdPath, onDisk) // revert — never persist passes:true without a commit
       dec.rollback()                 // and never leave an orphan decision

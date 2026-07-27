@@ -12,6 +12,7 @@ import { readStatus, makeReporter, fmtDuration, type LoopReporter } from './repo
 import { acquireLock, releaseLock } from './lock.js'
 import { maybeAutoUpgrade } from '../update/upgrade.js'
 import type { PermissionProfile } from '../agents/types.js'
+import { resolveCommitIdentity, type CommitIdentity } from './identity.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -91,6 +92,7 @@ export interface RunLoopCommandOptions {
   perf?: Verifier
   permissions?: PermissionProfile
   allowSelfReview?: boolean
+  commitIdentity?: CommitIdentity
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -125,6 +127,20 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
 
   const available = opts.isAvailable ?? isAgentAvailable
   const runnerAgent: Agent = opts.agent ?? config.agents[0] ?? 'claude'
+  const git = opts.git ?? realGitOps
+  let commitIdentity = opts.commitIdentity
+  if (!commitIdentity && !opts.git) {
+    try {
+      commitIdentity = resolveCommitIdentity(targetDir, config.commit)
+    } catch (error) {
+      console.error((error as Error).message)
+      return 2
+    }
+  }
+  if (commitIdentity) {
+    const announce = opts.json ? console.error : console.log
+    announce(`Commits: ${commitIdentity.authorName} <${commitIdentity.authorEmail}> · co-authors: ${commitIdentity.allowCoAuthors ? 'allowed' : 'disabled'}`)
+  }
 
   const idleMs = resolveIdleMs(opts.timeoutMinutes, config.loop.timeoutMinutes)
   const permissions = opts.permissions ?? config.runner?.permissions ?? 'safe'
@@ -181,7 +197,8 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       prdPath: path,
       targetDir,
       runner,
-      git: opts.git ?? realGitOps,
+      git,
+      commitIdentity,
       verify,
       perf,
       maxIterations: opts.maxIterations,

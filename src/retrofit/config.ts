@@ -24,6 +24,11 @@ export const YokeConfigSchema = z.object({
     onAmbiguity: z.enum(['resolve', 'abort']).optional(),
   }),
   runner: z.object({ permissions: z.enum(['safe', 'unsafe', 'read-only']) }).optional(),
+  commit: z.object({
+    authorName: z.string().min(1).optional(),
+    authorEmail: z.string().email().optional(),
+    allowCoAuthors: z.boolean().optional(),
+  }).optional(),
   verify: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
   // Optional performance budget gate: a benchmark command that must exit 0 for a
   // story to land (runs after verify). Benchmarks are noisy → retried like verify.
@@ -42,6 +47,7 @@ export interface YokeConfig {
   agents: Agent[]
   loop: { enabled: boolean; timeoutMinutes?: number; onAmbiguity?: 'resolve' | 'abort' }
   runner?: { permissions: PermissionProfile }
+  commit?: { authorName?: string; authorEmail?: string; allowCoAuthors?: boolean }
   verify?: { command: string; retries?: number }
   perf?: { command: string; retries?: number }
   codeGraph?: CodeGraph

@@ -1,4 +1,5 @@
 import type { Story } from './prd.js'
+import type { CommitIdentity } from './identity.js'
 
 export interface GateResult {
   ok: boolean
@@ -7,7 +8,7 @@ export interface GateResult {
 
 export interface GitOps {
   isClean(dir: string): boolean
-  commitAll(dir: string, message: string): void
+  commitAll(dir: string, message: string, identity?: CommitIdentity): void
   addWorktree(repoDir: string, worktreePath: string): void
   removeWorktree(repoDir: string, worktreePath: string): void
   integrate(repoDir: string, worktreePath: string): void

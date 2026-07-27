@@ -82,6 +82,12 @@ describe('yoke config', () => {
     expect(() => YokeConfigSchema.parse({ canonVersion: '1', agents: [], loop: { enabled: true }, runner: { permissions: 'root' } })).toThrow()
   })
 
+  it('round-trips commit identity and defaults co-authors in the resolver, not YAML', () => {
+    const cfg = { ...defaultConfig('1.0.0'), commit: { authorName: 'HECer', authorEmail: 'hec_er@web.de' } }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)?.commit).toEqual(cfg.commit)
+  })
+
   it('round-trips an optional codeGraph choice', () => {
     const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: false }, codeGraph: 'serena' as const }
     saveConfig(dir, cfg)

@@ -526,15 +526,10 @@ Analyze the diff and group changes into logical commits. Each commit should repr
 
 **Each commit must be independently valid** — no broken imports, no references to code that doesn't exist yet.
 
-The **final commit** (VERSION + CHANGELOG) gets the version tag and co-author trailer:
+The **final commit** contains VERSION + CHANGELOG. The project's commit identity and co-author policy always wins; never add an AI co-author trailer unless the project explicitly allows it.
 
 ```bash
-git commit -m "$(cat <<'EOF'
-chore: bump version and changelog (vX.Y.Z.W)
-
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
-EOF
-)"
+git commit -m "chore: bump version and changelog (vX.Y.Z.W)"
 ```
 
 ---

@@ -36,6 +36,16 @@ describe('realGitOps', () => {
     expect(log).toContain('yoke: test commit')
   })
 
+  it('enforces the supplied author and committer and strips AI co-author trailers by default', () => {
+    writeFileSync(join(dir, 'owned.txt'), 'human owned')
+    realGitOps.commitAll(dir, 'feat: owned\n\nCo-Authored-By: Claude <noreply@anthropic.com>', {
+      authorName: 'HECer', authorEmail: 'hec_er@web.de', allowCoAuthors: false,
+    })
+    const meta = execFileSync('git', ['log', '-1', '--format=%an|%ae|%cn|%ce%n%B'], { cwd: dir }).toString()
+    expect(meta).toContain('HECer|hec_er@web.de|HECer|hec_er@web.de')
+    expect(meta).not.toContain('Co-Authored-By:')
+  })
+
   it('commitAll throws when there is nothing to commit', () => {
     expect(() => realGitOps.commitAll(dir, 'yoke: empty commit')).toThrow(/nothing to commit/)
   })
