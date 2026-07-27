@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.log
+.worktrees/
 .yoke/worktrees/
 .yoke/backup/
 
