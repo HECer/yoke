@@ -327,6 +327,18 @@ describe('runLoop perf gate', () => {
   })
 })
 
+describe('runLoop audit gate', () => {
+  it('blocks after verify and before commit when the security audit is red', () => {
+    const commits: string[] = []
+    const git: GitOps = { ...cleanGit(), commitAll: (_d, message) => commits.push(message) }
+    const audit: Verifier = () => ({ passed: false, summary: 'secret.github-token src/config.ts:2' })
+    const result = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git, verify: verifyOk, audit, maxIterations: 10 })
+    expect(result.status).toBe('blocked')
+    expect(result.reason).toMatch(/security audit/i)
+    expect(commits).toEqual([])
+  })
+})
+
 describe('runLoop ambiguity abort channel', () => {
   const ambiguousRunner: AgentRunner = (ctx) => {
     mkdirSync(join(ctx.targetDir, '.yoke'), { recursive: true })

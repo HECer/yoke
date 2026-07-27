@@ -13,6 +13,7 @@ import { acquireLock, releaseLock } from './lock.js'
 import { maybeAutoUpgrade } from '../update/upgrade.js'
 import type { PermissionProfile } from '../agents/types.js'
 import { resolveCommitIdentity, type CommitIdentity } from './identity.js'
+import { runAudit } from '../audit/command.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -93,6 +94,7 @@ export interface RunLoopCommandOptions {
   permissions?: PermissionProfile
   allowSelfReview?: boolean
   commitIdentity?: CommitIdentity
+  audit?: Verifier
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -135,6 +137,13 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     } catch (error) {
       console.error((error as Error).message)
       return 2
+    }
+  }
+  let audit = opts.audit
+  if (!audit && config.audit?.enabled) {
+    audit = (dir) => {
+      const result = runAudit(dir, { command: config.audit?.command, suppressions: config.audit?.suppressions })
+      return { passed: result.code === 0, summary: result.error ?? (result.findings.map(f => `${f.ruleId} ${f.file}${f.line ? `:${f.line}` : ''}`).join(', ') || 'audit passed') }
     }
   }
   if (commitIdentity) {
@@ -201,6 +210,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       commitIdentity,
       verify,
       perf,
+      audit,
       maxIterations: opts.maxIterations,
       isolate: opts.isolate ?? false,
       review,

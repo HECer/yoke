@@ -29,6 +29,12 @@ export const YokeConfigSchema = z.object({
     authorEmail: z.string().email().optional(),
     allowCoAuthors: z.boolean().optional(),
   }).optional(),
+  audit: z.object({
+    enabled: z.boolean(),
+    command: z.string().min(1).optional(),
+    suppressionsVersion: z.literal(1).optional(),
+    suppressions: z.array(z.object({ ruleId: z.string().min(1), file: z.string().min(1).optional(), reason: z.string(), expires: z.string().optional() })).optional(),
+  }).optional(),
   verify: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
   // Optional performance budget gate: a benchmark command that must exit 0 for a
   // story to land (runs after verify). Benchmarks are noisy → retried like verify.
@@ -48,6 +54,7 @@ export interface YokeConfig {
   loop: { enabled: boolean; timeoutMinutes?: number; onAmbiguity?: 'resolve' | 'abort' }
   runner?: { permissions: PermissionProfile }
   commit?: { authorName?: string; authorEmail?: string; allowCoAuthors?: boolean }
+  audit?: { enabled: boolean; command?: string; suppressionsVersion?: 1; suppressions?: Array<{ ruleId: string; file?: string; reason: string; expires?: string }> }
   verify?: { command: string; retries?: number }
   perf?: { command: string; retries?: number }
   codeGraph?: CodeGraph

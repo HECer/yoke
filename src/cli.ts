@@ -14,6 +14,7 @@ import { runLoopCleanup } from './loop/cleanup.js'
 import { runFlowSmoke } from './smoke/command.js'
 import { maybeNotifyUpdate, currentYokeVersion } from './update/check.js'
 import { runUpgrade } from './update/upgrade.js'
+import { printAudit, runAudit } from './audit/command.js'
 
 export { runRetrofit } from './retrofit/command.js'
 
@@ -201,6 +202,13 @@ function main(argv: string[]): number | Promise<number> {
         timeoutMinutes = v
       }
       return runReview(targetDir, { reviewer: reviewerArg as Agent | undefined, base, focus, allowSelfReview, json, timeoutMinutes })
+    }
+    case 'audit': {
+      const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
+      const json = rest.includes('--json')
+      const result = runAudit(targetDir)
+      printAudit(result, json)
+      return result.code
     }
     case 'flow-smoke': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'

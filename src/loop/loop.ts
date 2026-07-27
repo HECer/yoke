@@ -24,6 +24,7 @@ export interface LoopOptions {
   verify: Verifier
   /** Optional performance budget gate — runs after verify; a red benchmark blocks the story. */
   perf?: Verifier
+  audit?: Verifier
   maxIterations: number
   isolate?: boolean
   review?: AgentRunner
@@ -162,6 +163,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
             return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
           }
         }
+        if (opts.audit) {
+          reporter.phase('audit')
+          const auditVerdict = runGate(opts.audit, wt, story.id)
+          if (!auditVerdict.passed) {
+            const reason = blockReason(`story ${story.id} failed security audit: ${auditVerdict.summary}`, opts.targetDir, opts.git)
+            reporter.blocked(reason)
+            return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+          }
+        }
         const summary = result.success
           ? result.summary
           : `${result.summary} (runner exited non-zero but verify is green)`
@@ -232,6 +242,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
       const perfVerdict = runGate(opts.perf, opts.targetDir, story.id)
       if (!perfVerdict.passed) {
         const reason = blockReason(`story ${story.id} exceeded its performance budget: ${perfVerdict.summary}`, opts.targetDir, opts.git)
+        reporter.blocked(reason)
+        return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+      }
+    }
+    if (opts.audit) {
+      reporter.phase('audit')
+      const auditVerdict = runGate(opts.audit, opts.targetDir, story.id)
+      if (!auditVerdict.passed) {
+        const reason = blockReason(`story ${story.id} failed security audit: ${auditVerdict.summary}`, opts.targetDir, opts.git)
         reporter.blocked(reason)
         return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
       }
