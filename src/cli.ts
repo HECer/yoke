@@ -101,6 +101,7 @@ function main(argv: string[]): number | Promise<number> {
           reviewer = reviewerArg as Agent
         }
         const review = rest.includes('--review')
+        const allowSelfReview = rest.includes('--allow-self-review')
         const permissions = rest.includes('--unsafe') ? 'unsafe' as const : undefined
         const json = rest.includes('--json')
         const toArg = rest.find(a => a.startsWith('--timeout='))
@@ -115,9 +116,9 @@ function main(argv: string[]): number | Promise<number> {
           console.error(`Invalid --on-ambiguity value: ${oaArg} (expected resolve|abort)`)
           return 1
         }
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review, timeoutMinutes, json, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, permissions })
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review, allowSelfReview, timeoutMinutes, json, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, permissions })
       }
-      console.log('usage: yoke loop <on|off|status|cleanup|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--isolate] [--unsafe] [--timeout=<minutes>] [--on-ambiguity=<resolve|abort>] [--json]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|cleanup|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--isolate] [--unsafe] [--timeout=<minutes>] [--on-ambiguity=<resolve|abort>] [--json]> [targetDir]')
       return 1
     }
     case 'new': {
@@ -190,6 +191,8 @@ function main(argv: string[]): number | Promise<number> {
       }
       const base = rest.find(a => a.startsWith('--base='))?.slice('--base='.length)
       const focus = rest.find(a => a.startsWith('--focus='))?.slice('--focus='.length)
+      const allowSelfReview = rest.includes('--allow-self-review')
+      const json = rest.includes('--json')
       const toArg = rest.find(a => a.startsWith('--timeout='))
       let timeoutMinutes: number | undefined
       if (toArg) {
@@ -197,7 +200,7 @@ function main(argv: string[]): number | Promise<number> {
         if (!Number.isFinite(v) || v < 0) { console.error(`Invalid --timeout value: ${toArg}`); return 1 }
         timeoutMinutes = v
       }
-      return runReview(targetDir, { reviewer: reviewerArg as Agent | undefined, base, focus, timeoutMinutes })
+      return runReview(targetDir, { reviewer: reviewerArg as Agent | undefined, base, focus, allowSelfReview, json, timeoutMinutes })
     }
     case 'flow-smoke': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'

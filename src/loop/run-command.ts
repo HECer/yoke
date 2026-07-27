@@ -90,6 +90,7 @@ export interface RunLoopCommandOptions {
   /** Test seam for the performance budget gate (production builds it from config.perf). */
   perf?: Verifier
   permissions?: PermissionProfile
+  allowSelfReview?: boolean
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -148,12 +149,23 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
 
   let review = opts.reviewRunner
   if (!review && (opts.review || opts.reviewer)) {
-    const reviewerAgent: Agent = opts.reviewer ?? runnerAgent
-    if (!available(reviewerAgent)) {
-      console.error(`Reviewer agent CLI "${reviewerAgent}" was not found on PATH. Install it, or pick another with --reviewer=<claude|codex|gemini>.`)
+    const reviewerAgent = opts.reviewer ?? (['codex', 'gemini', 'claude'] as Agent[]).find(agent => agent !== runnerAgent && available(agent))
+    if (!reviewerAgent) {
+      if (!opts.allowSelfReview) {
+        console.error('No independent reviewer CLI is available. Install or select a second agent, or pass --allow-self-review explicitly.')
+        return 2
+      }
+    }
+    const resolvedReviewer = reviewerAgent ?? runnerAgent
+    if (resolvedReviewer === runnerAgent && !opts.allowSelfReview) {
+      console.error(`Reviewer "${resolvedReviewer}" is also the implementer. Pick another agent or pass --allow-self-review explicitly.`)
       return 2
     }
-    review = makeReviewRunner(reviewerAgent, idleMs)
+    if (!available(resolvedReviewer)) {
+      console.error(`Reviewer agent CLI "${resolvedReviewer}" was not found on PATH. Install it, or pick another with --reviewer=<claude|codex|gemini>.`)
+      return 2
+    }
+    review = makeReviewRunner(resolvedReviewer, idleMs)
   }
 
   const lock = acquireLock(targetDir)

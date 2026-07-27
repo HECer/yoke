@@ -130,6 +130,12 @@ describe('yoke loop CLI', () => {
     expect(code).toBe(2)
   })
 
+  it('refuses explicit self-review unless it is allowed', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    const common = { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk, agent: 'claude' as const, reviewer: 'claude' as const, isAvailable: () => true }
+    expect(runLoopCommand(dir, common)).toBe(2)
+  })
+
   it('returns 2 when another loop holds the lock', () => {
     saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
     writeFileSync(join(dir, '.yoke', 'loop.lock'), JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }))

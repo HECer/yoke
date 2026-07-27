@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner, contextBlockFor, buildWatchdogInvocation, win32CommandString, parseClaudeStreamUsage, runnerInvocation, type Invocation } from '../../src/loop/runner.js'
@@ -178,6 +178,27 @@ describe('buildReviewPrompt', () => {
 describe('makeReviewRunner', () => {
   it('returns a callable AgentRunner', () => {
     expect(typeof makeReviewRunner('claude')).toBe('function')
+  })
+
+  it('requires and consumes a schema-valid verdict file', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-review-runner-'))
+    const runner = makeReviewRunner('codex', 0, (inv) => {
+      const match = inv.input.match(/Write your final verdict to this absolute path: (.+)/)!
+      writeFileSync(match[1], JSON.stringify({ approved: true, summary: 'all criteria met', findings: [] }))
+    })
+    const result = runner({ targetDir: d, story })
+    expect(result.success).toBe(true)
+    expect(result.summary).toContain('all criteria met')
+    expect(existsSync(join(d, '.yoke', 'review-verdict.json'))).toBe(false)
+    rmSync(d, { recursive: true, force: true })
+  })
+
+  it('rejects a successful process that writes no verdict', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-review-runner-'))
+    const result = makeReviewRunner('codex', 0, () => {})({ targetDir: d, story })
+    expect(result.success).toBe(false)
+    expect(result.summary).toMatch(/missing/i)
+    rmSync(d, { recursive: true, force: true })
   })
 })
 

@@ -22,4 +22,10 @@ describe('buildStandaloneReviewPrompt', () => {
     expect(p).toMatch(/actually (show|verified|observe)/i)
     expect(p).toMatch(/few short sentences/i)
   })
+  it('includes the absolute structured verdict contract when a path is supplied', () => {
+    const p = buildStandaloneReviewPrompt('x', undefined, 'C:\\repo\\.yoke\\review-verdict.json')
+    expect(p).toContain('C:\\repo\\.yoke\\review-verdict.json')
+    expect(p).toContain('"approved":boolean')
+    expect(p).toContain('blocking|warning|info')
+  })
 })

@@ -1,6 +1,6 @@
 import type { Story } from './prd.js'
 import { execFileSync, execSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Agent } from '../retrofit/config.js'
@@ -9,6 +9,7 @@ import { loadContext, formatForPrompt, contextDir } from '../context/context.js'
 import { buildProviderInvocation } from '../agents/providers.js'
 import { parseProviderTelemetry } from '../agents/telemetry.js'
 import type { PermissionProfile } from '../agents/types.js'
+import { formatReviewContract, readReviewVerdict, reviewVerdictPath } from '../review/verdict.js'
 
 export interface AgentContext {
   targetDir: string
@@ -71,7 +72,7 @@ export function buildClaudePrompt(story: Story, context: string, onAmbiguity: Am
   return lines.join('\n')
 }
 
-export function buildReviewPrompt(story: Story, context: string): string {
+export function buildReviewPrompt(story: Story, context: string, verdictPath?: string): string {
   const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
   const lines = [
     'You are an independent reviewer inside the Yoke loop. You did NOT implement this change.',
@@ -84,16 +85,17 @@ export function buildReviewPrompt(story: Story, context: string): string {
     'Acceptance criteria:',
     criteria,
     '',
-    'Approve by exiting 0 ONLY if every acceptance criterion is met and the change is sound.',
-    'If you find ANY blocking issue (an unmet criterion, a bug, a missing test), exit non-zero to reject.',
+    'Approve ONLY if every acceptance criterion is met and the change is sound.',
+    'If you find ANY blocking issue (an unmet criterion, a bug, a missing test), reject.',
     'Base your verdict only on what the diff and test runs actually show — never assume unverified behavior.',
     'Do not modify files. Do not commit.',
     'Keep your verdict to a few short sentences.',
   )
+  if (verdictPath) lines.push('', formatReviewContract(verdictPath))
   return lines.join('\n')
 }
 
-export function buildStandaloneReviewPrompt(scope: string, focus?: string): string {
+export function buildStandaloneReviewPrompt(scope: string, focus?: string, verdictPath?: string): string {
   const lines = [
     'You are an independent reviewer. You did NOT write this change.',
     `Review ${scope}. Run git yourself to see the diff (e.g. \`git diff\`, or \`git diff <base>..HEAD\`).`,
@@ -108,6 +110,7 @@ export function buildStandaloneReviewPrompt(scope: string, focus?: string): stri
     'Do not modify files. Do not commit.',
     'Keep your verdict to a few short sentences.',
   )
+  if (verdictPath) lines.push('', formatReviewContract(verdictPath))
   return lines.join('\n')
 }
 
@@ -330,15 +333,27 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
 
 export const claudeRunner: AgentRunner = makeRunner('claude')
 
-export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0): AgentRunner {
+export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec: (inv: Invocation) => void = runCli): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
-    const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir)), ctx.targetDir)
+    const verdictPath = reviewVerdictPath(ctx.targetDir)
+    mkdirSync(join(ctx.targetDir, '.yoke'), { recursive: true })
+    rmSync(verdictPath, { force: true })
+    const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir), verdictPath), ctx.targetDir, 'safe')
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
+    let processFailure: string | undefined
     try {
-      runCli(inv)
-      return { success: true, summary: `${agent} approved ${ctx.story.id}` }
+      exec(inv)
     } catch (e) {
-      return { success: false, summary: `${agent} rejected ${ctx.story.id}: ${(e as Error).message}` }
+      processFailure = (e as Error).message
+    }
+    try {
+      const verdict = readReviewVerdict(verdictPath)
+      if (processFailure) return { success: false, summary: `review process failed: ${processFailure}; verdict: ${verdict.summary}` }
+      return verdict.approved
+        ? { success: true, summary: `${agent} approved ${ctx.story.id}: ${verdict.summary}` }
+        : { success: false, summary: `${agent} rejected ${ctx.story.id}: ${verdict.summary}` }
+    } catch (e) {
+      return { success: false, summary: `${processFailure ? `review process failed: ${processFailure}; ` : ''}${(e as Error).message}` }
     }
   }
 }
