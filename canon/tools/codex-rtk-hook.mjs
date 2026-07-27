@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
