@@ -33,6 +33,9 @@ beforeEach(() => {
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('yoke loop CLI', () => {
+  it('rejects unsupported parallel CLI workers instead of silently running serially', () => {
+    expect(runLoopCommand(dir, { maxIterations: 1, parallel: 2 })).toBe(2)
+  })
   it('setLoopEnabled on/off updates the config', () => {
     saveConfig(dir, cfg())
     setLoopEnabled(dir, false)

@@ -99,6 +99,10 @@ export interface RunLoopCommandOptions {
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
+  if ((opts.parallel ?? 1) > 1) {
+    console.error('Parallel CLI workers are not enabled yet. The dependency-aware dispatcher and merge queue are available as APIs; use --parallel=1 for the synchronous provider runner.')
+    return 2
+  }
   const config = loadConfig(targetDir)
   if (!config?.loop.enabled) {
     console.error('Loop is disabled. Enable it with: yoke loop on')

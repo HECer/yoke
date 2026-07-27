@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.0 — 2026-07-27
+
+### Added
+- Native Codex skills, project config, hooks, reusable agents, and plugin metadata.
+- Safe provider permission profiles and structured cross-provider telemetry.
+- Schema-validated independent review verdicts with explicit self-review opt-in.
+- Human-owned commit identity enforcement; AI co-author trailers default off.
+- `yoke audit` dependency, secret, and sensitive-diff gate with versioned suppressions.
+- PRD dependency graphs, collision areas, agent affinity, claims, FIFO merge queue, and bounded async dispatcher APIs.
+- Reproducible cross-runner benchmark schema and matrix launcher.
+
+### Changed
+- Dangerous permission bypass is opt-in via `--unsafe`.
+- Worktree cleanup is non-destructive unless `--remove-worktrees` is passed.
+- Reviews no longer trust process exit code alone.
+
+### Security
+- Vitest upgraded to 4.1.10; the dependency tree reports zero known vulnerabilities.
+
+
 ## 0.9.0 — 2026-07-22
 
 ### Added

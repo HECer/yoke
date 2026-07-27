@@ -3,7 +3,7 @@
 # 🐂 Yoke
 
 <!-- yoke:version:start -->1.0.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->453<!-- yoke:tests:end -->
+<!-- yoke:tests:start -->500<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->28<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-439%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-500%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -26,6 +26,11 @@
 </div>
 
 > **TL;DR** — `yoke new my-app --idea="..."` scaffolds a git repo, installs the harness for all three agents, and drafts a story backlog from your idea. `yoke loop run my-app --isolate --review` then implements it story by story behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. If any gate is red, nothing is committed. When a story is done, there's a photo of it in `.yoke/proof/<story>/`.
+
+Yoke 1.0 is safe-by-default: provider CLIs use autonomous sandbox profiles unless `--unsafe`
+is explicit; reviews require a schema-valid verdict and a different model unless
+`--allow-self-review` is explicit; commits enforce the human identity from project config or Git.
+See [the 1.0 migration guide](docs/MIGRATING-TO-1.0.md).
 
 ---
 
@@ -38,7 +43,7 @@ Agentic coding in 2026 fails in four well-documented ways. Yoke answers each one
 | 🎭 **The verification gap** — *"agent says done, but it isn't"* | Agents submit confidently on 100% of runs while resolving far fewer; "all tests pass" when they were never run ([silent-failures research](https://arxiv.org/pdf/2603.25764)) | The loop trusts **your verify command's exit code**, never the agent's word. A story is `passes: true` only after tests are green, the reviewer approved, and the commit landed — atomically. Plus: **screenshot proofs** per story. |
 | 🔀 **Three agents, three configs** | Teams hand-maintain `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, skills, and MCP wiring separately — copy-paste drift everywhere | **One canon → `yoke retrofit`** generates the idiomatic native artifacts for each agent. Change the canon once, re-retrofit everywhere. |
 | 🌀 **Overnight loops going off the rails** | Raw Ralph-loop users "wake up to broken codebases that don't compile" | Yoke is **"Ralph, but with gates"**: clean-worktree gate, acceptance-criteria gate, green-tests gate, review gate, per-story worktree isolation, idle-timeout watchdog, single-flight lock, commit integrity. |
-| 😵 **Review fatigue** | AI adoption nearly doubles PR volume and review time; humans start skimming | **`yoke review`**: a *second* model reviews the diff as a pass/fail exit-code gate — chainable into verify, pre-push, or CI. Cross-model review measurably catches what self-review misses. |
+| 😵 **Review fatigue** | AI adoption nearly doubles PR volume and review time; humans start skimming | **`yoke review`**: a second model writes a schema-validated pass/fail verdict — chainable into verify, pre-push, or CI. Cross-model review catches what self-review misses. |
 
 **Who it's for:** anyone driving Claude Code, Codex CLI, or Gemini CLI on real projects — especially if you use more than one, want autonomous runs you can trust, or are tired of "done" meaning "probably". Greenfield (`yoke new`) and brownfield (`yoke retrofit`) both work.
 
@@ -66,7 +71,7 @@ $ ls reading-app/.yoke/proof/STORY-2/
 home.png  list.png                            # photographic evidence, labelled per story
 ```
 
-Every claim in that transcript is enforced by code paths with tests behind them — 439 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
+Every claim in that transcript is enforced by code paths with tests behind them — 500 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
 
 ## 🚀 Quickstart
 
@@ -141,10 +146,11 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke new <dir> [--idea=] [--agent=] [--runner=] [--loop]` | Greenfield bootstrap: git init → scaffold → retrofit → context → PRD (drafted from `--idea`) → committed | `0` · `1` usage / non-empty dir / draft failed (scaffold survives) · `2` draft agent unavailable |
 | `yoke retrofit [dir] [--agent=claude,codex,gemini\|all] [--code-graph=graphify\|serena] [--loop]` | Install/update the harness, non-destructively | `0` |
 | `yoke prd draft [dir] --idea= [--runner=] [--force]` | Idea → 5–12 stories with testable acceptance criteria | `0` · `1` invalid/guarded · `2` agent unavailable |
-| `yoke prd check [dir]` | PRD lint gate (schema, duplicate ids, empty acceptance) | `0` valid · `1` violations |
+| `yoke prd check [dir]` | PRD lint gate (schema, dependencies, cycles, duplicate ids, acceptance) | `0` valid · `1` violations |
 | `yoke context init\|status [dir]` | Durable context layer (`PROJECT/DECISIONS/KNOWLEDGE.md`) | `0` |
-| `yoke loop on\|off\|status\|run\|cleanup [dir]` | The autonomous loop (see below) | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
-| `yoke review [dir] [--reviewer=] [--base=] [--focus=]` | A **second model** reviews your diff | `0` approved · `1` findings · `2` no reviewer CLI |
+| `yoke loop on\|off\|status\|run\|cleanup [dir]` | Autonomous loop; cleanup deletes worktrees only with `--remove-worktrees` | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
+| `yoke review [dir] [--reviewer=] [--base=] [--focus=] [--json] [--allow-self-review]` | An independent model writes a schema-valid verdict | `0` approved · `1` findings/invalid verdict · `2` no independent reviewer |
+| `yoke audit [dir] [--json]` | Dependency, high-confidence secret, and sensitive-change audit | `0` green · `1` blocking findings · `2` not runnable |
 | `yoke design-scan [dir] [--max=N] [--report]` | Static AI-slop design gate | `0` within budget · `1` over |
 | `yoke flow-smoke [dir] [--url=] [--label=]` | Browser gate with screenshot/video proofs | `0` green · `1` failures · `2` not runnable |
 
@@ -161,7 +167,7 @@ Three excellent projects, three different jobs. Honest version:
 | **Enforcement** | Advisory — skills *describe* the discipline; following them is up to the agent | Skill-driven; browser QA is genuinely real | **Mechanical** — gates live in code: clean tree, acceptance criteria, green tests, review verdict, commit integrity |
 | **Autonomy** | Interactive sessions | Interactive slash-commands (`/qa`, `/ship`, …) | Opt-in **Ralph loop** with watchdog, worktree isolation, single-flight lock, per-story proofs |
 | **Visual QA** | — | **Best-in-class**: live browser daemon (Chromium/CDP) with deep interactive QA | Built-in `flow-smoke` gate: screenshots always, video on failure, labelled per story — lighter, but *enforced* and cross-agent |
-| **Cross-model review** | — | `/codex` second opinion (Codex-only direction) | `yoke review` — resolves **codex → gemini → claude**, exit-code gate, works in and outside the loop |
+| **Cross-model review** | — | `/codex` second opinion (Codex-only direction) | `yoke review` — resolves an independent provider and validates a structured verdict, inside or outside the loop |
 | **Footprint** | Markdown skills (plugin) | ~230 MB with browser runtime; hourly auto-update | Node CLI + markdown canon; Playwright only if you use flow-smoke, resolved **from your project** |
 | **License** | MIT | MIT | MIT |
 
@@ -194,10 +200,10 @@ Three layers — **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) 
 | Agent | Artifacts |
 |---|---|
 | **Claude** | `.claude/skills/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json` (code-graph + Playwright), and an rtk `PreToolUse` hook when WSL is available |
-| **Codex** | `AGENTS.md` (native), `.codex/config.toml` (MCP servers), `RTK.md` |
+| **Codex** | `.agents/skills/`, `AGENTS.md`, `RTK.md`, `.codex/config.toml`, native hooks, reusable `.codex/agents/*.toml`, and package plugin metadata |
 | **Gemini** | `GEMINI.md`, `.gemini/commands/*.toml` (one per skill, full body), `.gemini/settings.json` (MCP + `AGENTS.md` context) |
 
-> **rtk asymmetry, handled:** Claude can rewrite commands transparently via a hook (needs WSL on Windows); Codex and Gemini have no such hook, so they get an instruction to prefix commands with `rtk` instead.
+> **rtk integration:** Claude receives its PreToolUse hook; Codex receives a native hook adapter around `rtk hook check`; Gemini retains instruction-mode fallback where its CLI has no equivalent command-rewrite lifecycle.
 
 > **Composes with gstack:** if [gstack](https://github.com/garrytan/gstack) is installed (repo-local or global), `yoke retrofit` adds a short "Composed tools" routing note to **CLAUDE.md only** — telling Claude to prefer gstack's skills for capabilities Yoke doesn't ship (live-browser QA `/qa`, security audit `/cso`, ship/deploy `/ship`). No bundling, no dependency; the note is never written to the Codex or Gemini artifacts.
 
@@ -592,17 +598,14 @@ docs/superpowers/ # the spec and every component's implementation plan
 
 ## 🗺️ Roadmap
 
-- **npm publish** (`@hecer/yoke`) — one-liner `npx` install (package prepared).
-- **Security gate** — a `cso`-style audit skill + `yoke audit` (deps, secrets, diff surface).
-- **Token-budget gate** — per-story budget with abort; cost transparency for loop runs.
-- **Multi-reviewer quorum** — N independent reviewers with distinct lenses (correctness / security / acceptance).
-- **Merge queue** — re-test against the latest main before integrating, for parallel/multi-agent loops.
-- **More agents** — the canon→retrofit pattern generalises; OpenCode and Copilot CLI are natural next targets.
+Yoke 1.0's completed release work moved to the changelog. Remaining, explicitly scoped work
+is tracked in [`TODOS.md`](TODOS.md), including provider subprocess wiring for the tested
+parallel dispatcher, broader benchmark samples, native output schemas, and release provenance.
 
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (322 tests)
+npm test          # vitest (500 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

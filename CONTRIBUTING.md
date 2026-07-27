@@ -1,5 +1,9 @@
 # Contributing to Yoke
 
+Commits must use the contributor's human Git identity. Project policy controls co-author
+trailers; tooling must not add AI attribution implicitly. Before a release, run the full
+`prepublishOnly` pipeline, `npm audit`, canon validation, and a tarball install smoke test.
+
 Thanks for your interest! Yoke is a small, test-first TypeScript project. This guide gets you productive quickly.
 
 ## Setup
