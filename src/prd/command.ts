@@ -18,6 +18,9 @@ export const PRD_TEMPLATE = `# Yoke PRD — the loop picks the lowest-priority o
 # - id: STORY-1
 #   title: scaffold the project with a runnable test suite
 #   priority: 1
+#   needs: []             # optional story IDs that must pass first
+#   area: foundation      # optional collision domain for parallel runs
+#   agent: codex          # optional claude|codex|gemini affinity
 #   acceptance:
 #     - "the verify command exits 0"
 #     - "a placeholder test exists and passes"
@@ -36,6 +39,9 @@ export function buildPrdDraftPrompt(idea: string): string {
     '- id: STORY-1, STORY-2, ... (unique)',
     '- title: one imperative sentence',
     '- priority: dense integers from 1 (lower = built first)',
+    '- needs: optional list of story IDs that must pass first; the graph must be acyclic',
+    '- area: optional collision domain for safe parallel scheduling',
+    '- agent: optional claude|codex|gemini affinity',
     '- acceptance: 2-5 testable, behavioral criteria (observable outcomes, never implementation steps)',
     '- passes: false',
     '',

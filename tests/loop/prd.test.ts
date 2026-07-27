@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadPrd, savePrd, selectNextStory, allPass, progress } from '../../src/loop/prd.js'
+import { loadPrd, savePrd, selectNextStory, allPass, progress, validateDependencies } from '../../src/loop/prd.js'
 
 let dir: string
 const prd = () => join(dir, 'prd.yaml')
@@ -51,5 +51,19 @@ describe('prd', () => {
   it('rejects a malformed story (missing acceptance)', () => {
     writeFileSync(prd(), `- { id: X, title: t, priority: 1, passes: false }`)
     expect(() => loadPrd(prd())).toThrow()
+  })
+})
+
+describe('PRD dependency graph', () => {
+  it('accepts optional needs, area, and agent fields', () => {
+    const stories = [{ id: 'A', title: 'A', priority: 1, acceptance: ['x'], passes: false, needs: [], area: 'api', agent: 'codex' as const }]
+    expect(validateDependencies(stories)).toEqual([])
+  })
+  it('diagnoses unknown, self, duplicate, and cyclic dependencies', () => {
+    const base = (id: string, needs: string[] = []) => ({ id, title: id, priority: 1, acceptance: ['x'], passes: false, needs })
+    expect(validateDependencies([base('A', ['missing'])]).join(' ')).toMatch(/unknown/i)
+    expect(validateDependencies([base('A', ['A'])]).join(' ')).toMatch(/itself/i)
+    expect(validateDependencies([base('A'), base('A')]).join(' ')).toMatch(/duplicate/i)
+    expect(validateDependencies([base('A', ['B']), base('B', ['A'])]).join(' ')).toMatch(/cycle/i)
   })
 })

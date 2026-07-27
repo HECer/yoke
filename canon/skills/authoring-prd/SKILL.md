@@ -29,6 +29,9 @@ good stories (small, testable, ordered) let it run overnight.
    has nobody to ask. A criterion that still needs a decision ("TBD", "choose a provider")
    is not loop-ready; resolve it here or the agent will either guess (default) or block
    (`--on-ambiguity=abort`).
+8. **Model real dependencies.** Add `needs` only for hard prerequisites, `area` for files or
+   subsystems that must not be edited concurrently, and `agent` only as an affinity hint.
+   Dependency IDs must exist; self-dependencies and cycles are invalid.
 
 ## Format (`.yoke/prd.yaml`)
 
@@ -43,6 +46,9 @@ good stories (small, testable, ordered) let it run overnight.
 - id: STORY-2
   title: add the sum command
   priority: 2
+  needs: [STORY-1]
+  area: cli
+  agent: codex
   acceptance:
     - "cli sum 1 2 prints 3"
     - "non-numeric input exits 1 with an error message"
