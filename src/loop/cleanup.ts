@@ -8,6 +8,7 @@ export interface CleanupOptions {
   git?: (args: string[], cwd: string) => void
   isAlive?: (pid: number) => boolean
   killTree?: (pid: number) => void
+  removeWorktrees?: boolean
 }
 
 // Reap orphaned runners PROJECT-SCOPED: kill only pids recorded in this project's
@@ -59,6 +60,10 @@ export function runLoopCleanup(targetDir: string, opts: CleanupOptions = {}): nu
   if (existsSync(wtDir)) {
     for (const name of readdirSync(wtDir)) {
       const path = join(wtDir, name)
+      if (!opts.removeWorktrees) {
+        console.log(`Yoke worktree retained: ${path} (pass --remove-worktrees to remove it)`)
+        continue
+      }
       try {
         git(['worktree', 'remove', '--force', path], targetDir)
         removed++
@@ -67,7 +72,7 @@ export function runLoopCleanup(targetDir: string, opts: CleanupOptions = {}): nu
         failed++
       }
     }
-    try { git(['worktree', 'prune'], targetDir) } catch { /* best-effort */ }
+    if (opts.removeWorktrees) { try { git(['worktree', 'prune'], targetDir) } catch { /* best-effort */ } }
   }
   const lockFile = lockPath(targetDir)
   if (existsSync(lockFile)) {
@@ -79,6 +84,6 @@ export function runLoopCleanup(targetDir: string, opts: CleanupOptions = {}): nu
       console.log('Removed stale loop lock.')
     }
   }
-  console.log(removed === 0 && failed === 0 ? 'Nothing to clean.' : `Removed ${removed} worktree(s)${failed > 0 ? `, ${failed} failed` : ''}.`)
+  console.log(removed === 0 && failed === 0 ? 'No destructive cleanup performed.' : `Removed ${removed} worktree(s)${failed > 0 ? `, ${failed} failed` : ''}.`)
   return failed === 0 ? 0 : 1
 }

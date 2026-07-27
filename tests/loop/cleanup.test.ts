@@ -18,7 +18,7 @@ describe('runLoopCleanup', () => {
     mkdirSync(join(dir, '.yoke', 'worktrees', 'STORY-1'), { recursive: true })
     mkdirSync(join(dir, '.yoke', 'worktrees', 'STORY-2'), { recursive: true })
     const calls: string[][] = []
-    const code = runLoopCleanup(dir, { git: (args) => { calls.push(args) } })
+    const code = runLoopCleanup(dir, { git: (args) => { calls.push(args) }, removeWorktrees: true })
     expect(code).toBe(0)
     const removes = calls.filter(a => a[1] === 'remove')
     expect(removes).toHaveLength(2)
@@ -29,9 +29,17 @@ describe('runLoopCleanup', () => {
     mkdirSync(join(dir, '.yoke', 'worktrees', 'A'), { recursive: true })
     mkdirSync(join(dir, '.yoke', 'worktrees', 'B'), { recursive: true })
     let n = 0
-    const code = runLoopCleanup(dir, { git: (args) => { if (args[1] === 'remove' && n++ === 0) throw new Error('boom') } })
+    const code = runLoopCleanup(dir, { git: (args) => { if (args[1] === 'remove' && n++ === 0) throw new Error('boom') }, removeWorktrees: true })
     expect(code).toBe(1)
     expect(n).toBeGreaterThan(0)
+  })
+
+  it('reports provider worktrees without removing them by default', () => {
+    mkdirSync(join(dir, '.yoke', 'worktrees', 'A'), { recursive: true })
+    const calls: string[][] = []
+    expect(runLoopCleanup(dir, { git: args => calls.push(args) })).toBe(0)
+    expect(calls.filter(args => args[1] === 'remove')).toEqual([])
+    expect(existsSync(join(dir, '.yoke', 'worktrees', 'A'))).toBe(true)
   })
 
   it('kills only the pids recorded in runner.pid files (project-scoped, never pattern-based)', () => {

@@ -95,6 +95,7 @@ export interface RunLoopCommandOptions {
   allowSelfReview?: boolean
   commitIdentity?: CommitIdentity
   audit?: Verifier
+  parallel?: number
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -212,7 +213,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       perf,
       audit,
       maxIterations: opts.maxIterations,
-      isolate: opts.isolate ?? false,
+      isolate: (opts.parallel ?? 1) > 1 ? true : (opts.isolate ?? false),
       review,
       reporter: opts.reporter ?? makeReporter(targetDir, { json: opts.json }),
     })

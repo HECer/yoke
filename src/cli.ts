@@ -76,7 +76,7 @@ function main(argv: string[]): number | Promise<number> {
       if (sub === 'on') { setLoopEnabled(targetDir, true); console.log('Loop enabled.'); return 0 }
       if (sub === 'off') { setLoopEnabled(targetDir, false); console.log('Loop disabled.'); return 0 }
       if (sub === 'status') { console.log(loopStatus(targetDir)); return 0 }
-      if (sub === 'cleanup') return runLoopCleanup(targetDir)
+      if (sub === 'cleanup') return runLoopCleanup(targetDir, { removeWorktrees: rest.includes('--remove-worktrees') })
       if (sub === 'run') {
         const maxArg = rest.find(a => a.startsWith('--max='))
         const rawMax = maxArg ? Number(maxArg.slice('--max='.length)) : 25
@@ -104,6 +104,9 @@ function main(argv: string[]): number | Promise<number> {
         const review = rest.includes('--review')
         const allowSelfReview = rest.includes('--allow-self-review')
         const permissions = rest.includes('--unsafe') ? 'unsafe' as const : undefined
+        const parallelArg = rest.find(a => a.startsWith('--parallel='))
+        const parallel = parallelArg ? Number(parallelArg.slice('--parallel='.length)) : 1
+        if (!Number.isInteger(parallel) || parallel < 1) { console.error(`Invalid --parallel value: ${parallelArg}`); return 1 }
         const json = rest.includes('--json')
         const toArg = rest.find(a => a.startsWith('--timeout='))
         let timeoutMinutes: number | undefined
@@ -117,9 +120,9 @@ function main(argv: string[]): number | Promise<number> {
           console.error(`Invalid --on-ambiguity value: ${oaArg} (expected resolve|abort)`)
           return 1
         }
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, reviewer, review, allowSelfReview, timeoutMinutes, json, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, permissions })
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, parallel, reviewer, review, allowSelfReview, timeoutMinutes, json, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, permissions })
       }
-      console.log('usage: yoke loop <on|off|status|cleanup|run [--max=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--isolate] [--unsafe] [--timeout=<minutes>] [--on-ambiguity=<resolve|abort>] [--json]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|cleanup [--remove-worktrees]|run [--max=N] [--parallel=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--isolate] [--unsafe] [--timeout=<minutes>] [--on-ambiguity=<resolve|abort>] [--json]> [targetDir]')
       return 1
     }
     case 'new': {
