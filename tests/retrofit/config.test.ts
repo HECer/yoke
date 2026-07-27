@@ -72,6 +72,16 @@ describe('yoke config', () => {
     expect(parsed.verify?.retries).toBeUndefined()
   })
 
+  it('round-trips an explicit runner permission profile', () => {
+    const cfg = { ...defaultConfig('1.0.0'), runner: { permissions: 'read-only' as const } }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)?.runner?.permissions).toBe('read-only')
+  })
+
+  it('rejects an unknown runner permission profile', () => {
+    expect(() => YokeConfigSchema.parse({ canonVersion: '1', agents: [], loop: { enabled: true }, runner: { permissions: 'root' } })).toThrow()
+  })
+
   it('round-trips an optional codeGraph choice', () => {
     const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: false }, codeGraph: 'serena' as const }
     saveConfig(dir, cfg)

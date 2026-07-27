@@ -11,6 +11,7 @@ import { commandVerifier, retryingVerifier, type Verifier } from './verify.js'
 import { readStatus, makeReporter, fmtDuration, type LoopReporter } from './reporter.js'
 import { acquireLock, releaseLock } from './lock.js'
 import { maybeAutoUpgrade } from '../update/upgrade.js'
+import type { PermissionProfile } from '../agents/types.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -88,6 +89,7 @@ export interface RunLoopCommandOptions {
   onAmbiguity?: AmbiguityPolicy
   /** Test seam for the performance budget gate (production builds it from config.perf). */
   perf?: Verifier
+  permissions?: PermissionProfile
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -124,6 +126,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   const runnerAgent: Agent = opts.agent ?? config.agents[0] ?? 'claude'
 
   const idleMs = resolveIdleMs(opts.timeoutMinutes, config.loop.timeoutMinutes)
+  const permissions = opts.permissions ?? config.runner?.permissions ?? 'safe'
 
   let runner = opts.runner
   if (!runner) {
@@ -137,7 +140,10 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       tokenReport: opts.json === true,
       onAmbiguity: opts.onAmbiguity ?? config.loop.onAmbiguity,
       perfCommand: config.perf?.command,
+      permissions,
     })
+    const announce = opts.json ? console.error : console.log
+    announce(`Runner: ${runnerAgent} · permissions: ${permissions} · cwd: ${targetDir}`)
   }
 
   let review = opts.reviewRunner

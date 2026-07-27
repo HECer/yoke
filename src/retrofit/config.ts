@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { parse, stringify } from 'yaml'
 import { z } from 'zod'
+import type { PermissionProfile } from '../agents/types.js'
 
 export type Agent = 'claude' | 'codex' | 'gemini'
 export type CodeGraph = 'graphify' | 'serena'
@@ -22,6 +23,7 @@ export const YokeConfigSchema = z.object({
     // or 'abort' (agent stops the story via .yoke/ambiguity.md for a human decision).
     onAmbiguity: z.enum(['resolve', 'abort']).optional(),
   }),
+  runner: z.object({ permissions: z.enum(['safe', 'unsafe', 'read-only']) }).optional(),
   verify: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
   // Optional performance budget gate: a benchmark command that must exit 0 for a
   // story to land (runs after verify). Benchmarks are noisy → retried like verify.
@@ -39,6 +41,7 @@ export interface YokeConfig {
   canonVersion: string
   agents: Agent[]
   loop: { enabled: boolean; timeoutMinutes?: number; onAmbiguity?: 'resolve' | 'abort' }
+  runner?: { permissions: PermissionProfile }
   verify?: { command: string; retries?: number }
   perf?: { command: string; retries?: number }
   codeGraph?: CodeGraph

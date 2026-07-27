@@ -65,10 +65,10 @@ describe('buildClaudePrompt ambiguity policy', () => {
     const dir = mkdtempSync(join(tmpdir(), 'yoke-amb-'))
     try {
       const seen: Invocation[] = []
-      const abortRunner = makeRunner('codex', 0, { exec: (inv) => { seen.push(inv) }, onAmbiguity: 'abort' })
+      const abortRunner = makeRunner('codex', 0, { execCapture: (inv) => { seen.push(inv); return '' }, onAmbiguity: 'abort' })
       abortRunner({ targetDir: dir, story })
       expect(seen[0].input).toContain('.yoke/ambiguity.md')
-      const defaultRunner = makeRunner('codex', 0, { exec: (inv) => { seen.push(inv) } })
+      const defaultRunner = makeRunner('codex', 0, { execCapture: (inv) => { seen.push(inv); return '' } })
       defaultRunner({ targetDir: dir, story })
       expect(seen[1].input).not.toContain('.yoke/ambiguity.md')
     } finally {
@@ -93,7 +93,7 @@ describe('buildClaudePrompt performance budget', () => {
     const dir = mkdtempSync(join(tmpdir(), 'yoke-perf-'))
     try {
       const seen: Invocation[] = []
-      const runner = makeRunner('codex', 0, { exec: (inv) => { seen.push(inv) }, perfCommand: 'npm run bench' })
+      const runner = makeRunner('codex', 0, { execCapture: (inv) => { seen.push(inv); return '' }, perfCommand: 'npm run bench' })
       runner({ targetDir: dir, story })
       expect(seen[0].input).toContain('npm run bench')
     } finally {
@@ -106,7 +106,7 @@ describe('claudeInvocation', () => {
   it('passes the prompt as input, not as a CLI arg', () => {
     const inv = claudeInvocation('PROMPT TEXT', '/work')
     expect(inv.command).toBe('claude')
-    expect(inv.args).toEqual(['-p', '--dangerously-skip-permissions'])
+    expect(inv.args).toEqual(['-p', '--permission-mode', 'auto', '--output-format', 'stream-json', '--verbose'])
     expect(inv.input).toBe('PROMPT TEXT')
     expect(inv.args).not.toContain('PROMPT TEXT')
     expect((inv as Record<string, unknown>).shell).toBeUndefined()
@@ -117,7 +117,7 @@ describe('agentInvocation', () => {
   it('maps codex to `codex exec` with the prompt as input', () => {
     const inv = agentInvocation('codex', 'P', '/w')
     expect(inv.command).toBe('codex')
-    expect(inv.args).toEqual(['exec', '--dangerously-bypass-approvals-and-sandbox'])
+    expect(inv.args).toEqual(['exec', '--full-auto', '--json'])
     expect(inv.input).toBe('P')
     expect(inv.args).not.toContain('P')
   })
@@ -125,16 +125,14 @@ describe('agentInvocation', () => {
   it('maps gemini to stdin-driven headless mode (no bare -p: current gemini requires a value after -p)', () => {
     const inv = agentInvocation('gemini', 'P', '/w')
     expect(inv.command).toBe('gemini')
-    expect(inv.args).toEqual(['--yolo'])
+    expect(inv.args).toEqual(['--approval-mode', 'auto_edit', '--sandbox', '--output-format', 'stream-json'])
     expect(inv.input).toBe('P')
   })
 
-  it('every agent runs non-interactively (a headless permission-bypass flag is present)', () => {
-    // Without these flags a headless CLI denies every write prompt: the runner
-    // "succeeds" (exit 0) while producing nothing, and the loop falsely passes.
-    expect(agentInvocation('claude', 'P', '/w').args).toContain('--dangerously-skip-permissions')
-    expect(agentInvocation('codex', 'P', '/w').args).toContain('--dangerously-bypass-approvals-and-sandbox')
-    expect(agentInvocation('gemini', 'P', '/w').args).toContain('--yolo')
+  it('every agent is autonomous but sandboxed by default', () => {
+    expect(agentInvocation('claude', 'P', '/w').args).not.toContain('--dangerously-skip-permissions')
+    expect(agentInvocation('codex', 'P', '/w').args).not.toContain('--dangerously-bypass-approvals-and-sandbox')
+    expect(agentInvocation('gemini', 'P', '/w').args).not.toContain('--yolo')
   })
 
   it('claude back-compat: claudeInvocation equals agentInvocation(claude)', () => {
@@ -335,19 +333,18 @@ describe('runnerInvocation (token-report wiring)', () => {
   it('claude with tokenReport uses stream-json output with --verbose, prompt still on stdin', () => {
     const inv = runnerInvocation('claude', 'P', '/w', true)
     expect(inv.command).toBe('claude')
-    expect(inv.args).toEqual(['-p', '--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose'])
+    expect(inv.args).toEqual(['-p', '--permission-mode', 'auto', '--output-format', 'stream-json', '--verbose'])
     expect(inv.input).toBe('P')
     expect(inv.cwd).toBe('/w')
   })
-  it('the stream-json path keeps the headless permission-bypass flag', () => {
-    // The token hook must not silently drop the non-interactive flag — a claude
-    // that cannot write files "succeeds" while doing nothing.
-    expect(runnerInvocation('claude', 'P', '/w', true).args).toContain('--dangerously-skip-permissions')
+  it('the stream-json path keeps the safe autonomous permission mode', () => {
+    expect(runnerInvocation('claude', 'P', '/w', true).args).toContain('auto')
+    expect(runnerInvocation('claude', 'P', '/w', true).args).not.toContain('--dangerously-skip-permissions')
   })
   it('claude ALWAYS uses stream-json — the idle watchdog needs liveness output, and plain -p is silent until done', () => {
     // Regression guard: with the plain -p invocation, healthy stories longer than
     // the idle window emitted no output and were killed at exactly idle-timeout.
-    expect(runnerInvocation('claude', 'P', '/w', false).args).toEqual(['-p', '--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose'])
+    expect(runnerInvocation('claude', 'P', '/w', false).args).toEqual(['-p', '--permission-mode', 'auto', '--output-format', 'stream-json', '--verbose'])
     expect(runnerInvocation('claude', 'P', '/w')).toEqual(runnerInvocation('claude', 'P', '/w', true))
   })
   it('non-claude agents are unchanged even when tokenReport is requested', () => {
@@ -399,22 +396,22 @@ describe('makeRunner with tokenReport', () => {
     expect(res.tokens).toEqual({ inputTokens: 15, outputTokens: 8, model: 'claude-opus-4-6-20260501' })
   })
 
-  it('routes non-claude agents through the normal exec path even with tokenReport', () => {
+  it('captures structured telemetry for non-claude agents too', () => {
     const d = mkdtempSync(join(tmpdir(), 'yoke-tok3-'))
     let captured = 0
     const invs: Invocation[] = []
     const runner = makeRunner('codex', 0, {
       tokenReport: true,
-      execCapture: () => { captured += 1; return '' },
+      execCapture: (inv) => { captured += 1; invs.push(inv); return '{"usage":{"input_tokens":4,"output_tokens":2},"model":"gpt-5"}' },
       exec: (inv) => { invs.push(inv) },
     })
     const res = runner({ targetDir: d, story })
     rmSync(d, { recursive: true, force: true })
-    expect(captured).toBe(0)                 // capture path is claude-only
+    expect(captured).toBe(1)
     expect(invs).toHaveLength(1)
-    expect(invs[0].args).toEqual(['exec', '--dangerously-bypass-approvals-and-sandbox'])   // plain codex invocation, no stream-json flags
+    expect(invs[0].args).toEqual(['exec', '--full-auto', '--json'])
     expect(res.success).toBe(true)
-    expect(res.tokens).toBeUndefined()
+    expect(res.tokens).toEqual({ inputTokens: 4, outputTokens: 2, model: 'gpt-5' })
   })
 })
 

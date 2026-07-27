@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url'
 import type { Agent } from '../retrofit/config.js'
 import type { TokenUsage } from './reporter.js'
 import { loadContext, formatForPrompt, contextDir } from '../context/context.js'
+import { buildProviderInvocation } from '../agents/providers.js'
+import { parseProviderTelemetry } from '../agents/telemetry.js'
+import type { PermissionProfile } from '../agents/types.js'
 
 export interface AgentContext {
   targetDir: string
@@ -121,17 +124,8 @@ export interface Invocation {
 // and falsely marks the story done. Granting autonomous permissions makes the
 // implementer actually able to write files and run the verify command.
 // (The loop is opt-in and scoped to the target project dir.)
-const AGENT_SPECS: Record<Agent, { command: string; baseArgs: string[] }> = {
-  claude: { command: 'claude', baseArgs: ['-p', '--dangerously-skip-permissions'] },
-  codex: { command: 'codex', baseArgs: ['exec', '--dangerously-bypass-approvals-and-sandbox'] },
-  // gemini: no `-p` — current Gemini CLI (0.33+) requires a value after -p, and
-  // piped (non-TTY) stdin already selects headless mode on its own.
-  gemini: { command: 'gemini', baseArgs: ['--yolo'] },
-}
-
-export function agentInvocation(agent: Agent, prompt: string, cwd: string): Invocation {
-  const spec = AGENT_SPECS[agent]
-  return { command: spec.command, args: spec.baseArgs, input: prompt, cwd }
+export function agentInvocation(agent: Agent, prompt: string, cwd: string, permissions: PermissionProfile = 'safe'): Invocation {
+  return buildProviderInvocation(agent, prompt, cwd, permissions)
 }
 
 export function claudeInvocation(prompt: string, cwd: string): Invocation {
@@ -142,7 +136,7 @@ export function claudeInvocation(prompt: string, cwd: string): Invocation {
 // (--verbose is required by the CLI for stream-json in -p mode). Prompt still via stdin.
 // Derived from the base spec so the headless permission-bypass flag rides along.
 export function claudeStreamJsonInvocation(prompt: string, cwd: string): Invocation {
-  return { command: 'claude', args: [...AGENT_SPECS.claude.baseArgs, '--output-format', 'stream-json', '--verbose'], input: prompt, cwd }
+  return buildProviderInvocation('claude', prompt, cwd, 'safe')
 }
 
 // Pick the runner invocation. Claude ALWAYS runs in stream-json mode: plain `-p`
@@ -151,9 +145,8 @@ export function claudeStreamJsonInvocation(prompt: string, cwd: string): Invocat
 // the user saw dead air the whole time. stream-json emits per-message output,
 // which doubles as liveness. Token usage rides along for free. Other agents
 // keep their plain invocation (no machine-readable stream to gain).
-export function runnerInvocation(agent: Agent, prompt: string, cwd: string, _tokenReport = false): Invocation {
-  if (agent === 'claude') return claudeStreamJsonInvocation(prompt, cwd)
-  return agentInvocation(agent, prompt, cwd)
+export function runnerInvocation(agent: Agent, prompt: string, cwd: string, _tokenReport = false, permissions: PermissionProfile = 'safe'): Invocation {
+  return buildProviderInvocation(agent, prompt, cwd, permissions)
 }
 
 // Parse claude stream-json output into cumulative token usage. Defensive by design:
@@ -296,6 +289,7 @@ export interface RunnerOpts {
   onAmbiguity?: AmbiguityPolicy
   /** Performance budget command (config perf.command) — surfaced to the implementer so it never regresses the budget blind. */
   perfCommand?: string
+  permissions?: PermissionProfile
   /** Test seam for the normal (inherit-stdio) execution path. */
   exec?: (inv: Invocation) => void
   /** Test seam for the captured (piped-stdout) execution path. */
@@ -306,19 +300,20 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
   // Claude always streams (see runnerInvocation) — capture the stream so tokens are
   // always reported; other agents keep inherit stdio. opts.tokenReport is now
   // redundant for claude and meaningless elsewhere; kept for caller compatibility.
-  const captureTokens = agent === 'claude'
+  const captureTokens = true
   return (ctx: AgentContext): AgentResult => {
-    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens)
+    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe')
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     if (captureTokens) {
       const capture = opts.execCapture ?? runCliCapture
       try {
         const out = capture(inv)
-        return { success: true, summary: `${agent} implemented ${ctx.story.id}`, tokens: parseClaudeStreamUsage(out.split(/\r?\n/)) }
+        const telemetry = parseProviderTelemetry(agent, out.split(/\r?\n/))
+        return { success: true, summary: `${agent} implemented ${ctx.story.id}`, tokens: telemetry.tokens }
       } catch (e) {
         // Salvage usage from whatever the agent streamed before dying — those tokens were spent.
         const partial = (e as { stdout?: unknown }).stdout
-        const tokens = partial == null ? undefined : parseClaudeStreamUsage(String(partial).split(/\r?\n/))
+        const tokens = partial == null ? undefined : parseProviderTelemetry(agent, String(partial).split(/\r?\n/)).tokens
         return { success: false, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}`, tokens }
       }
     }
@@ -351,5 +346,5 @@ export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0): AgentRunner {
 // Probe whether the agent's CLI is on PATH (so the loop can refuse upfront with a
 // clear message instead of failing mid-run with spawn ENOENT). Never throws.
 export function isAgentAvailable(agent: Agent): boolean {
-  return probeVersion(AGENT_SPECS[agent].command)
+  return probeVersion(agent)
 }
