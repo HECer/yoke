@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runPrdDraft, runPrdCheck, buildPrdDraftPrompt, PRD_TEMPLATE } from '../../src/prd/command.js'
 import { loadPrd } from '../../src/loop/prd.js'
+import { saveConfig } from '../../src/retrofit/config.js'
 import type { Invocation } from '../../src/loop/runner.js'
 
 let dir: string
@@ -32,6 +33,13 @@ describe('buildPrdDraftPrompt', () => {
     expect(p).toContain('.yoke/prd.yaml')
     expect(p).toContain('Do not commit')
   })
+
+  it('includes an approved planning brief as settled context', () => {
+    const p = buildPrdDraftPrompt('a todo cli', 'Users need offline sync.\nNon-goal: team accounts.')
+    expect(p).toContain('Approved planning brief')
+    expect(p).toContain('Users need offline sync')
+    expect(p).toMatch(/settled/i)
+  })
 })
 
 describe('PRD_TEMPLATE', () => {
@@ -50,6 +58,32 @@ describe('runPrdDraft', () => {
     expect(code).toBe(0)
     expect(calls[0].command).toBe('codex')
     expect(calls[0].input).toContain('a todo cli')
+  })
+
+  it('automatically includes .yoke/plan.md and uses the configured runner', () => {
+    writeFileSync(join(dir, '.yoke', 'plan.md'), '# Approved plan\nUse passkeys.')
+    saveConfig(dir, {
+      canonVersion: '1.1.0', agents: ['claude', 'codex'], loop: { enabled: true },
+      runner: { agent: 'codex' },
+    })
+    const calls: Invocation[] = []
+    expect(runPrdDraft(dir, { idea: 'auth', isAvailable: () => true, run: writingRun(VALID_PRD, calls) })).toBe(0)
+    expect(calls[0].command).toBe('codex')
+    expect(calls[0].input).toContain('Use passkeys')
+  })
+
+  it('refuses an oversized planning brief before invoking a provider', () => {
+    writeFileSync(join(dir, '.yoke', 'plan.md'), 'x'.repeat(20_001))
+    let invoked = false
+    expect(runPrdDraft(dir, { idea: 'auth', isAvailable: () => true, run: () => { invoked = true; return { success: true, summary: 'nope' } } })).toBe(1)
+    expect(invoked).toBe(false)
+  })
+
+  it('rejects a very large plan by byte size before reading provider input', () => {
+    writeFileSync(join(dir, '.yoke', 'plan.md'), 'x'.repeat(80_001))
+    let invoked = false
+    expect(runPrdDraft(dir, { idea: 'auth', isAvailable: () => true, run: () => { invoked = true; return { success: true, summary: 'nope' } } })).toBe(1)
+    expect(invoked).toBe(false)
   })
 
   it('requires an idea', () => {
@@ -115,6 +149,11 @@ describe('runPrdCheck', () => {
 
   it('fails on empty acceptance', () => {
     write('- id: STORY-1\n  title: t\n  priority: 1\n  acceptance: []\n  passes: false\n')
+    expect(runPrdCheck(dir)).toBe(1)
+  })
+
+  it('fails when acceptance criteria still contain unresolved planning decisions', () => {
+    write('- id: STORY-1\n  title: t\n  priority: 1\n  acceptance: ["TBD: choose an auth provider"]\n  passes: false\n')
     expect(runPrdCheck(dir)).toBe(1)
   })
 

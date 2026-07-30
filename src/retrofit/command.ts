@@ -7,15 +7,16 @@ import { detectProject } from './detect.js'
 import { ensureGitignore } from './gitignore.js'
 import { loadConfig, saveConfig, defaultConfig, type Agent, type YokeConfig, type CodeGraph } from './config.js'
 import { loadManifest } from '../canon/manifest.js'
+import { detectHostAgent } from '../agents/host.js'
 
-export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: Agent[]; codeGraph?: CodeGraph }): number {
+export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: Agent[]; codeGraph?: CodeGraph; host?: Agent }): number {
   const canonDir = resolveCanonDir()
   const canonVersion = loadManifest(join(canonDir, 'manifest.yaml')).version
 
   const detection = detectProject(targetDir)
   const agents: Agent[] = opts.agents && opts.agents.length > 0
     ? opts.agents
-    : (detection.agents.length > 0 ? detection.agents : ['claude'])
+    : (detection.agents.length > 0 ? detection.agents : [opts.host ?? detectHostAgent() ?? 'claude'])
 
   const existing = loadConfig(targetDir)
   const codeGraph: CodeGraph = opts.codeGraph ?? existing?.codeGraph ?? 'graphify'
@@ -34,7 +35,7 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: A
     ...(existing ?? defaultConfig(canonVersion)),
     canonVersion,
     agents: mergedAgents,
-    loop: { enabled: opts.loop },
+    loop: { ...existing?.loop, enabled: opts.loop },
     codeGraph,
   }
   saveConfig(targetDir, config)

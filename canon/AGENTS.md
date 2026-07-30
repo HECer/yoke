@@ -17,6 +17,8 @@ When several skills could match the same task, resolve deterministically:
    `tdd`, `subagent-driven-development`, `systematic-debugging`, …) take precedence and set the
    process. Role skills (`review`, `ship`, `health`, `retro`, …) add a perspective on top.
 2. **One canonical entrypoint per concern** — pick the most specific:
+   - Set up or update Yoke → `yoke-retrofit`
+   - Yoke-owned planning + autonomous story execution → `yoke-workflow`
    - Plan-time architecture review → `plan-eng-review`
    - Plan-time product / scope review → `plan-ceo-review`
    - **Pre-merge code review → `review`** (the single canonical one)

@@ -12,7 +12,7 @@ afterEach(() => { rmSync(target, { recursive: true, force: true }) })
 
 describe('yoke retrofit (integration, Claude)', () => {
   it('generates Claude artifacts and writes config with loop disabled by default', () => {
-    const code = runRetrofit(target, { loop: false })
+    const code = runRetrofit(target, { loop: false, host: 'claude' })
     expect(code).toBe(0)
     expect(existsSync(join(target, 'AGENTS.md'))).toBe(true)
     expect(existsSync(join(target, 'CLAUDE.md'))).toBe(true)
@@ -26,7 +26,7 @@ describe('yoke retrofit (integration, Claude)', () => {
 
   it('additively merges claude into pre-existing agents', () => {
     saveConfig(target, { canonVersion: '0.1.0', agents: ['codex'], loop: { enabled: false } })
-    runRetrofit(target, { loop: false })
+    runRetrofit(target, { loop: false, host: 'claude' })
     const cfg = loadConfig(target)!
     expect(cfg.agents).toContain('codex')
     expect(cfg.agents).toContain('claude')
@@ -81,5 +81,23 @@ describe('yoke retrofit (integration, Claude)', () => {
     runRetrofit(target, { loop: false, agents: ['claude'], codeGraph: 'serena' })
     runRetrofit(target, { loop: false, agents: ['claude'] })
     expect(loadConfig(target)!.codeGraph).toBe('serena')
+  })
+
+  it('preserves loop policy and timeout on subsequent retrofits', () => {
+    saveConfig(target, {
+      canonVersion: '1.0.0', agents: ['codex'],
+      loop: { enabled: true, timeoutMinutes: 45, decisionPolicy: 'critical' },
+      runner: { agent: 'codex', permissions: 'safe' },
+    })
+    runRetrofit(target, { loop: false, agents: ['codex'] })
+    expect(loadConfig(target)?.loop).toEqual({ enabled: false, timeoutMinutes: 45, decisionPolicy: 'critical' })
+    expect(loadConfig(target)?.runner).toEqual({ agent: 'codex', permissions: 'safe' })
+  })
+
+  it('uses the active host when an empty project has no detectable agent', () => {
+    runRetrofit(target, { loop: false, host: 'codex' })
+    expect(loadConfig(target)?.agents).toEqual(['codex'])
+    expect(existsSync(join(target, '.agents/skills/yoke-retrofit/SKILL.md'))).toBe(true)
+    expect(existsSync(join(target, '.claude/skills/yoke-retrofit/SKILL.md'))).toBe(false)
   })
 })

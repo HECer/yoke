@@ -11,6 +11,8 @@ const applied: AppliedAction[] = [
 describe('formatReport', () => {
   it('summarizes counts and loop state', () => {
     const out = formatReport(applied, { loopEnabled: false, detectedAgents: [] })
+    expect(out).toContain('Yoke retrofit:')
+    expect(out).not.toContain('Claude Code')
     expect(out).toContain('1 created')
     expect(out).toContain('1 overwritten')
     expect(out).toContain('1 unchanged')

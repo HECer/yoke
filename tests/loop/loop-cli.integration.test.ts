@@ -10,6 +10,7 @@ import { loadPrd } from '../../src/loop/prd.js'
 import type { GitOps } from '../../src/loop/gates.js'
 import type { AgentRunner } from '../../src/loop/runner.js'
 import type { Verifier } from '../../src/loop/verify.js'
+import { readDecisionResume } from '../../src/loop/decision.js'
 
 let dir: string
 const cfg = () => ({ canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true } })
@@ -44,6 +45,12 @@ describe('yoke loop CLI', () => {
     expect(loadConfig(dir)!.loop.enabled).toBe(true)
   })
 
+  it('setLoopEnabled preserves timeout and decision policy', () => {
+    saveConfig(dir, { ...cfg(), loop: { enabled: true, timeoutMinutes: 30, decisionPolicy: 'critical' } })
+    setLoopEnabled(dir, false)
+    expect(loadConfig(dir)?.loop).toEqual({ enabled: false, timeoutMinutes: 30, decisionPolicy: 'critical' })
+  })
+
   it('loopStatus reports enabled state and progress', () => {
     saveConfig(dir, cfg())
     const out = loopStatus(dir)
@@ -56,6 +63,57 @@ describe('yoke loop CLI', () => {
     const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })
     expect(code).toBe(2)
     expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(false)
+  })
+
+  it('run refuses to dispatch while a critical decision is still pending', () => {
+    saveConfig(dir, cfg())
+    writeFileSync(join(dir, '.yoke', 'pending-decision.yaml'), [
+      'version: 1', 'storyId: S1', 'question: Which identity model?', 'reason: Public API choice.',
+      'options:', '  - { id: A, label: Accounts }', '  - { id: B, label: Profiles }',
+      'recommended: A', '',
+    ].join('\n'))
+    let runs = 0
+    const code = runLoopCommand(dir, {
+      maxIterations: 5, runner: () => { runs += 1; return passRunner({ targetDir: dir, story: loadPrd(join(dir, '.yoke', 'prd.yaml'))[0] }) },
+      git: stubGit, verify: verifyOk,
+    })
+    expect(code).toBe(1)
+    expect(runs).toBe(0)
+  })
+
+  it('run refuses to dispatch while an interrupted decision answer needs recovery', () => {
+    saveConfig(dir, cfg())
+    writeFileSync(join(dir, '.yoke', 'decision-answering.yaml'), [
+      'version: 1', 'storyId: S1', 'question: Which identity model?', 'reason: Public API choice.',
+      'options:', '  - { id: A, label: Accounts }', '  - { id: B, label: Profiles }', 'recommended: A', '',
+    ].join('\n'))
+    let runs = 0
+    expect(runLoopCommand(dir, {
+      maxIterations: 5, runner: () => { runs += 1; return { success: true, summary: 'unexpected' } },
+      git: stubGit, verify: verifyOk,
+    })).toBe(1)
+    expect(runs).toBe(0)
+  })
+
+  it('persists the trusted run options needed to resume after a critical decision', () => {
+    saveConfig(dir, { ...cfg(), agents: ['codex', 'claude'], loop: { enabled: true, decisionPolicy: 'critical' } })
+    const decisionRunner: AgentRunner = (ctx) => {
+      writeFileSync(join(ctx.targetDir, '.yoke', 'decision-request.yaml'), [
+        'version: 1', `storyId: ${ctx.story.id}`, 'question: Which identity model?', 'reason: Public API choice.',
+        'options:', '  - { id: A, label: Accounts }', '  - { id: B, label: Profiles }', 'recommended: A', '',
+      ].join('\n'))
+      return { success: true, summary: 'waiting' }
+    }
+    expect(runLoopCommand(dir, {
+      maxIterations: 7, agent: 'codex', runner: decisionRunner, git: stubGit, verify: verifyOk,
+      reviewer: 'claude', reviewRunner: passRunner, review: true, allowSelfReview: false,
+      timeoutMinutes: 12, json: true, onAmbiguity: 'resolve', permissions: 'safe',
+    })).toBe(1)
+    expect(readDecisionResume(dir)).toMatchObject({
+      maxIterations: 7, agent: 'codex', reviewer: 'claude', review: true,
+      timeoutMinutes: 12, json: true, onAmbiguity: 'resolve', permissions: 'safe', parallel: 1,
+    })
+    expect(readDecisionResume(dir)?.decisionPolicy).toBeUndefined()
   })
 
   it('run completes the PRD with an injected passing runner', () => {

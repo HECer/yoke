@@ -6,6 +6,7 @@ import type { PermissionProfile } from '../agents/types.js'
 
 export type Agent = 'claude' | 'codex' | 'gemini'
 export type CodeGraph = 'graphify' | 'serena'
+export type DecisionPolicy = 'auto' | 'critical'
 
 const AgentSchema = z.enum(['claude', 'codex', 'gemini'])
 const CodeGraphSchema = z.enum(['graphify', 'serena'])
@@ -19,11 +20,15 @@ export const YokeConfigSchema = z.object({
   loop: z.object({
     enabled: z.boolean(),
     timeoutMinutes: z.number().optional(),
+    decisionPolicy: z.enum(['auto', 'critical']).optional(),
     // Ambiguous acceptance criteria: 'resolve' (default — agent decides and continues)
     // or 'abort' (agent stops the story via .yoke/ambiguity.md for a human decision).
     onAmbiguity: z.enum(['resolve', 'abort']).optional(),
   }),
-  runner: z.object({ permissions: z.enum(['safe', 'unsafe', 'read-only']) }).optional(),
+  runner: z.object({
+    agent: AgentSchema.optional(),
+    permissions: z.enum(['safe', 'unsafe', 'read-only']).optional(),
+  }).optional(),
   commit: z.object({
     authorName: z.string().min(1).optional(),
     authorEmail: z.string().email().optional(),
@@ -51,8 +56,8 @@ export interface SmokeConfig { baseUrl: string; flows: SmokeFlow[] }
 export interface YokeConfig {
   canonVersion: string
   agents: Agent[]
-  loop: { enabled: boolean; timeoutMinutes?: number; onAmbiguity?: 'resolve' | 'abort' }
-  runner?: { permissions: PermissionProfile }
+  loop: { enabled: boolean; timeoutMinutes?: number; decisionPolicy?: DecisionPolicy; onAmbiguity?: 'resolve' | 'abort' }
+  runner?: { agent?: Agent; permissions?: PermissionProfile }
   commit?: { authorName?: string; authorEmail?: string; allowCoAuthors?: boolean }
   audit?: { enabled: boolean; command?: string; suppressionsVersion?: 1; suppressions?: Array<{ ruleId: string; file?: string; reason: string; expires?: string }> }
   verify?: { command: string; retries?: number }

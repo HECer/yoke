@@ -4,7 +4,8 @@ The autonomous loop is OPTIONAL and toggle-able:
 
 - `yoke loop on` / `yoke loop off` — enable/disable (recorded in `.yoke/config.yaml`, default off).
 - `yoke loop status` — show enabled state + PRD progress.
-- `yoke loop run [--max=N] [--isolate]` — run the loop (default cap 25 iterations).
+- `yoke loop run [--max=N] [--isolate] [--decision-policy=auto|critical]` — run the loop (default cap 25 iterations).
+- `yoke loop decision` / `yoke loop answer --choice=<id>` — inspect and answer a structured critical stop; answering records a human-owned, decision-file-only commit and resumes by default with the original runner, isolation, review, permission, timeout, and policy settings. `yoke loop resume` retries a restart that could not begin without weakening those settings.
 
 Pass `--isolate` to run each iteration in a fresh git worktree: the agent works on a throwaway checkout, and only a verified, committed story is fast-forwarded back into the main tree. A failed iteration never touches your working tree. Requires `.yoke/prd.yaml` to be committed to git, since the worktree is a checkout of HEAD.
 
@@ -17,7 +18,8 @@ When enabled and run, each iteration:
 1. Pre-dispatch gate: the git worktree must be clean, else `blocked`.
 2. Pick the highest-priority unfinished PRD story (`.yoke/prd.yaml`).
 3. Stop-the-Line gate: the story must have acceptance criteria, else `blocked`.
-4. Run a fresh agent to implement ONE story. The runner is selected by `--runner=<claude|codex|gemini>` or the first configured agent (default claude); the loop refuses to start if that agent's CLI is not installed.
+4. Run a fresh agent to implement ONE story. Runner precedence is explicit `--runner`, configured `runner.agent`, active agent host, then the first configured agent. The loop refuses to start if that CLI is not installed.
+   With `decisionPolicy: auto`, routine ambiguity is resolved from the approved plan and project conventions. With `critical`, only high-impact architecture, security/privacy, destructive data, material-cost, compliance, or irreversible choices may produce `.yoke/decision-request.yaml`; the loop validates its bounded single-line fields, unique options, and active story ID, blocks before verify, and preserves it for `yoke loop answer`.
 5. Run the project's verify command (config `verify.command`, or detected `npm test`).
    **Verify is the source of truth** — the agent's exit code is advisory, so a spurious
    non-zero exit (e.g. a Windows `.cmd` wrapper) cannot block a story whose tests are green.

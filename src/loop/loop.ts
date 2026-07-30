@@ -7,6 +7,7 @@ import type { Verifier } from './verify.js'
 import { appendDecision, contextDir } from '../context/context.js'
 import { noopReporter, type LoopReporter } from './reporter.js'
 import type { CommitIdentity } from './identity.js'
+import { consumeDecisionRequest } from './decision.js'
 
 function blockReason(base: string, targetDir: string, git: GitOps): string {
   let dirty = false
@@ -136,6 +137,17 @@ export function runLoop(opts: LoopOptions): LoopResult {
         const result = opts.runner({ targetDir: wt, story })
         iterations++
         if (result.tokens) reporter.addTokens(result.tokens)
+        let decision
+        try { decision = consumeDecisionRequest(wt, opts.targetDir, story.id) } catch (error) {
+          const reason = `invalid critical decision request for story ${story.id}: ${(error as Error).message}`
+          reporter.blocked(reason)
+          return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+        }
+        if (decision) {
+          const reason = `critical decision required for story ${story.id}: ${decision.question}`
+          reporter.blocked(reason)
+          return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+        }
         const ambiguity = consumeAmbiguity(wt)
         if (ambiguity) {
           const reason = `story ${story.id} stopped: ambiguous acceptance criteria — ${ambiguity}`
@@ -212,6 +224,18 @@ export function runLoop(opts: LoopOptions): LoopResult {
     const result = opts.runner({ targetDir: opts.targetDir, story })
     iterations++
     if (result.tokens) reporter.addTokens(result.tokens)
+
+    let decision
+    try { decision = consumeDecisionRequest(opts.targetDir, opts.targetDir, story.id) } catch (error) {
+      const reason = `invalid critical decision request for story ${story.id}: ${(error as Error).message}`
+      reporter.blocked(reason)
+      return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+    }
+    if (decision) {
+      const reason = `critical decision required for story ${story.id}: ${decision.question}`
+      reporter.blocked(reason)
+      return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+    }
 
     const ambiguity = consumeAmbiguity(opts.targetDir)
     if (ambiguity) {

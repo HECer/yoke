@@ -3,7 +3,7 @@ import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Agent } from '../retrofit/config.js'
+import type { Agent, DecisionPolicy } from '../retrofit/config.js'
 import type { TokenUsage } from './reporter.js'
 import { loadContext, formatForPrompt, contextDir } from '../context/context.js'
 import { buildProviderInvocation } from '../agents/providers.js'
@@ -33,7 +33,7 @@ export function contextBlockFor(targetDir: string): string {
 // pick the most consistent interpretation and keep going) or 'abort' (stop the
 // story via .yoke/ambiguity.md so the human decides). All questions belong in
 // the planning round; a loop run never has anyone to ask.
-export type AmbiguityPolicy = 'resolve' | 'abort'
+export type AmbiguityPolicy = 'resolve' | 'abort' | DecisionPolicy
 
 export function buildClaudePrompt(story: Story, context: string, onAmbiguity: AmbiguityPolicy = 'resolve', perfCommand?: string): string {
   const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
@@ -59,6 +59,12 @@ export function buildClaudePrompt(story: Story, context: string, onAmbiguity: Am
     '- Never ask questions or wait for input — you run unattended and nobody can answer.',
     onAmbiguity === 'abort'
       ? '- If an acceptance criterion is genuinely undecidable, do NOT guess: write the open question(s) to .yoke/ambiguity.md, change nothing else, and stop.'
+      : onAmbiguity === 'critical'
+        ? [
+            '- Resolve routine ambiguity yourself using the plan, acceptance criteria, existing code, and established project conventions.',
+            '- Stop only for a high-impact decision involving public architecture, security or privacy posture, destructive data migration or data loss, material external cost, legal/compliance exposure, or another irreversible choice.',
+            '- For such a critical decision, change nothing else. Write .yoke/decision-request.yaml with exactly: version: 1, storyId, question, reason, 2-4 options ({id, label, optional tradeoff}), and recommended (an option id). Then stop.',
+          ].join('\n')
       : '- If an acceptance criterion is ambiguous, resolve it yourself in the way most consistent with the other criteria and the existing code, and state your interpretation in your final message.',
   )
   if (perfCommand) {

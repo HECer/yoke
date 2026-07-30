@@ -2,7 +2,7 @@
 import { pathToFileURL } from 'node:url'
 import { realpathSync } from 'node:fs'
 import { validateCanon } from './canon/validate.js'
-import type { Agent } from './retrofit/config.js'
+import type { Agent, DecisionPolicy } from './retrofit/config.js'
 import { runRetrofit } from './retrofit/command.js'
 import { setLoopEnabled, loopStatus, runLoopCommand } from './loop/run-command.js'
 import { runContextInit, runContextStatus } from './context/command.js'
@@ -15,6 +15,12 @@ import { runFlowSmoke } from './smoke/command.js'
 import { maybeNotifyUpdate, currentYokeVersion } from './update/check.js'
 import { runUpgrade } from './update/upgrade.js'
 import { printAudit, runAudit } from './audit/command.js'
+import { runSetup } from './setup/command.js'
+import {
+  answerPendingDecision, answeredDecisionResumeIsValid, clearDecisionResume, decisionProcessingExists, decisionResumeMatchesCurrent,
+  finalizeCommittedDecisionResume,
+  formatPendingDecision, readDecisionResume, readPendingDecision, writeDecisionResume,
+} from './loop/decision.js'
 
 export { runRetrofit } from './retrofit/command.js'
 
@@ -46,9 +52,36 @@ export function runDesignScan(targetDir: string, opts: { max: number; report: bo
   return 0
 }
 
-function main(argv: string[]): number | Promise<number> {
+export function main(argv: string[]): number | Promise<number> {
   const [cmd, ...rest] = argv
   switch (cmd) {
+    case 'setup': {
+      const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
+      const valid: Agent[] = ['claude', 'codex', 'gemini']
+      const hostArg = rest.find(a => a.startsWith('--host='))?.slice('--host='.length)
+      if (hostArg && !valid.includes(hostArg as Agent)) { console.error(`Invalid --host value: ${hostArg}`); return 1 }
+      const agentArg = rest.find(a => a.startsWith('--agent='))?.slice('--agent='.length)
+      const agentTokens = agentArg === 'all' ? valid : agentArg?.split(',').map(a => a.trim())
+      const invalidAgents = agentTokens?.filter(a => !valid.includes(a as Agent)) ?? []
+      if (agentArg && (invalidAgents.length > 0 || agentTokens?.length === 0)) {
+        console.error(`Invalid --agent value: ${agentArg} (expected claude,codex,gemini|all)`)
+        return 1
+      }
+      const agents = agentTokens ? [...new Set(agentTokens as Agent[])] : undefined
+      const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
+      if (runnerArg && !valid.includes(runnerArg as Agent)) { console.error(`Invalid --runner value: ${runnerArg}`); return 1 }
+      const graphArg = rest.find(a => a.startsWith('--code-graph='))?.slice('--code-graph='.length)
+      if (graphArg && graphArg !== 'graphify' && graphArg !== 'serena') { console.error(`Invalid --code-graph value: ${graphArg}`); return 1 }
+      const policyArg = rest.find(a => a.startsWith('--decision-policy='))?.slice('--decision-policy='.length)
+      if (policyArg && policyArg !== 'auto' && policyArg !== 'critical') { console.error(`Invalid --decision-policy value: ${policyArg}`); return 1 }
+      const loop = rest.includes('--loop') ? true : rest.includes('--no-loop') ? false : undefined
+      return runSetup(targetDir, {
+        host: hostArg as Agent | undefined, agents, runner: runnerArg as Agent | undefined,
+        codeGraph: graphArg as 'graphify' | 'serena' | undefined,
+        loop, decisionPolicy: policyArg as DecisionPolicy | undefined,
+        interactive: rest.includes('--yes') ? false : undefined,
+      })
+    }
     case 'validate':
       return runValidate(rest[0] ?? 'canon')
     case 'retrofit': {
@@ -76,8 +109,100 @@ function main(argv: string[]): number | Promise<number> {
       if (sub === 'on') { setLoopEnabled(targetDir, true); console.log('Loop enabled.'); return 0 }
       if (sub === 'off') { setLoopEnabled(targetDir, false); console.log('Loop disabled.'); return 0 }
       if (sub === 'status') { console.log(loopStatus(targetDir)); return 0 }
-      if (sub === 'cleanup') return runLoopCleanup(targetDir, { removeWorktrees: rest.includes('--remove-worktrees') })
+      if (sub === 'cleanup') return runLoopCleanup(targetDir, {
+        removeWorktrees: rest.includes('--remove-worktrees'),
+        discardStaleRecovery: rest.includes('--discard-stale-recovery'),
+      })
+      if (sub === 'decision') { console.log(formatPendingDecision(targetDir)); return 0 }
+      if (sub === 'resume') {
+        if (rest.includes('--discard')) {
+          try { clearDecisionResume(targetDir) } catch (error) {
+            console.error(`Could not discard trusted decision resume state: ${(error as Error).message}`)
+            return 1
+          }
+          console.log('Discarded the trusted decision resume state. Pending decisions, if any, were kept.')
+          return 0
+        }
+        let resume
+        try { resume = readDecisionResume(targetDir) } catch (error) {
+          console.error(`Invalid trusted decision resume state: ${(error as Error).message}`)
+          return 1
+        }
+        if (resume && !resume.answered && !readPendingDecision(targetDir) && !decisionProcessingExists(targetDir)) {
+          try { resume = finalizeCommittedDecisionResume(targetDir, resume) } catch (error) {
+            console.error(`Could not recover committed decision resume state: ${(error as Error).message}`)
+            return 1
+          }
+        }
+        if (!resume?.answered) { console.error('No answered critical decision is ready to resume.'); return 1 }
+        if (readPendingDecision(targetDir) || decisionProcessingExists(targetDir)) {
+          console.error('The critical decision is not fully answered yet. Use yoke loop answer first.')
+          return 1
+        }
+        if (!answeredDecisionResumeIsValid(targetDir, resume)) {
+          console.error('The answered decision is not committed on the current project/branch or the PRD changed; refusing a stale resume.')
+          return 1
+        }
+        const { version: _version, storyId: _storyId, requestId: _requestId, answered: _answered, ...resumeOptions } = resume
+        return runLoopCommand(targetDir, resumeOptions)
+      }
+      if (sub === 'answer') {
+        const choice = rest.find(a => a.startsWith('--choice='))?.slice('--choice='.length)
+        if (!choice) { console.error('usage: yoke loop answer [dir] --choice=<id|label> [--rationale="..."] [--no-resume]'); return 1 }
+        const rationale = rest.find(a => a.startsWith('--rationale='))?.slice('--rationale='.length)
+        let resume = null
+        if (!rest.includes('--no-resume')) {
+          try { resume = readDecisionResume(targetDir) } catch (error) {
+            console.error(`Invalid trusted decision resume state: ${(error as Error).message}`)
+            return 1
+          }
+          if (!resume) {
+            console.error('No trusted resume state matches this decision. Re-run with --no-resume to record the answer without restarting the loop.')
+            return 1
+          }
+          try {
+            if (!decisionResumeMatchesCurrent(targetDir, resume)) {
+              console.error('Trusted resume state does not match the current pending decision; refusing to restart with stale options.')
+              return 1
+            }
+          } catch (error) {
+            console.error(`Could not validate trusted resume state: ${(error as Error).message}`)
+            return 1
+          }
+        }
+        const answered = answerPendingDecision(targetDir, {
+          choice,
+          rationale,
+          onCommitted: resume
+            ? (requestId, answerId) => writeDecisionResume(targetDir, { ...resume!, requestId, answered: true, answerId })
+            : undefined,
+        })
+        if (answered !== 0) return answered
+        if (rest.includes('--no-resume')) {
+          try { clearDecisionResume(targetDir) } catch (error) {
+            console.error(`Decision was recorded, but trusted resume state could not be cleared: ${(error as Error).message}`)
+            return 1
+          }
+          return 0
+        }
+        const answeredResume = readDecisionResume(targetDir)
+        if (!answeredResume || !answeredDecisionResumeIsValid(targetDir, answeredResume)) {
+          console.error('Decision was recorded, but its commit could not be bound to the trusted resume state. Use yoke loop resume after resolving this state.')
+          return 1
+        }
+        const { version: _version, storyId: _storyId, requestId: _requestId, answered: _answered, ...resumeOptions } = resume!
+        return runLoopCommand(targetDir, resumeOptions)
+      }
       if (sub === 'run') {
+        try {
+          if (readDecisionResume(targetDir)) {
+            console.error('A prior critical decision has preserved run options. Finish it with yoke loop answer/resume, or explicitly clear the private resume state with yoke loop resume --discard.')
+            return 1
+          }
+        } catch (error) {
+          console.error(`Invalid trusted decision resume state: ${(error as Error).message}`)
+          return 1
+        }
         const maxArg = rest.find(a => a.startsWith('--max='))
         const rawMax = maxArg ? Number(maxArg.slice('--max='.length)) : 25
         if (!Number.isFinite(rawMax) || rawMax <= 0) {
@@ -120,9 +245,14 @@ function main(argv: string[]): number | Promise<number> {
           console.error(`Invalid --on-ambiguity value: ${oaArg} (expected resolve|abort)`)
           return 1
         }
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, parallel, reviewer, review, allowSelfReview, timeoutMinutes, json, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, permissions })
+        const dpArg = rest.find(a => a.startsWith('--decision-policy='))?.slice('--decision-policy='.length)
+        if (dpArg && dpArg !== 'auto' && dpArg !== 'critical') {
+          console.error(`Invalid --decision-policy value: ${dpArg} (expected auto|critical)`)
+          return 1
+        }
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, parallel, reviewer, review, allowSelfReview, timeoutMinutes, json, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions })
       }
-      console.log('usage: yoke loop <on|off|status|cleanup [--remove-worktrees]|run [--max=N] [--parallel=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--isolate] [--unsafe] [--timeout=<minutes>] [--on-ambiguity=<resolve|abort>] [--json]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|decision|answer|resume [--discard]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--json]> [targetDir]')
       return 1
     }
     case 'new': {
@@ -230,7 +360,7 @@ function main(argv: string[]): number | Promise<number> {
     case 'upgrade':
       return runUpgrade()
     default:
-      console.log('usage: yoke <new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | prd <draft|check> [dir] | loop <on|off|status|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>')
+      console.log('usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | prd <draft|check> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>')
       return cmd ? 1 : 0
   }
 }

@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
-import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand } from '../retrofit/config.js'
+import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand, type DecisionPolicy } from '../retrofit/config.js'
 import { loadPrd, progress } from './prd.js'
 import { runLoop } from './loop.js'
 import { realGitOps } from './git.js'
@@ -14,6 +14,11 @@ import { maybeAutoUpgrade } from '../update/upgrade.js'
 import type { PermissionProfile } from '../agents/types.js'
 import { resolveCommitIdentity, type CommitIdentity } from './identity.js'
 import { runAudit } from '../audit/command.js'
+import { detectHostAgent, resolveRunnerAgent } from '../agents/host.js'
+import {
+  clearDecisionResume, decisionProcessingExists, decisionRequestId, formatPendingDecision,
+  readPendingDecision, writeDecisionResume,
+} from './decision.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -36,7 +41,7 @@ export function prdPath(targetDir: string): string {
 export function setLoopEnabled(targetDir: string, enabled: boolean): void {
   // TODO(C2): resolve bundled canon version instead of placeholder
   const config = loadConfig(targetDir) ?? defaultConfig('0.0.0')
-  config.loop = { enabled }
+  config.loop = { ...config.loop, enabled }
   saveConfig(targetDir, config)
 }
 
@@ -89,6 +94,7 @@ export interface RunLoopCommandOptions {
   json?: boolean
   /** Ambiguous-criteria handling; flag beats config.loop.onAmbiguity; default 'resolve' (never stop). */
   onAmbiguity?: AmbiguityPolicy
+  decisionPolicy?: DecisionPolicy
   /** Test seam for the performance budget gate (production builds it from config.perf). */
   perf?: Verifier
   permissions?: PermissionProfile
@@ -107,6 +113,19 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   if (!config?.loop.enabled) {
     console.error('Loop is disabled. Enable it with: yoke loop on')
     return 2
+  }
+  if (decisionProcessingExists(targetDir)) {
+    console.error(`A critical decision answer needs recovery. Run: yoke loop answer ${targetDir} --choice=<id>`)
+    return 1
+  }
+  try {
+    if (readPendingDecision(targetDir)) {
+      console.error(`${formatPendingDecision(targetDir)}\nAnswer it with: yoke loop answer ${targetDir} --choice=<id>`)
+      return 1
+    }
+  } catch (error) {
+    console.error(`Invalid pending Yoke decision: ${(error as Error).message}`)
+    return 1
   }
   const path = prdPath(targetDir)
   if (!existsSync(path)) {
@@ -133,7 +152,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   maybeAutoUpgrade(config.update?.auto)
 
   const available = opts.isAvailable ?? isAgentAvailable
-  const runnerAgent: Agent = opts.agent ?? config.agents[0] ?? 'claude'
+  const runnerAgent: Agent = resolveRunnerAgent(config, opts.agent, detectHostAgent())
   const git = opts.git ?? realGitOps
   let commitIdentity = opts.commitIdentity
   if (!commitIdentity && !opts.git) {
@@ -169,7 +188,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     // runner switches to stream-json so cumulative usage rides on every status.
     runner = makeRunner(runnerAgent, idleMs, {
       tokenReport: opts.json === true,
-      onAmbiguity: opts.onAmbiguity ?? config.loop.onAmbiguity,
+      onAmbiguity: opts.decisionPolicy ?? opts.onAmbiguity ?? config.loop.decisionPolicy ?? config.loop.onAmbiguity ?? 'auto',
       perfCommand: config.perf?.command,
       permissions,
     })
@@ -198,7 +217,11 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     review = makeReviewRunner(resolvedReviewer, idleMs)
   }
 
-  const lock = acquireLock(targetDir)
+  let lock: ReturnType<typeof acquireLock>
+  try { lock = acquireLock(targetDir) } catch (error) {
+    console.error(`Cannot acquire the Yoke loop lock: ${(error as Error).message}`)
+    return 2
+  }
   if (!lock.acquired) {
     console.error(`Another loop is already running here (pid ${lock.holderPid}). If that is wrong, run: yoke loop cleanup`)
     return 2
@@ -207,6 +230,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     console.warn(`Took over a stale loop lock (pid ${lock.stalePid} is gone).`)
   }
   try {
+    const reporter = opts.reporter ?? makeReporter(targetDir, { json: opts.json })
     const result = runLoop({
       prdPath: path,
       targetDir,
@@ -219,8 +243,42 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       maxIterations: opts.maxIterations,
       isolate: (opts.parallel ?? 1) > 1 ? true : (opts.isolate ?? false),
       review,
-      reporter: opts.reporter ?? makeReporter(targetDir, { json: opts.json }),
+      reporter,
     })
+    try {
+      const pendingDecision = readPendingDecision(targetDir)
+      if (pendingDecision) {
+        writeDecisionResume(targetDir, {
+          version: 1,
+          storyId: pendingDecision.storyId,
+          requestId: decisionRequestId(pendingDecision),
+          answered: false,
+          maxIterations: opts.maxIterations,
+          agent: runnerAgent,
+          isolate: opts.isolate ?? false,
+          reviewer: opts.reviewer,
+          review: opts.review === true || opts.reviewRunner !== undefined,
+          allowSelfReview: opts.allowSelfReview ?? false,
+          timeoutMinutes: opts.timeoutMinutes ?? config.loop.timeoutMinutes,
+          json: opts.json ?? false,
+          onAmbiguity: opts.decisionPolicy
+            ? undefined
+            : opts.onAmbiguity === 'resolve' || opts.onAmbiguity === 'abort'
+              ? opts.onAmbiguity
+              : (config.loop.decisionPolicy ? undefined : config.loop.onAmbiguity),
+          decisionPolicy: opts.decisionPolicy
+            ?? (opts.onAmbiguity
+              ? (opts.onAmbiguity === 'auto' || opts.onAmbiguity === 'critical' ? opts.onAmbiguity : undefined)
+              : config.loop.decisionPolicy),
+          permissions,
+          parallel: opts.parallel ?? 1,
+        })
+      } else clearDecisionResume(targetDir)
+    } catch (error) {
+      const reason = `could not persist trusted decision resume state: ${(error as Error).message}`
+      reporter.blocked(reason)
+      return 1
+    }
     // In json mode stdout belongs to the NDJSON stream — route the narrative summary to stderr.
     const say = opts.json ? (line: string) => console.error(line) : (line: string) => console.log(line)
     say(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
@@ -233,6 +291,6 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     if (result.status === 'paused') return 3
     return 1
   } finally {
-    releaseLock(targetDir)
+    releaseLock(targetDir, lock.ownerToken)
   }
 }

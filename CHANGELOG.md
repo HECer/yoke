@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.1.0 — 2026-07-30
+
+### Added
+- Shared five-question `yoke setup` wizard with provider-aware defaults for Claude, Codex, and Gemini.
+- Persisted default runner selection and `auto|critical` loop decision policies.
+- Provider-neutral `yoke-workflow` skill for planning questions, approved-plan PRD handoff, autonomous story execution, and critical-decision resume.
+- Structured critical-decision requests with `yoke loop decision` and `yoke loop answer`; answers are validated, committed under the configured human identity, and resume the same story.
+- Approved `.yoke/plan.md` context in PRD drafting and a lint gate for unresolved planning placeholders.
+
+### Fixed
+- Retrofit and loop on/off now preserve timeout, decision, runner, and permission settings.
+- Empty projects prefer the active agent host instead of silently installing Claude artifacts in Codex.
+- Loop and PRD runner selection now prefer an explicit flag, then the configured runner, then the active host.
+- Retrofit reports no longer label every provider as Claude Code.
+- Critical-decision resumes retain isolation, review, runner, permissions, timeout, JSON, policy, and iteration settings instead of falling back to an unreviewed default run.
+- Decision answers use an atomic owner-token lock and recoverable request journal, are checked against the active PRD story, bounded as untrusted data, and committed path-by-path so unrelated edits cannot enter the human-owned commit.
+- Decision recovery now binds the exact selected answer to its commit, rolls back only its own interrupted context append, namespaces resume state per project/worktree, and serializes cleanup with loop startup.
+- Active agent session markers now outrank globally configured provider home directories, and setup rejects partially invalid agent lists.
+
+### Changed
+- New setups enable the loop by default and choose `decisionPolicy: auto`; the wizard can select `critical` or disable the loop.
+- Legacy `loop.onAmbiguity` and `--on-ambiguity` remain compatibility aliases.
+
 ## 1.0.0 — 2026-07-27
 
 ### Added

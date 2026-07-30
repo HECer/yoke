@@ -78,6 +78,12 @@ describe('yoke config', () => {
     expect(loadConfig(dir)?.runner?.permissions).toBe('read-only')
   })
 
+  it('round-trips a preferred runner agent independently from permissions', () => {
+    const cfg = { ...defaultConfig('1.1.0'), agents: ['claude', 'codex'] as const, runner: { agent: 'codex' as const } }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)?.runner).toEqual({ agent: 'codex' })
+  })
+
   it('rejects an unknown runner permission profile', () => {
     expect(() => YokeConfigSchema.parse({ canonVersion: '1', agents: [], loop: { enabled: true }, runner: { permissions: 'root' } })).toThrow()
   })
@@ -125,6 +131,14 @@ describe('yoke config', () => {
     const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true, onAmbiguity: 'abort' as const } }
     saveConfig(dir, cfg)
     expect(loadConfig(dir)!.loop.onAmbiguity).toBe('abort')
+  })
+
+  it('round-trips the auto and critical decision policies', () => {
+    for (const decisionPolicy of ['auto', 'critical'] as const) {
+      const cfg = { ...defaultConfig('1.1.0'), loop: { enabled: true, decisionPolicy } }
+      saveConfig(dir, cfg)
+      expect(loadConfig(dir)?.loop.decisionPolicy).toBe(decisionPolicy)
+    }
   })
 
   it('leaves loop.onAmbiguity undefined when omitted (default: do not stop)', () => {

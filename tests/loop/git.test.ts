@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from 'no
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import { realGitOps } from '../../src/loop/git.js'
+import { commitPaths, realGitOps } from '../../src/loop/git.js'
 
 let dir: string
 function git(...args: string[]) { execFileSync('git', args, { cwd: dir, stdio: 'pipe' }) }
@@ -48,6 +48,14 @@ describe('realGitOps', () => {
 
   it('commitAll throws when there is nothing to commit', () => {
     expect(() => realGitOps.commitAll(dir, 'yoke: empty commit')).toThrow(/nothing to commit/)
+  })
+
+  it('commitPaths commits only the named file and leaves concurrent changes untouched', () => {
+    writeFileSync(join(dir, 'decision.md'), 'approved')
+    writeFileSync(join(dir, 'unrelated.txt'), 'editor change')
+    commitPaths(dir, ['decision.md'], 'yoke: decision')
+    expect(execFileSync('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: dir }).toString().trim()).toBe('decision.md')
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: dir }).toString()).toContain('unrelated.txt')
   })
 
   it('addWorktree creates a working copy, integrate brings its commit back, removeWorktree cleans up', () => {
