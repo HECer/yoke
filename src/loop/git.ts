@@ -31,3 +31,21 @@ export const realGitOps: GitOps = {
     execFileSync('git', ['merge', '--ff-only', sha], { cwd: repoDir, stdio: 'pipe' })
   },
 }
+
+export function commitPaths(dir: string, paths: string[], message: string, identity?: CommitIdentity): void {
+  if (paths.length === 0) throw new Error('no commit paths supplied')
+  const identityArgs = identity
+    ? ['-c', `user.name=${identity.authorName}`, '-c', `user.email=${identity.authorEmail}`]
+    : []
+  const authorArgs = identity ? ['--author', `${identity.authorName} <${identity.authorEmail}>`] : []
+  const cleanMessage = sanitizeCommitMessage(message, identity?.allowCoAuthors ?? false)
+  execFileSync('git', ['add', '--', ...paths], { cwd: dir, stdio: 'pipe' })
+  try {
+    const staged = execFileSync('git', ['diff', '--cached', '--name-only', '--', ...paths], { cwd: dir, stdio: 'pipe' }).toString().trim()
+    if (!staged) throw new Error('nothing to commit for selected paths')
+    execFileSync('git', [...identityArgs, '-c', 'commit.gpgsign=false', 'commit', '--only', ...authorArgs, '-m', cleanMessage, '--', ...paths], { cwd: dir, stdio: 'pipe' })
+  } catch (error) {
+    try { execFileSync('git', ['reset', '--quiet', '--', ...paths], { cwd: dir, stdio: 'pipe' }) } catch { /* best effort */ }
+    throw error
+  }
+}

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runLoopCleanup } from '../../src/loop/cleanup.js'
-import { lockPath } from '../../src/loop/lock.js'
+import { lockPath, takeoverLockPath, takeoverRecoveryPath } from '../../src/loop/lock.js'
 
 let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-clean-')) })
@@ -77,5 +77,29 @@ describe('runLoopCleanup', () => {
     writeFileSync(lockPath(dir), JSON.stringify({ pid: process.pid, startedAt: 'x' }))
     runLoopCleanup(dir, { git: () => {} })
     expect(existsSync(lockPath(dir))).toBe(true)
+  })
+
+  it('recovers a crashed takeover lease but preserves a live one', () => {
+    mkdirSync(join(dir, '.yoke'), { recursive: true })
+    writeFileSync(takeoverLockPath(dir), JSON.stringify({ pid: 4194304 + 999, startedAt: 'x', ownerToken: 'dead' }))
+    expect(runLoopCleanup(dir, { git: () => {} })).toBe(0)
+    expect(existsSync(takeoverLockPath(dir))).toBe(false)
+
+    writeFileSync(takeoverLockPath(dir), JSON.stringify({ pid: process.pid, startedAt: 'x', ownerToken: 'live' }))
+    expect(runLoopCleanup(dir, { git: () => {} })).toBe(0)
+    expect(existsSync(takeoverLockPath(dir))).toBe(true)
+  })
+
+  it('requires the explicit operator flag to discard a crashed recovery lease', () => {
+    mkdirSync(join(dir, '.yoke'), { recursive: true })
+    writeFileSync(takeoverRecoveryPath(dir), JSON.stringify({ pid: 4194304 + 999, startedAt: 'x', ownerToken: 'dead-recovery' }))
+    expect(runLoopCleanup(dir, { git: () => {} })).toBe(1)
+    expect(existsSync(takeoverRecoveryPath(dir))).toBe(true)
+    expect(runLoopCleanup(dir, { git: () => {}, discardStaleRecovery: true })).toBe(0)
+    expect(existsSync(takeoverRecoveryPath(dir))).toBe(false)
+
+    writeFileSync(takeoverRecoveryPath(dir), JSON.stringify({ pid: process.pid, startedAt: 'x', ownerToken: 'live-recovery' }))
+    expect(runLoopCleanup(dir, { git: () => {}, discardStaleRecovery: true })).toBe(1)
+    expect(existsSync(takeoverRecoveryPath(dir))).toBe(true)
   })
 })

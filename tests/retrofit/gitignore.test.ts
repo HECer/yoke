@@ -36,8 +36,13 @@ describe('ensureGitignore', () => {
   })
   it('ensures the loop lock file is ignored', () => {
     expect(YOKE_IGNORE_LINES).toContain('.yoke/loop.lock')
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/loop.lock.takeover')
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/loop.lock.takeover.recovery')
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/loop.lock.*.tmp')
     ensureGitignore(dir)
     expect(readFileSync(gi(), 'utf8')).toContain('.yoke/loop.lock')
+    expect(readFileSync(gi(), 'utf8')).toContain('.yoke/loop.lock.takeover')
+    expect(readFileSync(gi(), 'utf8')).toContain('.yoke/loop.lock.*.tmp')
   })
   it('ensures the flow-smoke proof dir is ignored', () => {
     expect(YOKE_IGNORE_LINES).toContain('.yoke/proof/')
@@ -64,6 +69,14 @@ describe('ensureGitignore', () => {
     const text = readFileSync(gi(), 'utf8')
     expect(text).toContain('.yoke/ambiguity.md')
     expect(text).toContain('.yoke/story-durations.json')
+  })
+  it('ensures critical-decision request state is ignored', () => {
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/decision-request.yaml')
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/pending-decision.yaml')
+    ensureGitignore(dir)
+    const text = readFileSync(gi(), 'utf8')
+    expect(text).toContain('.yoke/decision-request.yaml')
+    expect(text).toContain('.yoke/pending-decision.yaml')
   })
   it('appends cleanly when the existing file has no trailing newline (no glued lines)', () => {
     writeFileSync(gi(), 'node_modules/') // no trailing newline — the load-bearing prefix branch

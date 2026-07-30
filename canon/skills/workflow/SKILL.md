@@ -7,6 +7,10 @@ description: Use at the start of any non-trivial task — the default order of o
 
 For any non-trivial change, move through these phases in order (skip only what genuinely does not apply):
 
+When `.yoke/config.yaml` exists and the user wants Yoke to own planning plus autonomous
+execution, use `yoke-workflow` as the entrypoint. It adds the approved-plan → PRD → loop
+handoff and the configured critical-decision behavior to the phases below.
+
 1. **Brainstorm** the idea into a clear design — see `brainstorming`.
 2. **Plan** a concrete, testable implementation — see `writing-plans`.
 3. **Understand the code** — map the blast radius with the code-graph before changing anything.

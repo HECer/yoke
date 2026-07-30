@@ -1,19 +1,26 @@
 ---
 name: yoke-retrofit
-description: Use when asked to "retrofit", "yoke this project", or set up the Yoke harness in a project — runs yoke retrofit, picks a code-graph tool, and asks whether to enable the autonomous loop.
+description: Use when asked to "retrofit", "yoke this project", or set up the Yoke harness in a project — runs the shared setup wizard and configures the same behavior for Claude, Codex, and Gemini.
 ---
 
 # Yoke Retrofit
 
-Set up (or update) the Yoke harness in the current project.
+Set up or update Yoke through the shared `yoke setup` contract.
 
-1. **Choose the code-graph tool.** Ask the user which to wire, and recommend based on the project:
-   - **Serena** (LSP-accurate, symbol-exact refactoring, no stale index) — recommend for large, strongly-typed codebases (TypeScript, Python, Go) doing systematic refactoring, where missing a reference is costly. Needs one language server per language.
-   - **graphify** (fast, multimodal: code + PDFs + diagrams + images; ~70x token reduction on large mixed repos; honest INFERRED/AMBIGUOUS edges) — recommend for rapid exploration / migration / onboarding of large or unfamiliar repos, or repos with mixed non-code content.
-   Make a direct recommendation for THIS project, then run with `--code-graph=serena` or `--code-graph=graphify` (default graphify if the user has no preference). The choice is saved in `.yoke/config.yaml`.
-2. Run `yoke retrofit . --agent=all --code-graph=<choice>` (or a subset of agents). Non-destructive — existing files are backed up under `.yoke/backup/` before any overwrite; `.claude/settings.json` is merged, not replaced. Generated per agent: Claude (`.claude/skills/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`, rtk hook when WSL is available); Codex (`AGENTS.md`, `.codex/config.toml`, `RTK.md`); Gemini (`GEMINI.md`, `.gemini/commands/*.toml`, `.gemini/settings.json`).
-3. **Ask whether to enable the autonomous Loop** (default off). If yes, add `--loop`. Toggle any time with `yoke loop on|off`.
-4. Show the printed report (created/overwritten/unchanged/merged + detected agents) and where backups went. Note that the generated MCP launch commands may need adjusting to the user's local tool installs.
-5. **Preserve project content.** If the pre-retrofit `CLAUDE.md`/`GEMINI.md` had project-specific instructions (tech stack, workflow, `@`-includes), move them from the backup into the preserve block the generated file ships (`<!-- yoke:preserve:start -->` … `<!-- yoke:preserve:end -->`). Everything inside these markers survives every future `yoke retrofit` — in any yoke-written file; content outside them is replaced (but backed up).
+1. Inspect the project and identify the current host (`claude`, `codex`, or `gemini`).
+2. Ask these setup questions one at a time and give a direct recommendation:
+   - target agents (recommend the current host; use `all` for deliberately cross-agent projects),
+   - code-graph tool,
+   - autonomous loop on/off,
+   - default runner (recommend the current host),
+   - decision mode: `auto` or `critical`.
+3. Recommend the code graph based on this project:
+   - **Serena** is LSP-accurate and best for large typed codebases or systematic symbol refactors where a missed reference is costly. It needs a language server per language.
+   - **graphify** is fast and multimodal, and is best for exploration, migration, onboarding, or mixed code and document repositories. Its graph is an index and can become stale.
+4. Apply the answers without a second round of prompts:
+   `yoke setup . --yes --host=<host> --agent=<agents> --code-graph=<choice> --runner=<runner> --decision-policy=<auto|critical> --loop|--no-loop`.
+   A human who runs `yoke setup .` directly receives the same five terminal questions.
+5. Show the generated report and backup paths. Existing files are backed up under `.yoke/backup/`; settings are merged where supported.
+6. If an old generated `CLAUDE.md` or `GEMINI.md` contained project-specific instructions, restore them inside its `<!-- yoke:preserve:start -->` / `<!-- yoke:preserve:end -->` block. Preserve blocks survive every later retrofit.
 
-The harness includes a `minimal-code` skill (YAGNI / lazy-senior-dev) that nudges every agent to write the least code that solves the task — saving tokens and reducing maintenance.
+The generated harness includes the provider-neutral `yoke-workflow` skill. It owns the planning questions, approved-plan handoff, autonomous stories, and critical-decision resume flow.

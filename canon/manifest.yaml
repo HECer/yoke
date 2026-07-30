@@ -1,9 +1,10 @@
 name: yoke-canon
-version: 1.0.0
+version: 1.1.0
 agents: [claude, codex, gemini]
 skills:
   - { id: tdd, path: skills/tdd, kind: methodology }
   - { id: yoke-retrofit, path: skills/yoke-retrofit, kind: methodology }
+  - { id: yoke-workflow, path: skills/yoke-workflow, kind: methodology }
   - { id: minimal-code, path: skills/minimal-code, kind: methodology }
   - { id: maintaining-context, path: skills/maintaining-context, kind: methodology }
   # superpowers skills (kind: methodology)

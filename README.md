@@ -2,9 +2,9 @@
 
 # 🐂 Yoke
 
-<!-- yoke:version:start -->1.0.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->500<!-- yoke:tests:end -->
-<!-- yoke:skills:start -->28<!-- yoke:skills:end -->
+<!-- yoke:version:start -->1.1.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->559<!-- yoke:tests:end -->
+<!-- yoke:skills:start -->29<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
 ### One harness, three agents — and zero trust in "done."
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-500%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-559%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -25,12 +25,13 @@
 
 </div>
 
-> **TL;DR** — `yoke new my-app --idea="..."` scaffolds a git repo, installs the harness for all three agents, and drafts a story backlog from your idea. `yoke loop run my-app --isolate --review` then implements it story by story behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. If any gate is red, nothing is committed. When a story is done, there's a photo of it in `.yoke/proof/<story>/`.
+> **TL;DR** — `yoke setup .` asks five questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it story by story behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. If any gate is red, nothing is committed. When a story is done, there's a photo of it in `.yoke/proof/<story>/`.
 
-Yoke 1.0 is safe-by-default: provider CLIs use autonomous sandbox profiles unless `--unsafe`
+Yoke 1.1 is safe-by-default: provider CLIs use autonomous sandbox profiles unless `--unsafe`
 is explicit; reviews require a schema-valid verdict and a different model unless
 `--allow-self-review` is explicit; commits enforce the human identity from project config or Git.
-See [the 1.0 migration guide](docs/MIGRATING-TO-1.0.md).
+See [the 1.1 migration guide](docs/MIGRATING-TO-1.1.md) for setup/decision parity and
+[the 1.0 guide](docs/MIGRATING-TO-1.0.md) for the earlier safety-policy changes.
 
 ---
 
@@ -71,7 +72,7 @@ $ ls reading-app/.yoke/proof/STORY-2/
 home.png  list.png                            # photographic evidence, labelled per story
 ```
 
-Every claim in that transcript is enforced by code paths with tests behind them — 500 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
+Every claim in that transcript is enforced by code paths with tests behind them — 559 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
 
 ## 🚀 Quickstart
 
@@ -84,15 +85,14 @@ yoke new my-app --idea="a CLI that tracks reading lists"
 yoke loop on my-app && yoke loop run my-app --isolate
 
 # — or retrofit an existing project —
-yoke validate canon                                          # 1) sanity-check the canon
-yoke retrofit /path/to/project --agent=all                   # 2) install (non-destructive)
-yoke loop on /path/to/project                                # 3) optional: the autonomous loop
+yoke setup /path/to/project                                  # interactive: agents, graph, loop, runner, decisions
+yoke validate canon                                          # sanity-check the canon
 yoke loop run /path/to/project --isolate --reviewer=codex --max=20
 ```
 
 > Requires Node ≥ 20 and git. No global install? `node /path/to/yoke/dist/cli.js …` or `npm --prefix /path/to/yoke run yoke -- …` work too. The MCP tools (rtk, graphify/Serena, Playwright MCP) are wired by Yoke but installed separately — the generated config is a clearly-labelled, adjustable template.
 
-### Or install the skills as a Claude Code plugin
+### Skills before the first setup
 
 The canon is also packaged as a Claude Code plugin — the repo is its own marketplace:
 
@@ -102,6 +102,12 @@ The canon is also packaged as a Claude Code plugin — the repo is its own marke
 ```
 
 That gives you all canon skills under the `yoke:` namespace (e.g. `yoke:tdd`, `yoke:review`) inside Claude Code — no retrofit needed. The `yoke` CLI (loop, gates, retrofit for Codex/Gemini) still comes from `npm i -g @hecer/yoke`. Gemini CLI users can likewise `gemini extensions install https://github.com/HECer/yoke`.
+
+For Codex, no preinstalled skill is required: run `npx @hecer/yoke setup .` in a terminal, or
+ask Codex to run the five-question Yoke setup flow. The retrofit writes native skills to
+`.agents/skills/`, including `yoke-retrofit` and `yoke-workflow`; start a fresh Codex task if an
+already-open task does not discover newly installed skills. The npm package also contains
+`.codex-plugin/plugin.json` for Codex plugin hosts.
 
 ### Staying up to date
 
@@ -124,11 +130,11 @@ Auto-upgrade is deliberately **not** the default: a gate harness shouldn't chang
 
 Yoke is meant to be operated *by* your coding agent — after a retrofit, the agent has the skills, the safety policy, and the routing, so it knows the methodology. Copy-paste prompts (identical wording works for Claude Code, Codex CLI, and Gemini CLI):
 
-> **Set it up** — *"Install the Yoke harness in this project: run `yoke retrofit . --agent=all`, pick the code-graph you'd recommend for this codebase, and leave the autonomous loop disabled for now. Then summarise what changed and commit it."*
+> **Set it up** — *"Set up Yoke in this project. Ask me the Yoke setup questions one at a time with your recommendation, then run `yoke setup . --yes` with the selected host, agents, code graph, loop, runner, and decision policy. Commit in my configured identity."*
 
 > **Work the disciplined way** — *"From now on follow the Yoke skills you just installed: brainstorm → spec → plan → TDD → review before merging. Use the `review` skill before any merge."*
 
-> **Run autonomously** — *"Write `.yoke/prd.yaml` with one story per task (each needs acceptance criteria — see the `authoring-prd` skill), set `verify.command` in `.yoke/config.yaml`, enable the loop with `yoke loop on .`, then run it in small visible batches: `yoke loop run . --max=5`. After each batch show me `yoke loop status .`."*
+> **Plan, then run autonomously** — *"Use the `yoke-workflow` skill. Ask only the planning questions that materially change the product, write the approved plan and loop-ready stories, then execute every approved story without routine follow-ups. Follow the configured `auto` or `critical` decision policy."*
 
 > **Watch / unblock** — *"Run `yoke loop status .`. If it says BLOCKED, run the project's verify command, find the root cause, fix it without weakening tests, then continue the loop."*
 
@@ -142,13 +148,14 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 
 | Command | What it does | Exit codes |
 |---|---|---|
+| `yoke setup [dir] [--yes] [--host=] [--agent=] [--runner=] [--code-graph=] [--decision-policy=] [--loop\|--no-loop]` | Shared five-question setup for Claude, Codex, and Gemini; `--yes` applies supplied/default choices non-interactively | `0` · `1` invalid setup |
 | `yoke validate [canonDir]` | Validate the canon (schema, frontmatter, templates) | `0` valid · `1` errors |
 | `yoke new <dir> [--idea=] [--agent=] [--runner=] [--loop]` | Greenfield bootstrap: git init → scaffold → retrofit → context → PRD (drafted from `--idea`) → committed | `0` · `1` usage / non-empty dir / draft failed (scaffold survives) · `2` draft agent unavailable |
 | `yoke retrofit [dir] [--agent=claude,codex,gemini\|all] [--code-graph=graphify\|serena] [--loop]` | Install/update the harness, non-destructively | `0` |
 | `yoke prd draft [dir] --idea= [--runner=] [--force]` | Idea → 5–12 stories with testable acceptance criteria | `0` · `1` invalid/guarded · `2` agent unavailable |
 | `yoke prd check [dir]` | PRD lint gate (schema, dependencies, cycles, duplicate ids, acceptance) | `0` valid · `1` violations |
 | `yoke context init\|status [dir]` | Durable context layer (`PROJECT/DECISIONS/KNOWLEDGE.md`) | `0` |
-| `yoke loop on\|off\|status\|run\|cleanup [dir]` | Autonomous loop; cleanup deletes worktrees only with `--remove-worktrees` | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
+| `yoke loop on\|off\|status\|decision\|answer\|resume\|run\|cleanup [dir]` | Autonomous loop; `decision` shows a critical stop, `answer` records it and resumes, `resume` retries a failed restart with the preserved safety options; cleanup deletes worktrees only with `--remove-worktrees` | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
 | `yoke review [dir] [--reviewer=] [--base=] [--focus=] [--json] [--allow-self-review]` | An independent model writes a schema-valid verdict | `0` approved · `1` findings/invalid verdict · `2` no independent reviewer |
 | `yoke audit [dir] [--json]` | Dependency, high-confidence secret, and sensitive-change audit | `0` green · `1` blocking findings · `2` not runnable |
 | `yoke design-scan [dir] [--max=N] [--report]` | Static AI-slop design gate | `0` within budget · `1` over |
@@ -214,7 +221,7 @@ Three layers — **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) 
 > instructions (tech stack, workflow, `@`-includes) inside it. Works in any yoke-written file;
 > content *outside* the markers is still replaced (and backed up under `.yoke/backup/`).
 
-## 🧰 What's in the canon — 28 skills
+## 🧰 What's in the canon — 29 skills
 
 `yoke retrofit` installs all of these into each agent natively. Provenance is credited in [`canon/skills/ATTRIBUTION.md`](canon/skills/ATTRIBUTION.md).
 
@@ -250,11 +257,12 @@ To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.
 | `retro` | Engineering retrospective from commit history |
 | `document-release` | Post-ship documentation sync (README / CHANGELOG / …) |
 
-**Yoke-native** — *authored or adapted for this harness (8)*
+**Yoke-native** — *authored or adapted for this harness (9)*
 
 | Skill | What it does |
 |---|---|
 | `yoke-retrofit` | Set up the Yoke harness in a project (detect → plan → apply) |
+| `yoke-workflow` | Provider-neutral planning questions → approved PRD → autonomous stories → critical-decision resume |
 | `authoring-prd` | Slice a product idea into loop-ready stories with testable acceptance criteria |
 | `minimal-code` | Write the least code that solves the task (YAGNI; ponytail-derived) |
 | `performance` | Efficiency as a measured requirement: benchmarks as tests, budgets as gates, optimizations local + documented |
@@ -278,7 +286,7 @@ existing projects), then: creates and `git init`s the directory, writes a minima
 **context layer** (with `--idea` seeded into `PROJECT.md` as the north star), writes a commented
 **PRD template** to `.yoke/prd.yaml`, and makes the initial commit — so `--isolate` works from
 iteration 1. With `--idea`, it then drafts the PRD from your idea via an agent (`--runner=`,
-default `claude`) and commits it as a second commit (`docs: draft PRD from idea`).
+the configured runner or active host) and commits it as a second commit (`docs: draft PRD from idea`).
 
 - **Exit codes** — `0` success; `1` usage / non-empty dir / draft failure (the scaffold survives —
   retry with `yoke prd draft`); `2` requested draft agent unavailable.
@@ -287,16 +295,18 @@ default `claude`) and commits it as a second commit (`docs: draft PRD from idea`
 stories with testable behavioral acceptance criteria (greenfield STORY-1 scaffolds the project
 skeleton + test suite and wires `verify.command`). An existing PRD with stories is never
 overwritten without `--force`; the untouched template doesn't trigger the guard. Runs through
-the same idle-timeout watchdog as the loop (`--timeout`).
+the same idle-timeout watchdog as the loop (`--timeout`). If `.yoke/plan.md` exists, its approved
+goals, non-goals, constraints, and decisions are injected as settled context instead of being
+reopened by the drafting agent.
 
 **`yoke prd check [dir]`** is the chainable pre-loop lint gate: schema validation plus
-duplicate-id, empty-acceptance, and zero-stories checks. Exits `0` with
+duplicate-id, empty-acceptance, unresolved-placeholder, and zero-stories checks. Exits `0` with
 `✓ PRD valid — N stories, M pass`, `1` on any violation. The `authoring-prd` canon skill
 teaches interactive sessions the same story-slicing discipline.
 
 ## 🤖 The autonomous loop
 
-Opt-in and off by default. Each iteration starts a **fresh agent** and passes through hard gates before anything is committed:
+Opt-in; `yoke setup` recommends enabling it for new installs, while `retrofit` alone keeps it off unless requested. Each iteration starts a **fresh agent** and passes through hard gates before anything is committed:
 
 ```mermaid
 flowchart LR
@@ -320,7 +330,7 @@ yoke loop run . \
   --runner=codex \               # implement with Codex…
   --reviewer=claude \            # …review with Claude (role separation)
   --isolate \                    # each story in a throwaway git worktree
-  --on-ambiguity=abort \         # strict: stop on undecidable criteria instead of guessing
+  --decision-policy=critical \   # pause only for high-impact decisions; routine choices stay autonomous
   --max=20
 yoke loop off .                 # disable
 ```
@@ -380,25 +390,51 @@ A per-iteration **idle timeout** guards against a genuinely hung agent: if the a
 output is **never** killed — the output stream *is* the liveness signal. Set a project default
 with `loop.timeoutMinutes` in `.yoke/config.yaml`.
 
-### Ambiguous stories: questions belong in planning
+### Decision policy: autonomous by default, interrupt only when configured
 
-A loop run has nobody to ask, so the runner prompt always forbids questions. What the agent
-does when an acceptance criterion is genuinely ambiguous is configurable:
+Planning questions happen before the loop. The provider-neutral `yoke-workflow` skill asks only
+questions whose answer materially changes product behavior, scope, architecture, security, data
+ownership, external cost, or an irreversible choice. It saves the approved brief in
+`.yoke/plan.md`; `yoke prd draft` consumes it, and `yoke prd check` rejects explicit unresolved
+placeholders such as `TBD`.
 
-- **Default (`resolve`) — never stop:** the agent picks the interpretation most consistent
-  with the other criteria and the existing code, states it in its final message, and the loop
-  keeps going.
-- **Strict (`abort`):** the agent must not guess — it writes its open question(s) to
-  `.yoke/ambiguity.md` and stops. The loop consumes that file, skips verify (an unimplemented
-  story would otherwise sail through on pre-existing green tests), and blocks with the
-  question in the reason, e.g.
-  `story S6 stopped: ambiguous acceptance criteria — Which auth provider should S6 use?`
-  Answer by sharpening the story's acceptance criteria, then re-run.
+The unattended loop then follows `loop.decisionPolicy`:
 
-Enable strict mode per run with `yoke loop run . --on-ambiguity=abort` or per project with
-`loop.onAmbiguity: abort` in `.yoke/config.yaml`. Either way, the cheapest fix is upstream:
-put every clarifying question into the PRD **before** the loop starts (`yoke prd draft`
-criteria must be testable and decision-free).
+```yaml
+loop:
+  enabled: true
+  decisionPolicy: critical  # or auto
+runner:
+  agent: codex              # setup chooses the current host by default
+```
+
+- **`auto` (default):** routine ambiguity and implementation details are resolved using the
+  approved plan, acceptance criteria, current code, and project conventions. The loop does not
+  ask follow-up questions.
+- **`critical`:** routine choices are still resolved automatically. Only high-impact decisions
+  involving public architecture, security/privacy, destructive migration or data loss, material
+  external cost, legal/compliance exposure, or another irreversible choice may pause the story.
+  The agent writes a schema-validated request; the loop blocks before verify and preserves it as
+  `.yoke/pending-decision.yaml`.
+
+Inspect and answer a critical stop:
+
+```bash
+yoke loop decision .
+yoke loop answer . --choice=A --rationale="Matches the existing identity model"
+```
+
+`answer` validates the choice against the still-open story, appends it to
+`.yoke/context/DECISIONS.md`, commits only that file using the configured human identity, clears
+the pending request, and resumes the same story with the original runner, isolation, review,
+permission, timeout, JSON, decision-policy, and iteration settings intact. Add
+`--no-resume` when a supervisor should restart the loop separately. If the automatic restart
+cannot begin because a provider/reviewer is unavailable or another process owns the lock, run
+`yoke loop resume .`; its request-bound options are retained under Git's private state directory
+until a loop actually runs. To intentionally abandon an orphaned or stale private resume state,
+use `yoke loop resume . --discard`; pending decisions are never deleted by that command. Existing
+`loop.onAmbiguity: resolve|abort` and `--on-ambiguity=` remain supported as compatibility aliases;
+new projects should use `decisionPolicy: auto|critical`.
 
 ### Performance budgets: efficiency as a gate, not a style
 
@@ -429,21 +465,26 @@ committed even if the agent process exited non-zero (a common Windows `.cmd`-wra
 A failing verify is retried up to `verify.retries` times (default 1) so a transient flake
 self-heals while a real failure still blocks.
 
-`.yoke/loop-status.json`, `.yoke/loop.log`, `.yoke/loop.lock`, `.yoke/story-durations.json`,
-and `.yoke/ambiguity.md` are runtime artifacts; `yoke retrofit` gitignores them (along with
+`.yoke/loop-status.json`, `.yoke/loop.log`, `.yoke/loop.lock`, its takeover/recovery leases, lock/decision temp files, `.yoke/story-durations.json`,
+`.yoke/ambiguity.md`, and the critical-decision request/answering files are runtime artifacts;
+`yoke retrofit` gitignores them (along with
 `.yoke/worktrees/`, `.yoke/backup/`, and `.yoke/proof/`) so they never trip the clean-tree gate.
 
 ### Single-flight guard + cleanup
 
 Two concurrent `yoke loop run`s would race on the PRD and status files, so the loop takes a
-**lock** (`.yoke/loop.lock`) for the duration of a run. A second invocation exits `2` with
+**lock** (`.yoke/loop.lock`) for the duration of a run. Complete lock metadata is published atomically;
+stale takeover is serialized by `.yoke/loop.lock.takeover`. A second invocation exits `2` with
 `Another loop is already running here (pid …). If that is wrong, run: yoke loop cleanup`. A lock
 whose holder process is dead is taken over automatically (with a warning).
 
 **`yoke loop cleanup [dir]`** removes what a crashed loop leaves behind: every worktree under
 `.yoke/worktrees/` (via `git worktree remove --force` + `prune` — user-created worktrees are
 never touched) and a **stale** lock file. A live lock is reported and left alone. Exits `0`
-when everything cleaned, `1` if any removal failed.
+when everything cleaned, `1` if any removal failed. If a machine/process crash leaves the cleanup
+recovery lease itself behind, an operator can run
+`yoke loop cleanup . --discard-stale-recovery`; Yoke refuses while its recorded PID is alive, and
+the force flag must not be run concurrently.
 
 ## 🔍 Cross-model review (`yoke review`)
 
@@ -527,7 +568,8 @@ Yoke keeps durable, cross-session context so a fresh-context agent is never blin
 
 `yoke retrofit` scaffolds these files (non-destructively — your edits are never overwritten).
 The loop reads them into every agent + reviewer prompt and logs decisions back on each story's
-commit. Manage them directly with `yoke context init` and `yoke context status`. The
+commit. Decision history is explicitly delimited as untrusted reference data, so stored text is
+never treated as fresh instructions. Manage the files directly with `yoke context init` and `yoke context status`. The
 `maintaining-context` skill teaches agents to honour the same files during interactive work.
 
 > Commit `.yoke/context/` to git. The `--isolate` loop runs each iteration in a worktree
@@ -598,14 +640,14 @@ docs/superpowers/ # the spec and every component's implementation plan
 
 ## 🗺️ Roadmap
 
-Yoke 1.0's completed release work moved to the changelog. Remaining, explicitly scoped work
+Yoke 1.1's completed release work moved to the changelog. Remaining, explicitly scoped work
 is tracked in [`TODOS.md`](TODOS.md), including provider subprocess wiring for the tested
 parallel dispatcher, broader benchmark samples, native output schemas, and release provenance.
 
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (500 tests)
+npm test          # vitest (559 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

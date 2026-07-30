@@ -362,6 +362,60 @@ describe('runLoop ambiguity abort channel', () => {
   })
 })
 
+describe('runLoop critical decision channel', () => {
+  const decisionRunner: AgentRunner = (ctx) => {
+    mkdirSync(join(ctx.targetDir, '.yoke'), { recursive: true })
+    writeFileSync(join(ctx.targetDir, '.yoke', 'decision-request.yaml'), [
+      'version: 1', `storyId: ${ctx.story.id}`, 'question: Which identity model?',
+      'reason: This changes the public data model.',
+      'options:', '  - id: A', '    label: Accounts', '  - id: B', '    label: Profiles',
+      'recommended: A', '',
+    ].join('\n'))
+    return { success: true, summary: 'waiting for critical decision' }
+  }
+
+  it('blocks before verification and preserves a structured pending decision', () => {
+    let verified = 0
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: decisionRunner, git: cleanGit(),
+      verify: () => { verified += 1; return verifyOk(dir) }, maxIterations: 10,
+    })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/critical decision/i)
+    expect(res.reason).toContain('Which identity model?')
+    expect(verified).toBe(0)
+    expect(existsSync(join(dir, '.yoke', 'decision-request.yaml'))).toBe(false)
+    expect(existsSync(join(dir, '.yoke', 'pending-decision.yaml'))).toBe(true)
+  })
+
+  it('blocks safely when the agent writes a malformed decision request', () => {
+    const malformed: AgentRunner = (ctx) => {
+      mkdirSync(join(ctx.targetDir, '.yoke'), { recursive: true })
+      writeFileSync(join(ctx.targetDir, '.yoke', 'decision-request.yaml'), 'question: missing required fields\n')
+      return { success: true, summary: 'stopped' }
+    }
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: malformed, git: cleanGit(), verify: verifyOk, maxIterations: 1 })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/invalid critical decision request/i)
+  })
+
+  it('rejects a decision request for a different story', () => {
+    const mismatched: AgentRunner = (ctx) => {
+      mkdirSync(join(ctx.targetDir, '.yoke'), { recursive: true })
+      writeFileSync(join(ctx.targetDir, '.yoke', 'decision-request.yaml'), [
+        'version: 1', 'storyId: S999', 'question: Which identity model?',
+        'reason: Public architecture.', 'options:', '  - { id: A, label: Accounts }',
+        '  - { id: B, label: Profiles }', 'recommended: A', '',
+      ].join('\n'))
+      return { success: true, summary: 'stopped' }
+    }
+    const res = runLoop({ prdPath: prd(), targetDir: dir, runner: mismatched, git: cleanGit(), verify: verifyOk, maxIterations: 1 })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/invalid critical decision request/i)
+    expect(res.reason).toMatch(/S999.*S1|S1.*S999/i)
+  })
+})
+
 function fsWorktreeGit(repo: string, removed: string[]): GitOps {
   return {
     isClean: () => true,
@@ -462,6 +516,26 @@ describe('runLoop with isolation', () => {
     expect(res.reason).toContain('Undecidable criterion')
     expect(loadPrd(isoPrd())[0].passes).toBe(false)  // main tree untouched
     expect(removed.length).toBe(1)                    // worktree still cleaned up
+  })
+
+  it('moves an isolated critical decision into the main project and cleans the worktree', () => {
+    const removed: string[] = []
+    const decisionRunner: AgentRunner = (ctx) => {
+      writeFileSync(join(ctx.targetDir, '.yoke', 'decision-request.yaml'), [
+        'version: 1', `storyId: ${ctx.story.id}`, 'question: Which identity model?',
+        'reason: Public architecture.', 'options:', '  - { id: A, label: Accounts }',
+        '  - { id: B, label: Profiles }', 'recommended: A', '',
+      ].join('\n'))
+      return { success: true, summary: 'stopped' }
+    }
+    const res = runLoop({
+      prdPath: isoPrd(), targetDir: isoDir, runner: decisionRunner, git: fsWorktreeGit(isoDir, removed),
+      verify: verifyOk, isolate: true, maxIterations: 5,
+    })
+    expect(res.status).toBe('blocked')
+    expect(existsSync(join(isoDir, '.yoke', 'pending-decision.yaml'))).toBe(true)
+    expect(loadPrd(isoPrd())[0].passes).toBe(false)
+    expect(removed).toHaveLength(1)
   })
 
   it('blocks (does not crash) when addWorktree throws, leaving the main PRD untouched', () => {

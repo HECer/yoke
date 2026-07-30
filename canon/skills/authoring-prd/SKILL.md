@@ -26,9 +26,10 @@ good stories (small, testable, ordered) let it run overnight.
    criterion. If the whole project has a budget, wire `perf.command` in `.yoke/config.yaml`
    (see the `performance` skill) instead of repeating it per story.
 7. **Ask everything now.** Clarifying questions belong in this planning round — a loop run
-   has nobody to ask. A criterion that still needs a decision ("TBD", "choose a provider")
-   is not loop-ready; resolve it here or the agent will either guess (default) or block
-   (`--on-ambiguity=abort`).
+   is unattended. A criterion that still contains `TBD` or another placeholder is not
+   loop-ready, and `yoke prd check` rejects it. During implementation,
+   `loop.decisionPolicy: auto` resolves routine ambiguity; `critical` pauses only for
+   high-impact choices and resumes after `yoke loop answer` records the answer.
 8. **Model real dependencies.** Add `needs` only for hard prerequisites, `area` for files or
    subsystems that must not be edited concurrently, and `agent` only as an affinity hint.
    Dependency IDs must exist; self-dependencies and cycles are invalid.

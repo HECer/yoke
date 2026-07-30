@@ -30,7 +30,7 @@ describe('runNew', () => {
   it('scaffolds README, .gitignore, retrofit artifacts, context and the PRD template', () => {
     const dir = join(parent, 'app')
     const gitCalls: string[][] = []
-    const code = runNew(dir, { git: (args) => { gitCalls.push(args) } })
+    const code = runNew(dir, { agents: ['claude'], git: (args) => { gitCalls.push(args) } })
     expect(code).toBe(0)
     expect(readFileSync(join(dir, 'README.md'), 'utf8')).toContain('# app')
     expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toContain('node_modules/')

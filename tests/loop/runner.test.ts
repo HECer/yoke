@@ -48,6 +48,14 @@ describe('buildClaudePrompt ambiguity policy', () => {
     expect(buildClaudePrompt(story, '')).toMatch(/never ask questions/i)
   })
 
+  it('critical: self-resolves routine ambiguity but requests a decision for high-impact choices', () => {
+    const p = buildClaudePrompt(story, '', 'critical')
+    expect(p).toContain('.yoke/decision-request.yaml')
+    expect(p).toMatch(/architecture|security|data loss/i)
+    expect(p).toMatch(/routine ambiguity/i)
+    expect(p).not.toContain('.yoke/ambiguity.md')
+  })
+
   it('default (resolve): instructs self-resolution and mentions no abort channel', () => {
     const p = buildClaudePrompt(story, '')
     expect(p).toMatch(/resolve it yourself/i)
