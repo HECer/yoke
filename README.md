@@ -2,7 +2,7 @@
 
 # 🐂 Yoke
 
-<!-- yoke:version:start -->1.1.0<!-- yoke:version:end -->
+<!-- yoke:version:start -->1.1.1<!-- yoke:version:end -->
 <!-- yoke:tests:start -->559<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->29<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
