@@ -23,10 +23,10 @@ describe('provider invocations', () => {
 
   it('uses Gemini sandbox and approval profiles', () => {
     expect(buildProviderInvocation('gemini', 'P', '/w', 'safe').args).toEqual([
-      '--approval-mode', 'auto_edit', '--sandbox', '--output-format', 'stream-json',
+      '--approval-mode', 'auto_edit', '--sandbox',
     ])
     expect(buildProviderInvocation('gemini', 'P', '/w', 'read-only').args).toEqual([
-      '--approval-mode', 'plan', '--sandbox', '--output-format', 'stream-json',
+      '--approval-mode', 'plan', '--sandbox',
     ])
     expect(buildProviderInvocation('gemini', 'P', '/w', 'unsafe').args).toContain('--yolo')
   })

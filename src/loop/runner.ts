@@ -19,7 +19,7 @@ export interface AgentContext {
 export interface AgentResult {
   success: boolean
   summary: string
-  /** Cumulative token usage of this invocation (claude stream-json runners only). */
+  /** Cumulative token usage of this invocation (agents running in JSON mode only). */
   tokens?: TokenUsage
 }
 

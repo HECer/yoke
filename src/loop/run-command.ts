@@ -283,8 +283,8 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     const say = opts.json ? (line: string) => console.error(line) : (line: string) => console.log(line)
     say(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
     if (result.reason) say(`Reason: ${result.reason}`)
-    if (result.reason && /api key|please run \/login|not logged in/i.test(result.reason)) {
-      say('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY or log the agent in for headless use.')
+    if (result.reason && /api key|please run \/login|not logged in|auth/i.test(result.reason)) {
+      say('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY, GEMINI_API_KEY, or OPENAI_API_KEY, or log the agent in for headless use.')
     }
     // Exit codes: 0 complete · 1 blocked/cap-reached · 2 config error (handled above) · 3 paused (loop.pause consumed at a story boundary)
     if (result.status === 'complete') return 0

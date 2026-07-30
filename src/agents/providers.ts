@@ -13,9 +13,9 @@ const argsFor = (agent: Agent, permissions: PermissionProfile): string[] => {
     if (permissions === 'read-only') return ['exec', '--sandbox', 'read-only', '--json']
     return ['exec', '--full-auto', '--json']
   }
-  if (permissions === 'unsafe') return ['--yolo', '--output-format', 'stream-json']
+  if (permissions === 'unsafe') return ['--yolo']
   const approval = permissions === 'read-only' ? 'plan' : 'auto_edit'
-  return ['--approval-mode', approval, '--sandbox', '--output-format', 'stream-json']
+  return ['--approval-mode', approval, '--sandbox']
 }
 
 export function buildProviderInvocation(
