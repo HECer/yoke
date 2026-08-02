@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner, contextBlockFor, buildWatchdogInvocation, win32CommandString, parseClaudeStreamUsage, runnerInvocation, type Invocation } from '../../src/loop/runner.js'
+import { buildClaudePrompt, claudeInvocation, agentInvocation, makeRunner, isAgentAvailable, buildReviewPrompt, makeReviewRunner, contextBlockFor, buildWatchdogInvocation, win32CommandString, parseClaudeStreamUsage, runnerInvocation, runReviewAgent, type Invocation } from '../../src/loop/runner.js'
 import type { Story } from '../../src/loop/prd.js'
 
 const story: Story = {
@@ -176,6 +176,12 @@ describe('buildReviewPrompt', () => {
     expect(p).toMatch(/do not modify|do not commit/i)
   })
 
+  it('makes the verdict file an explicit exception to the read-only review rule', () => {
+    const p = buildReviewPrompt(story, '', 'C:\\repo\\.yoke\\review-verdict.json')
+    expect(p).toMatch(/only permitted write/i)
+    expect(p).not.toContain('Do not modify files.')
+  })
+
   it('grounds the verdict in observed evidence and keeps output brief', () => {
     const p = buildReviewPrompt(story, '')
     expect(p).toMatch(/actually (show|verified|observe)/i)
@@ -206,6 +212,25 @@ describe('makeReviewRunner', () => {
     const result = makeReviewRunner('codex', 0, () => {})({ targetDir: d, story })
     expect(result.success).toBe(false)
     expect(result.summary).toMatch(/missing/i)
+    rmSync(d, { recursive: true, force: true })
+  })
+
+  it('preserves reviewer stderr when the process fails before writing a verdict', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-review-runner-'))
+    const error = Object.assign(new Error('review command failed'), { stderr: Buffer.from('AUTH_REQUIRED: sign in first') })
+    const result = makeReviewRunner('gemini', 0, () => { throw error })({ targetDir: d, story })
+    expect(result.success).toBe(false)
+    expect(result.summary).toContain('AUTH_REQUIRED: sign in first')
+    rmSync(d, { recursive: true, force: true })
+  })
+
+  it('captures stderr from a real failed review subprocess', () => {
+    const d = mkdtempSync(join(tmpdir(), 'yoke-review-process-'))
+    const script = join(d, 'fail.cjs')
+    writeFileSync(script, "process.stderr.write('REVIEW_DIAGNOSTIC'); process.exit(7)\n")
+    const result = runReviewAgent({ command: process.execPath, args: [script], input: '', cwd: d })
+    expect(result.success).toBe(false)
+    expect(result.summary).toContain('REVIEW_DIAGNOSTIC')
     rmSync(d, { recursive: true, force: true })
   })
 })

@@ -27,5 +27,7 @@ describe('buildStandaloneReviewPrompt', () => {
     expect(p).toContain('C:\\repo\\.yoke\\review-verdict.json')
     expect(p).toContain('"approved":boolean')
     expect(p).toContain('blocking|warning|info')
+    expect(p).toMatch(/only permitted write/i)
+    expect(p).not.toContain('Do not modify files.')
   })
 })

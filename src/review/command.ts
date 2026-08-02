@@ -3,7 +3,7 @@ import {
   agentInvocation,
   buildStandaloneReviewPrompt,
   buildWatchdogInvocation,
-  runAgent,
+  runReviewAgent,
   isAgentAvailable,
   type Invocation,
   type AgentResult,
@@ -69,7 +69,7 @@ export function runReview(targetDir: string, opts: RunReviewOptions = {}): numbe
 
   const say = opts.json ? console.error : console.log
   say(`Reviewing ${scope} with ${reviewer}...`)
-  const run = opts.run ?? ((i: Invocation) => runAgent(buildWatchdogInvocation(i, idleMs)))
+  const run = opts.run ?? ((i: Invocation) => runReviewAgent(buildWatchdogInvocation(i, idleMs)))
   const processResult = run(inv)
   let verdict: ReviewVerdict
   try {

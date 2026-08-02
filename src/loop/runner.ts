@@ -96,7 +96,9 @@ export function buildReviewPrompt(story: Story, context: string, verdictPath?: s
     'Approve ONLY if every acceptance criterion is met and the change is sound.',
     'If you find ANY blocking issue (an unmet criterion, a bug, a missing test), reject.',
     'Base your verdict only on what the diff and test runs actually show — never assume unverified behavior.',
-    'Do not modify files. Do not commit.',
+    verdictPath
+      ? 'Do not modify project source, tests, configuration, or generated artifacts. The verdict file named below is the only permitted write. Do not commit.'
+      : 'Do not modify files. Do not commit.',
     'Keep your verdict to a few short sentences.',
   )
   if (verdictPath) lines.push('', formatReviewContract(verdictPath))
@@ -115,7 +117,9 @@ export function buildStandaloneReviewPrompt(scope: string, focus?: string, verdi
     'Approve by exiting 0 ONLY if the change is sound and complete.',
     'If you find ANY blocking issue, exit non-zero to reject and explain what is wrong.',
     'Base your verdict only on what the diff and test runs actually show — never assume unverified behavior.',
-    'Do not modify files. Do not commit.',
+    verdictPath
+      ? 'Do not modify project source, tests, configuration, or generated artifacts. The verdict file named below is the only permitted write. Do not commit.'
+      : 'Do not modify files. Do not commit.',
     'Keep your verdict to a few short sentences.',
   )
   if (verdictPath) lines.push('', formatReviewContract(verdictPath))
@@ -265,6 +269,33 @@ function runCliCapture(inv: Invocation): string {
     : execFileSync(inv.command, inv.args, opts)
 }
 
+// Reviews have a machine-readable result file, so their console stream is not
+// the result channel. Buffer stderr to preserve the provider's actual failure
+// (authentication, sandbox startup, quota, etc.) in loop-status.json instead of
+// reducing every failure to Node's generic "Command failed" message. The inner
+// watchdog still observes child output live and enforces the idle timeout.
+function runReviewCli(inv: Invocation): void {
+  const opts = {
+    cwd: inv.cwd,
+    input: inv.input,
+    stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'],
+    encoding: 'utf8' as const,
+    maxBuffer: 64 * 1024 * 1024,
+  }
+  if (process.platform === 'win32') execSync(win32CommandString(inv.command, inv.args), opts)
+  else execFileSync(inv.command, inv.args, opts)
+}
+
+function processFailureSummary(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  const value = (error as { stderr?: unknown } | null)?.stderr
+  const stderr = Buffer.isBuffer(value) ? value.toString('utf8') : typeof value === 'string' ? value : ''
+  const clean = stderr.replace(/\x1B\[[0-?]*[ -/]*[@-~]/gu, '').trim()
+  if (!clean) return message
+  const tail = clean.length > 4_000 ? `…${clean.slice(-4_000)}` : clean
+  return `${message}; stderr: ${tail}`
+}
+
 export interface CapturedAgentRun {
   success: boolean
   output: string
@@ -314,6 +345,16 @@ export function runAgent(inv: Invocation): AgentResult {
     return { success: true, summary: 'exited 0' }
   } catch (e) {
     return { success: false, summary: (e as Error).message }
+  }
+}
+
+/** Run a reviewer while retaining bounded stderr diagnostics on failure. */
+export function runReviewAgent(inv: Invocation): AgentResult {
+  try {
+    runReviewCli(inv)
+    return { success: true, summary: 'exited 0' }
+  } catch (error) {
+    return { success: false, summary: processFailureSummary(error) }
   }
 }
 
@@ -367,7 +408,7 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
 
 export const claudeRunner: AgentRunner = makeRunner('claude')
 
-export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec: (inv: Invocation) => void = runCli): AgentRunner {
+export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec: (inv: Invocation) => void = runReviewCli): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
     const verdictPath = reviewVerdictPath(ctx.targetDir)
     mkdirSync(join(ctx.targetDir, '.yoke'), { recursive: true })
@@ -378,7 +419,7 @@ export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec: (inv: In
     try {
       exec(inv)
     } catch (e) {
-      processFailure = (e as Error).message
+      processFailure = processFailureSummary(e)
     }
     try {
       const verdict = readReviewVerdict(verdictPath)
