@@ -59,6 +59,18 @@ describe('runLoop', () => {
     expect(res.reason).toMatch(/tests red/)
   })
 
+  it('reports independent gate outcomes back to adaptive routing', () => {
+    const outcomes: boolean[] = []
+    const adaptive: AgentRunner = () => ({
+      success: true,
+      summary: 'worker finished',
+      routing: { recordOutcome: outcome => outcomes.push(outcome) },
+    })
+    const verifyBad: Verifier = () => ({ passed: false, summary: 'tests red' })
+    runLoop({ prdPath: prd(), targetDir: dir, runner: adaptive, git: cleanGit(), verify: verifyBad, maxIterations: 10 })
+    expect(outcomes).toEqual([false])
+  })
+
   it('stops at the iteration cap', () => {
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, maxIterations: 1 })
     expect(res.status).toBe('cap-reached')

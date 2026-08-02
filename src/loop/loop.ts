@@ -159,6 +159,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         reporter.phase('verifying')
         const verdict = runGate(opts.verify, wt, story.id)
         if (!verdict.passed) {
+          result.routing?.recordOutcome(false)
           const base = result.success
             ? `story ${story.id} did not verify: ${verdict.summary}`
             : `story ${story.id} runner failed (${result.summary}) and verify is red: ${verdict.summary}`
@@ -170,6 +171,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
           reporter.phase('perf')
           const perfVerdict = runGate(opts.perf, wt, story.id)
           if (!perfVerdict.passed) {
+            result.routing?.recordOutcome(false)
             const reason = blockReason(`story ${story.id} exceeded its performance budget: ${perfVerdict.summary}`, opts.targetDir, opts.git)
             reporter.blocked(reason)
             return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
@@ -179,6 +181,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
           reporter.phase('audit')
           const auditVerdict = runGate(opts.audit, wt, story.id)
           if (!auditVerdict.passed) {
+            result.routing?.recordOutcome(false)
             const reason = blockReason(`story ${story.id} failed security audit: ${auditVerdict.summary}`, opts.targetDir, opts.git)
             reporter.blocked(reason)
             return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
@@ -191,11 +194,13 @@ export function runLoop(opts: LoopOptions): LoopResult {
           reporter.phase('reviewing')
           const reviewResult = opts.review({ targetDir: wt, story })
           if (!reviewResult.success) {
+            result.routing?.recordOutcome(false)
             const reason = blockReason(`story ${story.id} rejected in review: ${reviewResult.summary}`, opts.targetDir, opts.git)
             reporter.blocked(reason)
             return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
           }
         }
+        result.routing?.recordOutcome(true)
         // The worktree is a checkout of committed HEAD, so the agent above reads
         // context from HEAD's .yoke/context — commit context changes for --isolate
         // to honour them. We write the decision here so `integrate` carries it back.
@@ -249,6 +254,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
     reporter.phase('verifying')
     const verdict = runGate(opts.verify, opts.targetDir, story.id)
     if (!verdict.passed) {
+      result.routing?.recordOutcome(false)
       const base = result.success
         ? `story ${story.id} did not verify: ${verdict.summary}`
         : `story ${story.id} runner failed (${result.summary}) and verify is red: ${verdict.summary}`
@@ -265,6 +271,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
       reporter.phase('perf')
       const perfVerdict = runGate(opts.perf, opts.targetDir, story.id)
       if (!perfVerdict.passed) {
+        result.routing?.recordOutcome(false)
         const reason = blockReason(`story ${story.id} exceeded its performance budget: ${perfVerdict.summary}`, opts.targetDir, opts.git)
         reporter.blocked(reason)
         return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
@@ -274,6 +281,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
       reporter.phase('audit')
       const auditVerdict = runGate(opts.audit, opts.targetDir, story.id)
       if (!auditVerdict.passed) {
+        result.routing?.recordOutcome(false)
         const reason = blockReason(`story ${story.id} failed security audit: ${auditVerdict.summary}`, opts.targetDir, opts.git)
         reporter.blocked(reason)
         return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
@@ -287,6 +295,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
       reporter.phase('reviewing')
       const reviewResult = opts.review({ targetDir: opts.targetDir, story })
       if (!reviewResult.success) {
+        result.routing?.recordOutcome(false)
         const reason = blockReason(`story ${story.id} rejected in review: ${reviewResult.summary}`, opts.targetDir, opts.git)
         reporter.blocked(reason)
         return {
@@ -298,6 +307,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
       }
     }
 
+    result.routing?.recordOutcome(true)
     reporter.phase('committing')
     const dec = appendDecision(contextDir(opts.targetDir), {
       storyId: story.id,

@@ -63,7 +63,33 @@ function appendDuration(dir: string, d: StoryDuration): void {
 
 // Cumulative runner token usage across the run (claude stream-json runners only).
 // model is the last-seen model id from the stream (absent if the CLI never reported one).
-export interface TokenUsage { inputTokens: number; outputTokens: number; model?: string }
+export interface ModelCallUsage {
+  role: 'orchestrator' | 'worker' | 'parent'
+  provider: string
+  profile?: string
+  requestedModel?: string
+  requestedReasoningEffort?: string
+  actualModel?: string
+  inputTokens: number
+  cachedInputTokens?: number
+  cacheWriteInputTokens?: number
+  outputTokens: number
+  reasoningOutputTokens?: number
+  totalCostUsd?: number
+  durationMs: number
+}
+
+export interface TokenUsage {
+  inputTokens: number
+  cachedInputTokens?: number
+  cacheWriteInputTokens?: number
+  outputTokens: number
+  reasoningOutputTokens?: number
+  totalCostUsd?: number
+  model?: string
+  /** Per-call evidence for adaptive runs. Existing consumers can keep using totals. */
+  calls?: ModelCallUsage[]
+}
 
 export interface LoopStatus {
   state: LoopState
@@ -220,10 +246,19 @@ export function makeReporter(
     },
     addTokens(usage) {
       const model = usage.model ?? tokens?.model
+      const cachedInputTokens = (tokens?.cachedInputTokens ?? 0) + (usage.cachedInputTokens ?? 0)
+      const cacheWriteInputTokens = (tokens?.cacheWriteInputTokens ?? 0) + (usage.cacheWriteInputTokens ?? 0)
+      const reasoningOutputTokens = (tokens?.reasoningOutputTokens ?? 0) + (usage.reasoningOutputTokens ?? 0)
+      const totalCostUsd = (tokens?.totalCostUsd ?? 0) + (usage.totalCostUsd ?? 0)
       tokens = {
         inputTokens: (tokens?.inputTokens ?? 0) + usage.inputTokens,
+        ...((tokens?.cachedInputTokens !== undefined || usage.cachedInputTokens !== undefined) ? { cachedInputTokens } : {}),
+        ...((tokens?.cacheWriteInputTokens !== undefined || usage.cacheWriteInputTokens !== undefined) ? { cacheWriteInputTokens } : {}),
         outputTokens: (tokens?.outputTokens ?? 0) + usage.outputTokens,
+        ...((tokens?.reasoningOutputTokens !== undefined || usage.reasoningOutputTokens !== undefined) ? { reasoningOutputTokens } : {}),
+        ...((tokens?.totalCostUsd !== undefined || usage.totalCostUsd !== undefined) ? { totalCostUsd } : {}),
         ...(model ? { model } : {}),
+        ...((tokens?.calls || usage.calls) ? { calls: [...(tokens?.calls ?? []), ...(usage.calls ?? [])] } : {}),
       }
     },
   }

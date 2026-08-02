@@ -8,7 +8,7 @@ import type { TokenUsage } from './reporter.js'
 import { loadContext, formatForPrompt, contextDir } from '../context/context.js'
 import { buildProviderInvocation } from '../agents/providers.js'
 import { parseProviderTelemetry } from '../agents/telemetry.js'
-import type { PermissionProfile } from '../agents/types.js'
+import type { ModelSelection, PermissionProfile } from '../agents/types.js'
 import { formatReviewContract, readReviewVerdict, reviewVerdictPath } from '../review/verdict.js'
 
 export interface AgentContext {
@@ -21,6 +21,8 @@ export interface AgentResult {
   summary: string
   /** Cumulative token usage of this invocation (agents running in JSON mode only). */
   tokens?: TokenUsage
+  /** Adaptive runners defer capability learning until Yoke's independent gates decide. */
+  routing?: { recordOutcome: (verified: boolean) => void }
 }
 
 export type AgentRunner = (ctx: AgentContext) => AgentResult
@@ -133,8 +135,8 @@ export interface Invocation {
 // and falsely marks the story done. Granting autonomous permissions makes the
 // implementer actually able to write files and run the verify command.
 // (The loop is opt-in and scoped to the target project dir.)
-export function agentInvocation(agent: Agent, prompt: string, cwd: string, permissions: PermissionProfile = 'safe'): Invocation {
-  return buildProviderInvocation(agent, prompt, cwd, permissions)
+export function agentInvocation(agent: Agent, prompt: string, cwd: string, permissions: PermissionProfile = 'safe', selection: ModelSelection = {}): Invocation {
+  return buildProviderInvocation(agent, prompt, cwd, permissions, selection)
 }
 
 export function claudeInvocation(prompt: string, cwd: string): Invocation {
@@ -154,8 +156,8 @@ export function claudeStreamJsonInvocation(prompt: string, cwd: string): Invocat
 // the user saw dead air the whole time. stream-json emits per-message output,
 // which doubles as liveness. Token usage rides along for free. Other agents
 // keep their plain invocation (no machine-readable stream to gain).
-export function runnerInvocation(agent: Agent, prompt: string, cwd: string, _tokenReport = false, permissions: PermissionProfile = 'safe'): Invocation {
-  return buildProviderInvocation(agent, prompt, cwd, permissions)
+export function runnerInvocation(agent: Agent, prompt: string, cwd: string, _tokenReport = false, permissions: PermissionProfile = 'safe', selection: ModelSelection = {}): Invocation {
+  return buildProviderInvocation(agent, prompt, cwd, permissions, selection)
 }
 
 // Parse claude stream-json output into cumulative token usage. Defensive by design:
@@ -263,6 +265,30 @@ function runCliCapture(inv: Invocation): string {
     : execFileSync(inv.command, inv.args, opts)
 }
 
+export interface CapturedAgentRun {
+  success: boolean
+  output: string
+  summary: string
+  tokens?: TokenUsage
+}
+
+/** Run a provider invocation with stdout captured for structured control-plane calls. */
+export function runCapturedAgent(agent: Agent, inv: Invocation): CapturedAgentRun {
+  try {
+    const output = runCliCapture(inv)
+    return { success: true, output, summary: 'exited 0', tokens: parseProviderTelemetry(agent, output.split(/\r?\n/)).tokens }
+  } catch (error) {
+    const partial = (error as { stdout?: unknown }).stdout
+    const output = partial == null ? '' : String(partial)
+    return {
+      success: false,
+      output,
+      summary: (error as Error).message,
+      tokens: output ? parseProviderTelemetry(agent, output.split(/\r?\n/)).tokens : undefined,
+    }
+  }
+}
+
 // Probe whether a CLI is on PATH via `<command> --version`. Same win32/other split
 // as runCli to stay DEP0190-free. Never throws. Timeout is generous because some
 // agent CLIs cold-start slowly (gemini needs ~6s on Windows; 5s misreported it
@@ -299,6 +325,8 @@ export interface RunnerOpts {
   /** Performance budget command (config perf.command) — surfaced to the implementer so it never regresses the budget blind. */
   perfCommand?: string
   permissions?: PermissionProfile
+  /** Provider model selection for this runner. Model ids are intentionally opaque. */
+  selection?: ModelSelection
   /** Test seam for the normal (inherit-stdio) execution path. */
   exec?: (inv: Invocation) => void
   /** Test seam for the captured (piped-stdout) execution path. */
@@ -311,7 +339,7 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
   // redundant for claude and meaningless elsewhere; kept for caller compatibility.
   const captureTokens = true
   return (ctx: AgentContext): AgentResult => {
-    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe')
+    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe', opts.selection)
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     if (captureTokens) {
       const capture = opts.execCapture ?? runCliCapture

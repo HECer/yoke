@@ -25,7 +25,7 @@
 
 </div>
 
-> **TL;DR** — `yoke setup .` asks five questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it story by story behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. If any gate is red, nothing is committed. When a story is done, there's a photo of it in `.yoke/proof/<story>/`.
+> **TL;DR** — `yoke setup .` asks six questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it story by story behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. If any gate is red, nothing is committed. When a story is done, there's a photo of it in `.yoke/proof/<story>/`.
 
 Yoke 1.1 is safe-by-default: provider CLIs use autonomous sandbox profiles unless `--unsafe`
 is explicit; reviews require a schema-valid verdict and a different model unless
@@ -85,7 +85,7 @@ yoke new my-app --idea="a CLI that tracks reading lists"
 yoke loop on my-app && yoke loop run my-app --isolate
 
 # — or retrofit an existing project —
-yoke setup /path/to/project                                  # interactive: agents, graph, loop, runner, decisions
+yoke setup /path/to/project                                  # interactive: agents, graph, loop, runner, decisions, routing
 yoke validate canon                                          # sanity-check the canon
 yoke loop run /path/to/project --isolate --reviewer=codex --max=20
 ```
@@ -104,7 +104,7 @@ The canon is also packaged as a Claude Code plugin — the repo is its own marke
 That gives you all canon skills under the `yoke:` namespace (e.g. `yoke:tdd`, `yoke:review`) inside Claude Code — no retrofit needed. The `yoke` CLI (loop, gates, retrofit for Codex/Gemini) still comes from `npm i -g @hecer/yoke`. Gemini CLI users can likewise `gemini extensions install https://github.com/HECer/yoke`.
 
 For Codex, no preinstalled skill is required: run `npx @hecer/yoke setup .` in a terminal, or
-ask Codex to run the five-question Yoke setup flow. The retrofit writes native skills to
+ask Codex to run the six-question Yoke setup flow. The retrofit writes native skills to
 `.agents/skills/`, including `yoke-retrofit` and `yoke-workflow`; start a fresh Codex task if an
 already-open task does not discover newly installed skills. The npm package also contains
 `.codex-plugin/plugin.json` for Codex plugin hosts.
@@ -148,7 +148,7 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 
 | Command | What it does | Exit codes |
 |---|---|---|
-| `yoke setup [dir] [--yes] [--host=] [--agent=] [--runner=] [--code-graph=] [--decision-policy=] [--loop\|--no-loop]` | Shared five-question setup for Claude, Codex, and Gemini; `--yes` applies supplied/default choices non-interactively | `0` · `1` invalid setup |
+| `yoke setup [dir] [--yes] [--host=] [--agent=] [--runner=] [--code-graph=] [--decision-policy=] [--loop\|--no-loop] [--routing\|--no-routing]` | Shared six-question setup for Claude, Codex, and Gemini; adaptive routing is always an explicit opt-in | `0` · `1` invalid setup |
 | `yoke validate [canonDir]` | Validate the canon (schema, frontmatter, templates) | `0` valid · `1` errors |
 | `yoke new <dir> [--idea=] [--agent=] [--runner=] [--loop]` | Greenfield bootstrap: git init → scaffold → retrofit → context → PRD (drafted from `--idea`) → committed | `0` · `1` usage / non-empty dir / draft failed (scaffold survives) · `2` draft agent unavailable |
 | `yoke retrofit [dir] [--agent=claude,codex,gemini\|all] [--code-graph=graphify\|serena] [--loop]` | Install/update the harness, non-destructively | `0` |
@@ -370,11 +370,9 @@ Every iteration emits token-free, harness-side feedback (Node console + local fi
   NDJSON line on stdout (`{"type":"status","state":"running","phase":"verifying",…}` — the
   same shape as `loop-status.json`), the human narrative moves off stdout (the final summary
   goes to stderr), and a consumer can follow the stream line by line instead of polling the file.
-  With a **claude** runner, json mode also switches the agent to `--output-format stream-json`
-  and accounts its usage: statuses (file + stream) carry a cumulative
-  `tokens: { inputTokens, outputTokens, model? }` field for the whole run — `model` is the
-  last model id seen on the stream (e.g. `claude-opus-4-6-20260501`), omitted if the CLI
-  never reported one.
+  Provider JSON streams are also accounted: statuses (file + stream) carry cumulative input and
+  output tokens for the whole run plus provider-reported cache-read, cache-write, reasoning, model,
+  and cost fields when available. Missing values stay absent—Yoke does not estimate them.
 
 ### Pausing a run
 
@@ -435,6 +433,62 @@ until a loop actually runs. To intentionally abandon an orphaned or stale privat
 use `yoke loop resume . --discard`; pending decisions are never deleted by that command. Existing
 `loop.onAmbiguity: resolve|abort` and `--on-ambiguity=` remain supported as compatibility aliases;
 new projects should use `decisionPolicy: auto|critical`.
+
+### Adaptive model routing (explicit opt-in)
+
+`yoke setup` asks before enabling routing; the default is **off**. When enabled, the selected
+parent remains the strong planner/controller. Before each bounded story it receives only the
+story, acceptance criteria, and at most three eligible worker profiles, then returns one
+machine-readable choice. The worker can be a cheaper/faster Claude, Codex, or Gemini profile;
+`SELF` keeps difficult work on the parent. Provider-native subagents are disabled for these
+runs so Yoke does not pay for two orchestration layers.
+
+**Provider support:** adaptive routing uses Yoke's shared provider adapter and works with Claude
+Code, Codex CLI, and Gemini CLI, including mixed-provider worker lists. Internal contract tests
+cover invocation and routing behavior for all three providers. The measured performance evidence
+below is intentionally **Codex-only**; it does not claim equivalent Claude or Gemini savings
+until authenticated, repeated in-the-wild runs exist for those providers.
+
+```yaml
+runner:
+  agent: codex
+  model: gpt-5.6-sol       # optional; provider model strings stay opaque to Yoke
+  reasoningEffort: high
+routing:
+  enabled: true            # setup defaults false; setup --routing opts in
+  strategy: balanced       # balanced | cost | speed | quality
+  maxCandidates: 3
+  workers:
+    - id: codex-light
+      agent: codex
+      reasoningEffort: low
+      costTier: medium
+      capabilities: [exploration, implementation, tests]
+    - id: claude-fast
+      agent: claude
+      model: haiku         # rolling alias; omit to use the provider's current default
+      reasoningEffort: low
+      costTier: low
+      capabilities: [mechanical-edits, tests]
+    - id: gemini-auto
+      agent: gemini        # omitted model means the account's current Auto/default route
+      costTier: low
+      capabilities: [large-context, implementation]
+```
+
+Use `yoke loop run . --routing` for a one-run opt-in or `--no-routing` for a controlled
+baseline. Routing control calls are read-only and deliberately tiny; malformed output or no
+eligible worker falls back to `SELF`. Yoke does not ship a universal, fast-aging
+"intelligence score". Candidate model IDs come from project configuration while setup defaults
+prefer rolling aliases or provider Auto/defaults. A per-user registry learns only from Yoke's
+independent verify/performance/audit/review gates, keyed by worker + provider + model/effort and expired
+after 30 days. It stores no prompts, source, or project paths—only a project hash and aggregate
+time/token/outcome evidence. Writes are immutable one-event files, so concurrent Yoke instances
+cannot overwrite a shared registry file.
+
+Routing is not free: it adds one controller call per story. It is most promising when a bounded
+worker saves more than that call costs; tiny stories may be slower. Keep it opt-in and measure it
+on your own backlog rather than assuming a win.
 
 ### Performance budgets: efficiency as a gate, not a style
 
@@ -605,6 +659,18 @@ Yoke attacks tokens on two complementary surfaces:
 - **rtk** compresses noisy command/tool output before it enters context (wired as a hook/instruction per agent).
 - The **`minimal-code`** skill installs a YAGNI / "lazy senior dev" ladder so agents write the least code that solves the task — fewer output tokens, smaller review surface. *(Adapted from the MIT-licensed [ponytail](https://github.com/DietrichGebert/ponytail) ruleset.)*
 
+A Codex-only full-repository study ran three alternating-order pairs per arm. The same Sol parent
+completed all 12 stories and all **36/36 hidden acceptance checks**; with routing enabled, a Sol
+controller selected Luna for every bounded implementation story. Including controller overhead,
+the routed median used **33.8% less wall time, 11.0% less fresh input, 49.5% fewer output tokens,
+and 78.2% fewer reasoning tokens**. All three pairs improved wall time and fresh input.
+
+The boundary matters: an earlier architecture/privacy task correctly stayed on `SELF` and paid
+controller overhead, so routing is an explicit opt-in rather than a universal win. Codex did not
+emit dollar cost for these plan-backed runs; Yoke reports the measured token breakdown instead of
+inventing a price. Method, ranges, controller cost, caveats, analyzer, and six raw JSON rows are in
+[`bench/RESULTS.md`](bench/RESULTS.md#codex-only-full-repository-routing-study-2026-08-02).
+
 ## 🧩 Optional companions
 
 Two external tools pair well with Yoke and are documented (not bundled) in `canon/tools/` — each has its own installer and update cadence, so Yoke wires the boundary instead of vendoring a copy:
@@ -647,7 +713,7 @@ parallel dispatcher, broader benchmark samples, native output schemas, and relea
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (559 tests)
+npm test          # vitest (571 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

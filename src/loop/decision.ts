@@ -81,6 +81,7 @@ export const DecisionResumeSchema = z.object({
   decisionPolicy: z.enum(['auto', 'critical']).optional(),
   permissions: z.enum(['safe', 'unsafe', 'read-only']).optional(),
   parallel: z.number().int().positive().optional(),
+  routing: z.boolean().optional(),
   projectId: z.string().regex(/^[a-f0-9]{16}$/u).optional(),
   baseCommit: z.string().regex(/^[a-f0-9]{40,64}$/u).optional(),
   prdHash: z.string().regex(/^[a-f0-9]{64}$/u).optional(),

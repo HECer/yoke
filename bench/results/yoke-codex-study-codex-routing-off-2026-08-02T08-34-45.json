@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "yoke-codex-study@1",
+  "runner": "codex",
+  "sampleLabel": "codex-only-pair3-off",
+  "permissionProfile": "unsafe",
+  "yokeVersion": "1.1.1",
+  "fixture": "yoke-codex-study",
+  "routing": "off",
+  "startedAt": "2026-08-02T08:34:47.242Z",
+  "wallClockMs": 589501,
+  "exitCode": 0,
+  "finalState": "complete",
+  "verdict": "completed",
+  "blocker": null,
+  "conflicts": 0,
+  "iterations": 2,
+  "finalTestsPass": true,
+  "progress": {
+    "passed": 2,
+    "total": 2
+  },
+  "usageAvailable": true,
+  "modelAvailable": true,
+  "requestedParentModel": "gpt-5.6-sol",
+  "tokens": {
+    "inputTokens": 2279164,
+    "cachedInputTokens": 2147584,
+    "cacheWriteInputTokens": 0,
+    "outputTokens": 16008,
+    "reasoningOutputTokens": 6536
+  },
+  "modelCalls": [],
+  "tokenBreakdown": {
+    "inputTokens": 2279164,
+    "cachedInputTokens": 2147584,
+    "freshInputTokens": 131580,
+    "cacheWriteInputTokens": 0,
+    "outputTokens": 16008,
+    "reasoningOutputTokens": 6536
+  },
+  "stories": [
+    {
+      "id": "STUDY-1",
+      "durationMs": 376161,
+      "iterations": 1,
+      "finalTestsPass": true
+    },
+    {
+      "id": "STUDY-2",
+      "durationMs": 212311,
+      "iterations": 1,
+      "finalTestsPass": true
+    }
+  ],
+  "srcLoc": 5253,
+  "sourceFiles": 61,
+  "finalVerification": {
+    "buildExitCode": 0,
+    "testExitCode": 0,
+    "finalTestCount": 580,
+    "originalAcceptanceTestsExitCode": 0,
+    "originalAcceptanceTestCount": 6
+  }
+}

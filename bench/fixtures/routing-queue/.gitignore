@@ -1,0 +1,5 @@
+.yoke/loop-status.json
+.yoke/loop.log
+.yoke/story-durations.json
+.yoke/context/DECISIONS.md
+.yoke/loop.lock*

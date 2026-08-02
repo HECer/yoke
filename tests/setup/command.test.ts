@@ -12,18 +12,19 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('yoke setup', () => {
   it('asks the setup questions and persists the selected Codex workflow', async () => {
-    const answers = ['codex', 'serena', 'yes', 'codex', 'critical']
+    const answers = ['codex', 'serena', 'yes', 'codex', 'critical', 'yes']
     const questions: string[] = []
     const code = await runSetup(dir, {
       host: 'codex', interactive: true,
       ask: async (question) => { questions.push(question); return answers.shift()! },
     })
     expect(code).toBe(0)
-    expect(questions).toHaveLength(5)
+    expect(questions).toHaveLength(6)
     expect(loadConfig(dir)).toMatchObject({
       agents: ['codex'], codeGraph: 'serena',
       loop: { enabled: true, decisionPolicy: 'critical' },
       runner: { agent: 'codex' },
+      routing: { enabled: true, strategy: 'balanced' },
     })
     expect(existsSync(join(dir, '.agents/skills/yoke-workflow/SKILL.md'))).toBe(true)
   })
@@ -44,7 +45,7 @@ describe('yoke setup', () => {
   })
 
   it('deduplicates interactive agent selections and adds the selected runner', async () => {
-    const answers = ['codex,codex', '', '', 'gemini', '']
+    const answers = ['codex,codex', '', '', 'gemini', '', '']
     expect(await runSetup(dir, { host: 'codex', interactive: true, ask: async () => answers.shift()! })).toBe(0)
     expect(loadConfig(dir)).toMatchObject({ agents: ['codex', 'gemini'], runner: { agent: 'gemini' } })
   })

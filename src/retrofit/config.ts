@@ -7,12 +7,21 @@ import type { PermissionProfile } from '../agents/types.js'
 export type Agent = 'claude' | 'codex' | 'gemini'
 export type CodeGraph = 'graphify' | 'serena'
 export type DecisionPolicy = 'auto' | 'critical'
+export type RoutingStrategy = 'balanced' | 'cost' | 'speed' | 'quality'
 
 const AgentSchema = z.enum(['claude', 'codex', 'gemini'])
 const CodeGraphSchema = z.enum(['graphify', 'serena'])
 
 const SmokeFlowSchema = z.object({ name: z.string().min(1), path: z.string().min(1), landmark: z.string().optional() })
 const SmokeSchema = z.object({ baseUrl: z.string().min(1), flows: z.array(SmokeFlowSchema).min(1) })
+const RoutingWorkerSchema = z.object({
+  id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  agent: AgentSchema,
+  model: z.string().min(1).optional(),
+  reasoningEffort: z.string().min(1).optional(),
+  costTier: z.enum(['low', 'medium', 'high']).default('medium'),
+  capabilities: z.array(z.string().min(1)).default([]),
+})
 
 export const YokeConfigSchema = z.object({
   canonVersion: z.string().min(1),
@@ -27,7 +36,20 @@ export const YokeConfigSchema = z.object({
   }),
   runner: z.object({
     agent: AgentSchema.optional(),
+    model: z.string().min(1).optional(),
+    reasoningEffort: z.string().min(1).optional(),
+    bare: z.boolean().optional(),
     permissions: z.enum(['safe', 'unsafe', 'read-only']).optional(),
+  }).optional(),
+  routing: z.object({
+    enabled: z.boolean(),
+    strategy: z.enum(['balanced', 'cost', 'speed', 'quality']).default('balanced'),
+    maxCandidates: z.number().int().min(1).max(5).default(3),
+    orchestrator: z.object({
+      model: z.string().min(1).optional(),
+      reasoningEffort: z.string().min(1).optional(),
+    }).optional(),
+    workers: z.array(RoutingWorkerSchema).max(12).default([]),
   }).optional(),
   commit: z.object({
     authorName: z.string().min(1).optional(),
@@ -52,12 +74,27 @@ export const YokeConfigSchema = z.object({
 
 export interface SmokeFlow { name: string; path: string; landmark?: string }
 export interface SmokeConfig { baseUrl: string; flows: SmokeFlow[] }
+export interface RoutingWorker {
+  id: string
+  agent: Agent
+  model?: string
+  reasoningEffort?: string
+  costTier: 'low' | 'medium' | 'high'
+  capabilities: string[]
+}
 
 export interface YokeConfig {
   canonVersion: string
   agents: Agent[]
   loop: { enabled: boolean; timeoutMinutes?: number; decisionPolicy?: DecisionPolicy; onAmbiguity?: 'resolve' | 'abort' }
-  runner?: { agent?: Agent; permissions?: PermissionProfile }
+  runner?: { agent?: Agent; model?: string; reasoningEffort?: string; bare?: boolean; permissions?: PermissionProfile }
+  routing?: {
+    enabled: boolean
+    strategy: RoutingStrategy
+    maxCandidates: number
+    orchestrator?: { model?: string; reasoningEffort?: string }
+    workers: RoutingWorker[]
+  }
   commit?: { authorName?: string; authorEmail?: string; allowCoAuthors?: boolean }
   audit?: { enabled: boolean; command?: string; suppressionsVersion?: 1; suppressions?: Array<{ ruleId: string; file?: string; reason: string; expires?: string }> }
   verify?: { command: string; retries?: number }

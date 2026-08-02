@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "routing-queue@1",
+  "runner": "codex",
+  "sampleLabel": "routing-ab-controlled-baseline",
+  "permissionProfile": "unsafe",
+  "yokeVersion": "1.1.1",
+  "fixture": "routing-queue",
+  "routing": "off",
+  "startedAt": "2026-08-01T21:44:00.963Z",
+  "wallClockMs": 299787,
+  "exitCode": 0,
+  "finalState": "complete",
+  "verdict": "completed",
+  "blocker": null,
+  "conflicts": 0,
+  "iterations": 2,
+  "finalTestsPass": true,
+  "progress": {
+    "passed": 2,
+    "total": 2
+  },
+  "usageAvailable": true,
+  "modelAvailable": true,
+  "requestedParentModel": "gpt-5.6-sol",
+  "tokens": {
+    "inputTokens": 579301,
+    "outputTokens": 9103
+  },
+  "modelCalls": [],
+  "stories": [
+    {
+      "id": "STORY-1",
+      "durationMs": 173400,
+      "iterations": 1,
+      "finalTestsPass": true
+    },
+    {
+      "id": "STORY-2",
+      "durationMs": 125693,
+      "iterations": 1,
+      "finalTestsPass": true
+    }
+  ],
+  "srcLoc": 133
+}

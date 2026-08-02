@@ -1,0 +1,24 @@
+- id: STORY-1
+  title: "Priority task queue with idempotency and leases"
+  priority: 1
+  acceptance:
+    - "Export a TaskQueue class from src/task-queue.mjs; constructor accepts optional clock, maxAttempts, and baseDelayMs"
+    - "enqueue({type,payload,priority,idempotencyKey}) validates a non-empty type, defaults priority to 0, and returns an immutable task snapshot"
+    - "Repeated non-empty idempotencyKey returns the original task without adding another queue entry"
+    - "claim(workerId,{leaseMs}) returns the available queued task with highest priority and FIFO order for ties; it records workerId, leaseUntil, and increments attempts"
+    - "complete(taskId,workerId,result) only allows the current lease owner and returns an immutable completed snapshot"
+    - "get(taskId) and list() return snapshots that callers cannot use to mutate queue state"
+    - "node bench-verify.mjs exits 0"
+  passes: false
+- id: STORY-2
+  title: "Retry backoff, dead letters, expired leases, and statistics"
+  priority: 2
+  acceptance:
+    - "fail(taskId,workerId,error) only allows the lease owner; before maxAttempts it requeues with exponential delay baseDelayMs * 2^(attempts-1)"
+    - "A task is not claimable before availableAt; at maxAttempts failure moves it to dead status"
+    - "reapExpired() requeues active tasks whose lease has expired and returns the number requeued"
+    - "list({status,type}) filters without exposing mutable internal objects"
+    - "stats() returns total and counts for queued, active, completed, and dead tasks"
+    - "Invalid task ids, invalid worker ids, and invalid state transitions throw clear errors"
+    - "node bench-verify.mjs exits 0"
+  passes: false

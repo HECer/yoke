@@ -75,10 +75,11 @@ export function main(argv: string[]): number | Promise<number> {
       const policyArg = rest.find(a => a.startsWith('--decision-policy='))?.slice('--decision-policy='.length)
       if (policyArg && policyArg !== 'auto' && policyArg !== 'critical') { console.error(`Invalid --decision-policy value: ${policyArg}`); return 1 }
       const loop = rest.includes('--loop') ? true : rest.includes('--no-loop') ? false : undefined
+      const routing = rest.includes('--routing') ? true : rest.includes('--no-routing') ? false : undefined
       return runSetup(targetDir, {
         host: hostArg as Agent | undefined, agents, runner: runnerArg as Agent | undefined,
         codeGraph: graphArg as 'graphify' | 'serena' | undefined,
-        loop, decisionPolicy: policyArg as DecisionPolicy | undefined,
+        loop, routing, decisionPolicy: policyArg as DecisionPolicy | undefined,
         interactive: rest.includes('--yes') ? false : undefined,
       })
     }
@@ -233,6 +234,7 @@ export function main(argv: string[]): number | Promise<number> {
         const parallel = parallelArg ? Number(parallelArg.slice('--parallel='.length)) : 1
         if (!Number.isInteger(parallel) || parallel < 1) { console.error(`Invalid --parallel value: ${parallelArg}`); return 1 }
         const json = rest.includes('--json')
+        const routing = rest.includes('--routing') ? true : rest.includes('--no-routing') ? false : undefined
         const toArg = rest.find(a => a.startsWith('--timeout='))
         let timeoutMinutes: number | undefined
         if (toArg) {
@@ -250,9 +252,9 @@ export function main(argv: string[]): number | Promise<number> {
           console.error(`Invalid --decision-policy value: ${dpArg} (expected auto|critical)`)
           return 1
         }
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, parallel, reviewer, review, allowSelfReview, timeoutMinutes, json, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions })
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, parallel, reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions })
       }
-      console.log('usage: yoke loop <on|off|status|decision|answer|resume [--discard]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--json]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|decision|answer|resume [--discard]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--json]> [targetDir]')
       return 1
     }
     case 'new': {

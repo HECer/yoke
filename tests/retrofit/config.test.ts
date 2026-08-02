@@ -84,6 +84,25 @@ describe('yoke config', () => {
     expect(loadConfig(dir)?.runner).toEqual({ agent: 'codex' })
   })
 
+  it('round-trips opt-in adaptive routing with opaque provider model ids', () => {
+    const cfg = {
+      ...defaultConfig('1.2.0'),
+      routing: {
+        enabled: true, strategy: 'cost' as const, maxCandidates: 2,
+        orchestrator: { model: 'parent-current', reasoningEffort: 'deep-vNext' },
+        workers: [{ id: 'cheap-worker', agent: 'gemini' as const, model: 'provider-current', costTier: 'low' as const, capabilities: ['exploration'] }],
+      },
+    }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)?.routing).toEqual(cfg.routing)
+  })
+
+  it('rejects routing worker ids that are unsafe for prompts and logs', () => {
+    expect(() => YokeConfigSchema.parse({
+      ...defaultConfig('1'), routing: { enabled: true, workers: [{ id: '../bad', agent: 'codex', costTier: 'low', capabilities: [] }] },
+    })).toThrow()
+  })
+
   it('rejects an unknown runner permission profile', () => {
     expect(() => YokeConfigSchema.parse({ canonVersion: '1', agents: [], loop: { enabled: true }, runner: { permissions: 'root' } })).toThrow()
   })

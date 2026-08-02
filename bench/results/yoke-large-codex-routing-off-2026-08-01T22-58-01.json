@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "yoke-large@1",
+  "runner": "codex",
+  "sampleLabel": "yoke-large-controlled-baseline",
+  "permissionProfile": "unsafe",
+  "yokeVersion": "1.1.1",
+  "fixture": "yoke-large",
+  "routing": "off",
+  "startedAt": "2026-08-01T22:58:03.670Z",
+  "wallClockMs": 660843,
+  "exitCode": 0,
+  "finalState": "complete",
+  "verdict": "completed",
+  "blocker": null,
+  "conflicts": 0,
+  "iterations": 2,
+  "finalTestsPass": true,
+  "progress": {
+    "passed": 2,
+    "total": 2
+  },
+  "usageAvailable": true,
+  "modelAvailable": true,
+  "requestedParentModel": "gpt-5.6-sol",
+  "tokens": {
+    "inputTokens": 1971273,
+    "outputTokens": 16850
+  },
+  "modelCalls": [],
+  "stories": [
+    {
+      "id": "LARGE-1",
+      "durationMs": 333022,
+      "iterations": 1,
+      "finalTestsPass": true
+    },
+    {
+      "id": "LARGE-2",
+      "durationMs": 327176,
+      "iterations": 1,
+      "finalTestsPass": true
+    }
+  ],
+  "srcLoc": 5325,
+  "sourceFiles": 61,
+  "finalVerification": {
+    "buildExitCode": 0,
+    "testExitCode": 0,
+    "finalTestCount": 578,
+    "originalAcceptanceTestsExitCode": 0,
+    "originalAcceptanceTestCount": 4
+  }
+}

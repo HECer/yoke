@@ -1,0 +1,30 @@
+canonVersion: 1.2.0
+agents: [codex, claude, gemini]
+loop:
+  enabled: true
+runner:
+  agent: codex
+  model: gpt-5.6-sol
+  reasoningEffort: high
+  bare: true
+routing:
+  enabled: true
+  strategy: balanced
+  maxCandidates: 3
+  workers:
+    - id: codex-light
+      agent: codex
+      reasoningEffort: low
+      costTier: medium
+      capabilities: [exploration, implementation, tests]
+    - id: claude-fast
+      agent: claude
+      model: haiku
+      costTier: low
+      capabilities: [exploration, mechanical-edits, tests]
+    - id: gemini-auto
+      agent: gemini
+      costTier: low
+      capabilities: [large-context, implementation, tests]
+verify:
+  command: node bench-verify.mjs

@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "yoke-large@1",
+  "runner": "codex",
+  "sampleLabel": "yoke-large-controlled-routed",
+  "permissionProfile": "unsafe",
+  "yokeVersion": "1.1.1",
+  "fixture": "yoke-large",
+  "routing": "on",
+  "startedAt": "2026-08-01T23:09:41.394Z",
+  "wallClockMs": 640151,
+  "exitCode": 0,
+  "finalState": "complete",
+  "verdict": "completed",
+  "blocker": null,
+  "conflicts": 0,
+  "iterations": 2,
+  "finalTestsPass": true,
+  "progress": {
+    "passed": 2,
+    "total": 2
+  },
+  "usageAvailable": true,
+  "modelAvailable": true,
+  "requestedParentModel": "gpt-5.6-sol",
+  "tokens": {
+    "inputTokens": 2035962,
+    "outputTokens": 15483,
+    "calls": [
+      {
+        "role": "orchestrator",
+        "provider": "codex",
+        "requestedModel": "gpt-5.6-sol",
+        "requestedReasoningEffort": "high",
+        "inputTokens": 19085,
+        "outputTokens": 71,
+        "durationMs": 23794
+      },
+      {
+        "role": "parent",
+        "provider": "codex",
+        "profile": "SELF",
+        "requestedModel": "gpt-5.6-sol",
+        "requestedReasoningEffort": "high",
+        "inputTokens": 754095,
+        "outputTokens": 9178,
+        "durationMs": 286877
+      },
+      {
+        "role": "orchestrator",
+        "provider": "codex",
+        "requestedModel": "gpt-5.6-sol",
+        "requestedReasoningEffort": "high",
+        "inputTokens": 19271,
+        "outputTokens": 30,
+        "durationMs": 11587
+      },
+      {
+        "role": "parent",
+        "provider": "codex",
+        "profile": "SELF",
+        "requestedModel": "gpt-5.6-sol",
+        "requestedReasoningEffort": "high",
+        "inputTokens": 1243511,
+        "outputTokens": 6204,
+        "durationMs": 276210
+      }
+    ]
+  },
+  "modelCalls": [
+    {
+      "role": "orchestrator",
+      "provider": "codex",
+      "requestedModel": "gpt-5.6-sol",
+      "requestedReasoningEffort": "high",
+      "inputTokens": 19085,
+      "outputTokens": 71,
+      "durationMs": 23794
+    },
+    {
+      "role": "parent",
+      "provider": "codex",
+      "profile": "SELF",
+      "requestedModel": "gpt-5.6-sol",
+      "requestedReasoningEffort": "high",
+      "inputTokens": 754095,
+      "outputTokens": 9178,
+      "durationMs": 286877
+    },
+    {
+      "role": "orchestrator",
+      "provider": "codex",
+      "requestedModel": "gpt-5.6-sol",
+      "requestedReasoningEffort": "high",
+      "inputTokens": 19271,
+      "outputTokens": 30,
+      "durationMs": 11587
+    },
+    {
+      "role": "parent",
+      "provider": "codex",
+      "profile": "SELF",
+      "requestedModel": "gpt-5.6-sol",
+      "requestedReasoningEffort": "high",
+      "inputTokens": 1243511,
+      "outputTokens": 6204,
+      "durationMs": 276210
+    }
+  ],
+  "stories": [
+    {
+      "id": "LARGE-1",
+      "durationMs": 322735,
+      "iterations": 1,
+      "finalTestsPass": true
+    },
+    {
+      "id": "LARGE-2",
+      "durationMs": 303662,
+      "iterations": 1,
+      "finalTestsPass": true
+    }
+  ],
+  "srcLoc": 5290,
+  "sourceFiles": 61,
+  "finalVerification": {
+    "buildExitCode": 0,
+    "testExitCode": 0,
+    "finalTestCount": 579,
+    "originalAcceptanceTestsExitCode": 0,
+    "originalAcceptanceTestCount": 4
+  }
+}

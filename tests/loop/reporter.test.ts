@@ -135,6 +135,21 @@ describe('makeReporter token accounting', () => {
     r.phase('committing')
     expect(readStatus(dir)?.tokens).toEqual({ inputTokens: 13, outputTokens: 7 })  // cumulative across the run
   })
+
+  it('accumulates cache, reasoning, and provider cost splits without inventing missing fields', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.addTokens({ inputTokens: 10, cachedInputTokens: 7, outputTokens: 5, reasoningOutputTokens: 2, totalCostUsd: 0.01 })
+    r.addTokens({ inputTokens: 3, outputTokens: 2 })
+    r.phase('verifying')
+    expect(readStatus(dir)?.tokens).toMatchObject({
+      inputTokens: 13,
+      cachedInputTokens: 7,
+      outputTokens: 7,
+      reasoningOutputTokens: 2,
+      totalCostUsd: 0.01,
+    })
+  })
   it('includes tokens in NDJSON lines in json mode', () => {
     const lines: string[] = []
     const r = makeReporter(dir, { log: (s) => lines.push(s), json: true }, fixedNow)

@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "yoke-codex-study@1",
+  "runner": "codex",
+  "sampleLabel": "codex-only-pair1-on",
+  "permissionProfile": "unsafe",
+  "yokeVersion": "1.1.1",
+  "fixture": "yoke-codex-study",
+  "routing": "on",
+  "startedAt": "2026-08-02T07:52:01.670Z",
+  "wallClockMs": 383099,
+  "exitCode": 0,
+  "finalState": "complete",
+  "verdict": "completed",
+  "blocker": null,
+  "conflicts": 0,
+  "iterations": 2,
+  "finalTestsPass": true,
+  "progress": {
+    "passed": 2,
+    "total": 2
+  },
+  "usageAvailable": true,
+  "modelAvailable": true,
+  "requestedParentModel": "gpt-5.6-sol",
+  "tokens": {
+    "inputTokens": 1561371,
+    "cachedInputTokens": 1436672,
+    "cacheWriteInputTokens": 0,
+    "outputTokens": 9340,
+    "reasoningOutputTokens": 2010,
+    "calls": [
+      {
+        "role": "orchestrator",
+        "provider": "codex",
+        "requestedModel": "gpt-5.6-sol",
+        "requestedReasoningEffort": "low",
+        "inputTokens": 19164,
+        "cachedInputTokens": 11008,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 30,
+        "reasoningOutputTokens": 0,
+        "durationMs": 12390
+      },
+      {
+        "role": "worker",
+        "provider": "codex",
+        "profile": "codex-luna",
+        "requestedModel": "gpt-5.6-luna",
+        "requestedReasoningEffort": "low",
+        "inputTokens": 570526,
+        "cachedInputTokens": 528640,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 4335,
+        "reasoningOutputTokens": 343,
+        "durationMs": 171211
+      },
+      {
+        "role": "orchestrator",
+        "provider": "codex",
+        "requestedModel": "gpt-5.6-sol",
+        "requestedReasoningEffort": "low",
+        "inputTokens": 19161,
+        "cachedInputTokens": 11008,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 32,
+        "reasoningOutputTokens": 0,
+        "durationMs": 12716
+      },
+      {
+        "role": "worker",
+        "provider": "codex",
+        "profile": "codex-luna",
+        "requestedModel": "gpt-5.6-luna",
+        "requestedReasoningEffort": "low",
+        "inputTokens": 952520,
+        "cachedInputTokens": 886016,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 4943,
+        "reasoningOutputTokens": 1667,
+        "durationMs": 182866
+      }
+    ]
+  },
+  "modelCalls": [
+    {
+      "role": "orchestrator",
+      "provider": "codex",
+      "requestedModel": "gpt-5.6-sol",
+      "requestedReasoningEffort": "low",
+      "inputTokens": 19164,
+      "cachedInputTokens": 11008,
+      "cacheWriteInputTokens": 0,
+      "outputTokens": 30,
+      "reasoningOutputTokens": 0,
+      "durationMs": 12390
+    },
+    {
+      "role": "worker",
+      "provider": "codex",
+      "profile": "codex-luna",
+      "requestedModel": "gpt-5.6-luna",
+      "requestedReasoningEffort": "low",
+      "inputTokens": 570526,
+      "cachedInputTokens": 528640,
+      "cacheWriteInputTokens": 0,
+      "outputTokens": 4335,
+      "reasoningOutputTokens": 343,
+      "durationMs": 171211
+    },
+    {
+      "role": "orchestrator",
+      "provider": "codex",
+      "requestedModel": "gpt-5.6-sol",
+      "requestedReasoningEffort": "low",
+      "inputTokens": 19161,
+      "cachedInputTokens": 11008,
+      "cacheWriteInputTokens": 0,
+      "outputTokens": 32,
+      "reasoningOutputTokens": 0,
+      "durationMs": 12716
+    },
+    {
+      "role": "worker",
+      "provider": "codex",
+      "profile": "codex-luna",
+      "requestedModel": "gpt-5.6-luna",
+      "requestedReasoningEffort": "low",
+      "inputTokens": 952520,
+      "cachedInputTokens": 886016,
+      "cacheWriteInputTokens": 0,
+      "outputTokens": 4943,
+      "reasoningOutputTokens": 1667,
+      "durationMs": 182866
+    }
+  ],
+  "tokenBreakdown": {
+    "inputTokens": 1561371,
+    "cachedInputTokens": 1436672,
+    "freshInputTokens": 124699,
+    "cacheWriteInputTokens": 0,
+    "outputTokens": 9340,
+    "reasoningOutputTokens": 2010
+  },
+  "stories": [
+    {
+      "id": "STUDY-1",
+      "durationMs": 184822,
+      "iterations": 1,
+      "finalTestsPass": true
+    },
+    {
+      "id": "STUDY-2",
+      "durationMs": 197354,
+      "iterations": 1,
+      "finalTestsPass": true
+    }
+  ],
+  "srcLoc": 5252,
+  "sourceFiles": 61,
+  "finalVerification": {
+    "buildExitCode": 0,
+    "testExitCode": 0,
+    "finalTestCount": 578,
+    "originalAcceptanceTestsExitCode": 0,
+    "originalAcceptanceTestCount": 6
+  }
+}

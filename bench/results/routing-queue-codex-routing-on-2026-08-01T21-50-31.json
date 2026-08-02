@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "routing-queue@1",
+  "runner": "codex",
+  "sampleLabel": "routing-ab-controlled-routed",
+  "permissionProfile": "unsafe",
+  "yokeVersion": "1.1.1",
+  "fixture": "routing-queue",
+  "routing": "on",
+  "startedAt": "2026-08-01T21:50:32.408Z",
+  "wallClockMs": 283134,
+  "exitCode": 0,
+  "finalState": "complete",
+  "verdict": "completed",
+  "blocker": null,
+  "conflicts": 0,
+  "iterations": 2,
+  "finalTestsPass": true,
+  "progress": {
+    "passed": 2,
+    "total": 2
+  },
+  "usageAvailable": true,
+  "modelAvailable": true,
+  "requestedParentModel": "gpt-5.6-sol",
+  "tokens": {
+    "inputTokens": 542788,
+    "outputTokens": 5486,
+    "calls": [
+      {
+        "role": "orchestrator",
+        "provider": "codex",
+        "requestedModel": "gpt-5.6-sol",
+        "inputTokens": 19065,
+        "outputTokens": 28,
+        "durationMs": 22124
+      },
+      {
+        "role": "worker",
+        "provider": "codex",
+        "inputTokens": 272894,
+        "outputTokens": 3201,
+        "durationMs": 124464
+      },
+      {
+        "role": "orchestrator",
+        "provider": "codex",
+        "requestedModel": "gpt-5.6-sol",
+        "inputTokens": 19046,
+        "outputTokens": 30,
+        "durationMs": 19208
+      },
+      {
+        "role": "worker",
+        "provider": "codex",
+        "inputTokens": 231783,
+        "outputTokens": 2227,
+        "durationMs": 102089
+      }
+    ]
+  },
+  "modelCalls": [
+    {
+      "role": "orchestrator",
+      "provider": "codex",
+      "requestedModel": "gpt-5.6-sol",
+      "inputTokens": 19065,
+      "outputTokens": 28,
+      "durationMs": 22124
+    },
+    {
+      "role": "worker",
+      "provider": "codex",
+      "inputTokens": 272894,
+      "outputTokens": 3201,
+      "durationMs": 124464
+    },
+    {
+      "role": "orchestrator",
+      "provider": "codex",
+      "requestedModel": "gpt-5.6-sol",
+      "inputTokens": 19046,
+      "outputTokens": 30,
+      "durationMs": 19208
+    },
+    {
+      "role": "worker",
+      "provider": "codex",
+      "inputTokens": 231783,
+      "outputTokens": 2227,
+      "durationMs": 102089
+    }
+  ],
+  "stories": [
+    {
+      "id": "STORY-1",
+      "durationMs": 148000,
+      "iterations": 1,
+      "finalTestsPass": true
+    },
+    {
+      "id": "STORY-2",
+      "durationMs": 122288,
+      "iterations": 1,
+      "finalTestsPass": true
+    }
+  ],
+  "srcLoc": 112
+}

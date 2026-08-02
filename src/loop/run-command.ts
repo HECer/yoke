@@ -19,6 +19,7 @@ import {
   clearDecisionResume, decisionProcessingExists, decisionRequestId, formatPendingDecision,
   readPendingDecision, writeDecisionResume,
 } from './decision.js'
+import { makeAdaptiveRunner } from '../routing/router.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -102,6 +103,8 @@ export interface RunLoopCommandOptions {
   commitIdentity?: CommitIdentity
   audit?: Verifier
   parallel?: number
+  /** Override config.routing.enabled for this invocation. */
+  routing?: boolean
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -177,6 +180,11 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
 
   const idleMs = resolveIdleMs(opts.timeoutMinutes, config.loop.timeoutMinutes)
   const permissions = opts.permissions ?? config.runner?.permissions ?? 'safe'
+  const routingEnabled = opts.routing ?? config.routing?.enabled ?? false
+  if (routingEnabled && (!config.routing || config.routing.workers.length === 0)) {
+    console.error('Adaptive routing was requested, but no worker profiles are configured. Run yoke setup . --routing or add routing.workers to .yoke/config.yaml.')
+    return 2
+  }
 
   let runner = opts.runner
   if (!runner) {
@@ -186,14 +194,34 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }
     // Token reporting is part of the machine interface: in --json mode a claude
     // runner switches to stream-json so cumulative usage rides on every status.
-    runner = makeRunner(runnerAgent, idleMs, {
+    const runnerOpts = {
       tokenReport: opts.json === true,
       onAmbiguity: opts.decisionPolicy ?? opts.onAmbiguity ?? config.loop.decisionPolicy ?? config.loop.onAmbiguity ?? 'auto',
       perfCommand: config.perf?.command,
       permissions,
-    })
+      selection: {
+        model: config.runner?.model,
+        reasoningEffort: config.runner?.reasoningEffort,
+        bare: config.runner?.bare,
+        ...((routingEnabled || opts.routing === false) ? { nativeMultiAgent: false } : {}),
+      },
+    }
+    runner = routingEnabled && config.routing
+      ? makeAdaptiveRunner({
+          parent: runnerAgent,
+          parentSelection: runnerOpts.selection,
+          orchestratorSelection: config.routing.orchestrator ?? runnerOpts.selection,
+          workers: config.routing.workers,
+          strategy: config.routing.strategy,
+          maxCandidates: config.routing.maxCandidates,
+          idleTimeoutMs: idleMs,
+          permissions,
+          runnerOpts,
+          isAvailable: available,
+        })
+      : makeRunner(runnerAgent, idleMs, runnerOpts)
     const announce = opts.json ? console.error : console.log
-    announce(`Runner: ${runnerAgent} · permissions: ${permissions} · cwd: ${targetDir}`)
+    announce(`Runner: ${runnerAgent} · permissions: ${permissions} · routing: ${routingEnabled ? 'on' : 'off'} · cwd: ${targetDir}`)
   }
 
   let review = opts.reviewRunner
@@ -272,6 +300,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
               : config.loop.decisionPolicy),
           permissions,
           parallel: opts.parallel ?? 1,
+          routing: routingEnabled,
         })
       } else clearDecisionResume(targetDir)
     } catch (error) {
