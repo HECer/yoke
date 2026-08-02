@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0 — 2026-08-02
+
+### Added
+- Opt-in adaptive model routing lets a strong parent orchestrate each bounded story while Yoke selects an available Claude, Codex, or Gemini worker by quality, speed, cost, or balanced strategy.
+- A concurrency-safe local evidence registry learns from independent verification results without sharing mutable state between simultaneous Yoke processes.
+- Routing telemetry, reproducible benchmark fixtures, and analysis tooling make worker selection, token use, timing, and gate outcomes auditable.
+
+### Changed
+- Setup keeps routing disabled unless explicitly enabled and validates provider/model worker pools before execution.
+- Internal provider contract tests cover Claude Code, Codex CLI, and Gemini CLI through the shared adapter. Codex-only authenticated trials completed all 12 stories and 36 hidden checks; median routed runs used 11.0% fewer fresh input tokens, 49.5% fewer output tokens, 78.2% fewer reasoning tokens, and 33.8% less wall time than routing off.
+
+### Fixed
+- Reviewer prompts now permit their required verdict file while continuing to forbid project changes.
+- Failed reviewer subprocesses retain bounded provider stderr in loop status, exposing authentication, quota, sandbox, and startup failures instead of a generic command error.
+
 ## 1.1.0 — 2026-07-30
 
 ### Added
