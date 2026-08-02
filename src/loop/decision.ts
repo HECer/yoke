@@ -69,7 +69,8 @@ export const DecisionResumeSchema = z.object({
   storyId: singleLine(128),
   requestId: z.string().regex(/^[a-f0-9]{16}$/u),
   answered: z.boolean().optional(),
-  maxIterations: z.number().int().positive(),
+  /** Absent preserves the default unlimited run across a critical-decision resume. */
+  maxIterations: z.number().int().positive().optional(),
   agent: z.enum(['claude', 'codex', 'gemini']).optional(),
   isolate: z.boolean().optional(),
   reviewer: z.enum(['claude', 'codex', 'gemini']).optional(),

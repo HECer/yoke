@@ -11,6 +11,7 @@ import type { GitOps } from '../../src/loop/gates.js'
 import type { AgentRunner } from '../../src/loop/runner.js'
 import type { Verifier } from '../../src/loop/verify.js'
 import { readDecisionResume } from '../../src/loop/decision.js'
+import { main } from '../../src/cli.js'
 
 let dir: string
 const cfg = () => ({ canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true } })
@@ -34,6 +35,10 @@ beforeEach(() => {
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('yoke loop CLI', () => {
+  it('rejects fractional story caps', () => {
+    expect(main(['loop', 'run', dir, '--max=1.5'])).toBe(1)
+  })
+
   it('rejects unsupported parallel CLI workers instead of silently running serially', () => {
     expect(runLoopCommand(dir, { maxIterations: 1, parallel: 2 })).toBe(2)
   })
@@ -121,6 +126,33 @@ describe('yoke loop CLI', () => {
     const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })
     expect(code).toBe(0)
     expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(true)
+  })
+
+  it('runs every remaining story when no explicit iteration cap is supplied', () => {
+    saveConfig(dir, cfg())
+    const stories = Array.from({ length: 30 }, (_, index) =>
+      `- { id: S${index + 1}, title: Story ${index + 1}, priority: ${index + 1}, acceptance: ["x"], passes: false }`)
+    writeFileSync(join(dir, '.yoke', 'prd.yaml'), stories.join('\n'))
+    let runs = 0
+    const runner: AgentRunner = () => { runs += 1; return { success: true, summary: 'ok' } }
+
+    expect(runLoopCommand(dir, { runner, git: stubGit, verify: verifyOk })).toBe(0)
+    expect(runs).toBe(30)
+    expect(loadPrd(join(dir, '.yoke', 'prd.yaml')).every(story => story.passes)).toBe(true)
+  })
+
+  it('preserves an unlimited run across a critical-decision resume', () => {
+    saveConfig(dir, { ...cfg(), agents: ['codex'], loop: { enabled: true, decisionPolicy: 'critical' } })
+    const decisionRunner: AgentRunner = (ctx) => {
+      writeFileSync(join(ctx.targetDir, '.yoke', 'decision-request.yaml'), [
+        'version: 1', `storyId: ${ctx.story.id}`, 'question: Which identity model?', 'reason: Public API choice.',
+        'options:', '  - { id: A, label: Accounts }', '  - { id: B, label: Profiles }', 'recommended: A', '',
+      ].join('\n'))
+      return { success: true, summary: 'waiting' }
+    }
+
+    expect(runLoopCommand(dir, { agent: 'codex', runner: decisionRunner, git: stubGit, verify: verifyOk })).toBe(1)
+    expect(readDecisionResume(dir)).not.toHaveProperty('maxIterations')
   })
 
   it('run returns 2 when the loop is enabled but the PRD file is missing', () => {

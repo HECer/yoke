@@ -79,7 +79,8 @@ export function resolveIdleMs(flagMinutes: number | undefined, configMinutes: nu
 }
 
 export interface RunLoopCommandOptions {
-  maxIterations: number
+  /** Optional story batch limit. Omitted means run until every story passes or a gate blocks. */
+  maxIterations?: number
   runner?: AgentRunner
   git?: GitOps
   verify?: Verifier
@@ -259,6 +260,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   }
   try {
     const reporter = opts.reporter ?? makeReporter(targetDir, { json: opts.json })
+    const maxIterations = opts.maxIterations ?? Number.POSITIVE_INFINITY
     const result = runLoop({
       prdPath: path,
       targetDir,
@@ -268,7 +270,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       verify,
       perf,
       audit,
-      maxIterations: opts.maxIterations,
+      maxIterations,
       isolate: (opts.parallel ?? 1) > 1 ? true : (opts.isolate ?? false),
       review,
       reporter,
@@ -281,7 +283,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
           storyId: pendingDecision.storyId,
           requestId: decisionRequestId(pendingDecision),
           answered: false,
-          maxIterations: opts.maxIterations,
+          ...(opts.maxIterations !== undefined ? { maxIterations: opts.maxIterations } : {}),
           agent: runnerAgent,
           isolate: opts.isolate ?? false,
           reviewer: opts.reviewer,

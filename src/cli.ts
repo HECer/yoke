@@ -205,8 +205,8 @@ export function main(argv: string[]): number | Promise<number> {
           return 1
         }
         const maxArg = rest.find(a => a.startsWith('--max='))
-        const rawMax = maxArg ? Number(maxArg.slice('--max='.length)) : 25
-        if (!Number.isFinite(rawMax) || rawMax <= 0) {
+        const rawMax = maxArg ? Number(maxArg.slice('--max='.length)) : undefined
+        if (rawMax !== undefined && (!Number.isInteger(rawMax) || rawMax <= 0)) {
           console.error(`Invalid --max value: ${maxArg}`)
           return 1
         }

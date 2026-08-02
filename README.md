@@ -3,7 +3,7 @@
 # 🐂 Yoke
 
 <!-- yoke:version:start -->1.2.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->579<!-- yoke:tests:end -->
+<!-- yoke:tests:start -->582<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->29<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
@@ -138,7 +138,7 @@ Yoke is meant to be operated *by* your coding agent — after a retrofit, the ag
 
 > **Watch / unblock** — *"Run `yoke loop status .`. If it says BLOCKED, run the project's verify command, find the root cause, fix it without weakening tests, then continue the loop."*
 
-> ⚠️ **Long runs from inside an agent session:** a multi-story `yoke loop run` outlives most agents' shell-tool timeouts (Claude Code's Bash tool defaults to 2 minutes). If the outer tool call is killed mid-run, you get a stale lock and possibly half-finished state — which *looks* like a hang. Rules of thumb: run the loop **in the background** (e.g. Claude Code's `run_in_background`), keep batches small (`--max=3..5`), poll with `yoke loop status`, and after any interrupted run do `yoke loop cleanup` before the next one. A `running` status with no update for 20+ minutes on a claude runner is worth checking — since 0.5.0 the runner streams continuously, so prolonged true silence is no longer normal.
+> ⚠️ **Long runs from inside an agent session:** `yoke loop run` has no story cap by default; it continues until every planned story passes or a gate blocks. A multi-story run can therefore outlive most agents' shell-tool timeouts (Claude Code's Bash tool defaults to 2 minutes). If the outer tool call is killed mid-run, you get a stale lock and possibly half-finished state — which *looks* like a hang. Run the loop **in the background** (e.g. Claude Code's `run_in_background`), use `--max=3..5` only when you intentionally want a bounded batch, poll with `yoke loop status`, and after any interrupted run do `yoke loop cleanup` before the next one. A `running` status with no update for 20+ minutes on a claude runner is worth checking — since 0.5.0 the runner streams continuously, so prolonged true silence is no longer normal.
 
 > ⚠️ **Never kill agent processes by name or command-line pattern** (e.g. every process matching `dangerously-skip-permissions`): on a machine running several yoke projects, that takes down the *healthy* runners of the other projects mid-story — they stall and their loops block. `yoke loop cleanup` is the scoped alternative: each watchdog records its pids in the project's `.yoke/runner.pid`, and cleanup kills exactly those recorded trees — nothing else on the machine.
 
@@ -155,7 +155,7 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke prd draft [dir] --idea= [--runner=] [--force]` | Idea → 5–12 stories with testable acceptance criteria | `0` · `1` invalid/guarded · `2` agent unavailable |
 | `yoke prd check [dir]` | PRD lint gate (schema, dependencies, cycles, duplicate ids, acceptance) | `0` valid · `1` violations |
 | `yoke context init\|status [dir]` | Durable context layer (`PROJECT/DECISIONS/KNOWLEDGE.md`) | `0` |
-| `yoke loop on\|off\|status\|decision\|answer\|resume\|run\|cleanup [dir]` | Autonomous loop; `decision` shows a critical stop, `answer` records it and resumes, `resume` retries a failed restart with the preserved safety options; cleanup deletes worktrees only with `--remove-worktrees` | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
+| `yoke loop on\|off\|status\|decision\|answer\|resume\|run\|cleanup [dir]` | Autonomous loop; `run` is unlimited by default and `--max=N` creates an intentional batch cap; `decision` shows a critical stop, `answer` records it and resumes, `resume` retries a failed restart with the preserved safety options | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
 | `yoke review [dir] [--reviewer=] [--base=] [--focus=] [--json] [--allow-self-review]` | An independent model writes a schema-valid verdict | `0` approved · `1` findings/invalid verdict · `2` no independent reviewer |
 | `yoke audit [dir] [--json]` | Dependency, high-confidence secret, and sensitive-change audit | `0` green · `1` blocking findings · `2` not runnable |
 | `yoke design-scan [dir] [--max=N] [--report]` | Static AI-slop design gate | `0` within budget · `1` over |
@@ -330,8 +330,8 @@ yoke loop run . \
   --runner=codex \               # implement with Codex…
   --reviewer=claude \            # …review with Claude (role separation)
   --isolate \                    # each story in a throwaway git worktree
-  --decision-policy=critical \   # pause only for high-impact decisions; routine choices stay autonomous
-  --max=20
+  --decision-policy=critical     # pause only for high-impact decisions; routine choices stay autonomous
+# Optional: add --max=20 only when this run should stop after a bounded batch.
 yoke loop off .                 # disable
 ```
 
