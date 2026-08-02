@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 — 2026-08-02
+
+### Fixed
+- `yoke loop run` now executes every remaining planned story by default instead of stopping after an implicit 25-iteration batch. Use `--max=N` only when an intentional bounded batch is wanted.
+- Unlimited runs remain unlimited after a critical-decision answer/resume cycle, while explicit caps remain preserved and accept positive integers only.
+
 ## 1.2.0 — 2026-08-02
 
 ### Added

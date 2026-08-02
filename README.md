@@ -2,7 +2,7 @@
 
 # 🐂 Yoke
 
-<!-- yoke:version:start -->1.2.0<!-- yoke:version:end -->
+<!-- yoke:version:start -->1.2.1<!-- yoke:version:end -->
 <!-- yoke:tests:start -->582<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->29<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
@@ -713,7 +713,7 @@ parallel dispatcher, broader benchmark samples, native output schemas, and relea
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (579 tests)
+npm test          # vitest (582 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```
