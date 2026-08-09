@@ -72,7 +72,7 @@ $ ls reading-app/.yoke/proof/STORY-2/
 home.png  list.png                            # photographic evidence, labelled per story
 ```
 
-Every claim in that transcript is enforced by code paths with tests behind them — 559 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
+Every claim in that transcript is enforced by code paths with tests behind them — 657 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
 
 ## 🚀 Quickstart
 
@@ -722,6 +722,7 @@ canon/            # the source of truth — harness-agnostic
   AGENTS.md  skills/  policy/  loop/  tools/  manifest.yaml
 src/
   canon/          # manifest schema + validator (yoke validate)
+  change/         # append-only change inbox · planning · independent coverage review
   retrofit/       # detect · plan · apply · planners (claude/codex/gemini) · tools
   loop/           # prd · gates · runner · verify · git/worktree · loop · run-command · lock · cleanup
   new/            # yoke new — greenfield bootstrap
