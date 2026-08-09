@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.0 — 2026-08-09
+
+### Added
+- Teams can submit change requests at any time with `yoke change add` and inspect the append-only inbox with `yoke change status`; queued requests are planned at safe loop boundaries by Claude, Codex, or Gemini without interrupting active story work.
+- Acceptance criteria can carry stable IDs and executable verification commands, and Yoke records per-criterion evidence before a story can be marked complete.
+- Projects can configure an integrated completion command that proves the final system flow after all story-level gates pass.
+
+### Changed
+- New projects use strict criterion-proof requirements by default, while existing boolean-only criteria remain readable for compatibility.
+- PRD authoring, schemas, loop guidance, generated configuration, and provider instructions now treat completion as an ephemeral readiness state: new requests create more stories instead of prematurely forcing a release boundary.
+
+### Fixed
+- Broad green test suites can no longer satisfy unrelated structured acceptance criteria: proof commands must use an approved test runner, contain the criterion ID, and avoid shell operators.
+- Change-intake failures block safely; an independent coverage pass rejects omitted requested outcomes, crash recovery retains uncommitted requests, and concurrent PRD edits are detected instead of silently overwriting user work.
+- Integrated completion checks prevent locally finished stories from masking broken cross-component flows such as authentication callbacks or purchase-to-entitlement activation.
+
+### Security
+- Updated the transitive development dependency `nanoid` to a non-vulnerable release so the complete CI dependency audit is clean.
+- Restricted model-authored criterion proof to criterion-targeted test commands and blocked shell control operators and runner-prefix spoofing before host execution.
+
 ## 1.2.1 — 2026-08-02
 
 ### Fixed
