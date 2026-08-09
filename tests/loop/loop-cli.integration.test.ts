@@ -128,6 +128,17 @@ describe('yoke loop CLI', () => {
     expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(true)
   })
 
+  it('passes a live change intake seam through to every safe loop boundary', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
+    let calls = 0
+    const code = runLoopCommand(dir, {
+      maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk,
+      intake: () => ({ ok: true, added: 0, summary: `boundary ${++calls}` }),
+    })
+    expect(code).toBe(0)
+    expect(calls).toBeGreaterThanOrEqual(2)
+  })
+
   it('runs every remaining story when no explicit iteration cap is supplied', () => {
     saveConfig(dir, cfg())
     const stories = Array.from({ length: 30 }, (_, index) =>
@@ -180,6 +191,45 @@ describe('yoke loop CLI', () => {
     const code = runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit })
     expect(code).toBe(0)
     expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(true)
+  })
+
+  it('wires strict criterion commands from config into the loop', () => {
+    saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"', requireCriteria: true } })
+    writeFileSync(join(dir, '.yoke', 'prd.yaml'), `
+- id: S1
+  title: Paid access
+  priority: 1
+  acceptance:
+    - id: purchase-unlocks
+      text: Purchase unlocks Pro
+      verify: [npm run test:purchase-unlocks]
+    - id: relaunch-keeps-pro
+      text: Relaunch keeps Pro
+      verify: [npm run test:relaunch-keeps-pro]
+  passes: false
+`)
+    expect(runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })).toBe(1)
+    expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(false)
+  })
+
+  it('wires the configured integrated completion gate', () => {
+    saveConfig(dir, {
+      ...cfg(),
+      verify: { command: 'node -e "process.exit(0)"' },
+      completion: { command: 'node -e "process.exit(1)"', retries: 0 },
+    })
+    writeFileSync(join(dir, '.yoke', 'prd.yaml'), `- { id: S1, title: Done, priority: 1, acceptance: ["x"], passes: true }`)
+    expect(runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })).toBe(1)
+  })
+
+  it('reports complete when the configured integrated completion gate passes', () => {
+    saveConfig(dir, {
+      ...cfg(),
+      verify: { command: 'node -e "process.exit(0)"' },
+      completion: { command: 'node -e "process.exit(0)"', retries: 0 },
+    })
+    writeFileSync(join(dir, '.yoke', 'prd.yaml'), `- { id: S1, title: Done, priority: 1, acceptance: ["x"], passes: true }`)
+    expect(runLoopCommand(dir, { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk })).toBe(0)
   })
 
   it('refuses to run when the selected agent CLI is unavailable', () => {

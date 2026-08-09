@@ -31,6 +31,20 @@ describe('routing control prompt', () => {
     expect(prompt).toContain('Do not inspect files')
   })
 
+  it('renders structured acceptance criteria for adaptive routing decisions', () => {
+    const prompt = buildRoutingPrompt({
+      targetDir: '/work',
+      story: {
+        ...story,
+        acceptance: [{ id: 'login-rejected', text: 'Invalid credentials are rejected', verify: ['npm run test:auth'] }],
+      },
+    }, workers, 'balanced')
+
+    expect(prompt).toContain('[login-rejected] Invalid credentials are rejected')
+    expect(prompt).toContain('npm run test:auth')
+    expect(prompt).not.toContain('[object Object]')
+  })
+
   it('extracts a route marker nested inside provider JSONL', () => {
     const output = JSON.stringify({ type: 'item.completed', item: { text: 'YOKE_ROUTE {"worker":"claude-fast","reason":"cheap bounded tests"}' } })
     expect(parseRouteDecision(output, workers.map(worker => worker.id))).toEqual({ worker: 'claude-fast', reason: 'cheap bounded tests' })

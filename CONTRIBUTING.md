@@ -23,13 +23,14 @@ Requires Node ≥ 20 and git. No global install needed — run the CLI via `npm 
 canon/            # the source of truth — harness-agnostic skills, policy, loop spec, tool wiring
 src/
   canon/          # manifest schema + validator
+  change/         # append-only change inbox, planning, and coverage review
   retrofit/       # detect · plan · apply · per-agent planners · tool wiring
   loop/           # prd · gates · runner · verify · git/worktree · loop · run-command
 docs/superpowers/ # the design spec and every component's implementation plan
 tests/            # vitest, mirrors src/
 ```
 
-The **canon** is the single source of truth. The **retrofit** layer generates idiomatic artifacts per agent. The **loop** layer is the optional autonomous runner. Everything is wired through injectable seams (runner, git, verify, review) so it stays deterministic and testable without invoking real agents.
+The **canon** is the single source of truth. The **retrofit** layer generates idiomatic artifacts per agent. The **change** layer converts queued requests into append-only stories at safe loop boundaries. The **loop** layer is the optional autonomous runner. Everything is wired through injectable seams (runner, git, verify, review) so it stays deterministic and testable without invoking real agents.
 
 ## Working style
 

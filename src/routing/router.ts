@@ -8,6 +8,7 @@ import {
   runnerInvocation,
 } from '../loop/runner.js'
 import type { ModelCallUsage, TokenUsage } from '../loop/reporter.js'
+import { isAcceptanceCriterion } from '../loop/prd.js'
 import { historyForWorkers, projectHash, recordRoutingObservation, storyHash } from './registry.js'
 
 export interface RouteDecision {
@@ -72,7 +73,9 @@ export function buildRoutingPrompt(ctx: AgentContext, workers: RoutingWorker[], 
     '',
     `Story ${ctx.story.id}: ${ctx.story.title}`,
     'Acceptance criteria:',
-    ...ctx.story.acceptance.map(item => `- ${item}`),
+    ...ctx.story.acceptance.map(item => isAcceptanceCriterion(item)
+      ? `- [${item.id}] ${item.text} (proof: ${item.verify.join(' && ')})`
+      : `- ${item}`),
     '',
     'Allowed candidates:',
     '- SELF: strong parent; highest confidence; highest expected cost',

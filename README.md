@@ -2,8 +2,8 @@
 
 # 🐂 Yoke
 
-<!-- yoke:version:start -->1.2.1<!-- yoke:version:end -->
-<!-- yoke:tests:start -->582<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.3.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->657<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->29<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-559%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-657%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -72,7 +72,7 @@ $ ls reading-app/.yoke/proof/STORY-2/
 home.png  list.png                            # photographic evidence, labelled per story
 ```
 
-Every claim in that transcript is enforced by code paths with tests behind them — 559 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
+Every claim in that transcript is enforced by code paths with tests behind them — 657 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
 
 ## 🚀 Quickstart
 
@@ -154,6 +154,7 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke retrofit [dir] [--agent=claude,codex,gemini\|all] [--code-graph=graphify\|serena] [--loop]` | Install/update the harness, non-destructively | `0` |
 | `yoke prd draft [dir] --idea= [--runner=] [--force]` | Idea → 5–12 stories with testable acceptance criteria | `0` · `1` invalid/guarded · `2` agent unavailable |
 | `yoke prd check [dir]` | PRD lint gate (schema, dependencies, cycles, duplicate ids, acceptance) | `0` valid · `1` violations |
+| `yoke change add\|status [dir] [--idea=]` | Queue a change at any time; the loop turns it into append-only stories at the next safe boundary | `0` · `1` invalid inbox/request |
 | `yoke context init\|status [dir]` | Durable context layer (`PROJECT/DECISIONS/KNOWLEDGE.md`) | `0` |
 | `yoke loop on\|off\|status\|decision\|answer\|resume\|run\|cleanup [dir]` | Autonomous loop; `run` is unlimited by default and `--max=N` creates an intentional batch cap; `decision` shows a critical stop, `answer` records it and resumes, `resume` retries a failed restart with the preserved safety options | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
 | `yoke review [dir] [--reviewer=] [--base=] [--focus=] [--json] [--allow-self-review]` | An independent model writes a schema-valid verdict | `0` approved · `1` findings/invalid verdict · `2` no independent reviewer |
@@ -310,22 +311,28 @@ Opt-in; `yoke setup` recommends enabling it for new installs, while `retrofit` a
 
 ```mermaid
 flowchart LR
-    A[pick next PRD story] --> B{clean worktree?}
+    I[consume queued change<br/>as new stories] --> A[pick next PRD story]
+    A --> B{clean worktree?}
     B -- no --> X[blocked]
     B -- yes --> C{acceptance<br/>criteria?}
     C -- no --> X
     C -- yes --> D[agent implements<br/>one story]
-    D --> E{tests green?}
+    D --> E{suite + criterion<br/>proof green?}
     E -- no --> X
     E -- yes --> F{reviewer<br/>approves?}
     F -- no --> X
     F -- yes --> G[commit + mark passes:true<br/>+ proof in .yoke/proof/]
-    G --> A
+    G --> I
+    I --> H{all stories pass?}
+    H -- yes --> J{integrated system<br/>gate green?}
+    J -- no --> X
+    J -- yes --> K[current backlog ready]
 ```
 
 ```bash
 yoke loop on  .                 # enable (recorded in .yoke/config.yaml)
 yoke loop status .              # show state + PRD progress
+yoke change add . --idea="Add passkey login"  # safe while the loop runs
 yoke loop run . \
   --runner=codex \               # implement with Codex…
   --reviewer=claude \            # …review with Claude (role separation)
@@ -342,11 +349,32 @@ yoke loop off .                 # disable
   title: Add a health endpoint
   priority: 1                    # lower = higher priority
   acceptance:                    # Definition of Done (required, else blocked)
-    - GET /health returns 200
+    - id: health-returns-200
+      text: GET /health returns 200
+      verify: [npm run test:health-returns-200]
+    - id: health-rejects-post
+      text: POST /health returns 405
+      verify: [npm run test:health-rejects-post]
   passes: false                  # the loop sets this true only on green tests
 ```
 
-The loop stops when every story is `passes: true`. State lives **outside the model context** — the PRD file plus git — so each iteration is fresh. The PRD is re-read from disk at every story boundary, so new stories appended to `.yoke/prd.yaml` **while the loop is running** are picked up at the next iteration — no restart needed.
+New projects default to `verify.requireCriteria: true`: every story has 2–5 behavioral criteria.
+Each criterion ID must occur in its single, approved test command; shell operators and broad,
+untargeted suites are rejected. Yoke records each result in `.yoke/proof/<story>/evidence.json`. Configure optional
+`completion.command` for integrated journeys such as purchase → entitlement → relaunch or
+magic-link → callback → authenticated app. It runs whenever the current backlog has no open
+stories; this is readiness, not a release.
+
+No generic tool can infer whether arbitrary test code perfectly represents product meaning. Yoke
+closes the mechanical false-done paths—targeted evidence, coverage review, clean committed state,
+and integrated journeys—while the project still owns the correctness of its tests and production
+observability.
+
+State lives **outside the model context** — the PRD file plus git — so each iteration is fresh.
+Use `yoke change add` at any time. Its ignored append-only inbox is consumed at the next story
+boundary. A separate coverage pass must confirm that every requested outcome maps to behavioral
+criteria before Yoke appends and commits the new stories; existing stories are never rewritten and
+no restart is needed.
 
 ### Watching a run
 
@@ -517,12 +545,13 @@ be fast" is a vibe the loop cannot enforce. Yoke makes it mechanical, at two lev
 The loop trusts **verify**, not the agent's exit code: a story whose tests are green is
 committed even if the agent process exited non-zero (a common Windows `.cmd`-wrapper ghost).
 A failing verify is retried up to `verify.retries` times (default 1) so a transient flake
-self-heals while a real failure still blocks.
+self-heals while a real failure still blocks. Structured acceptance criteria are then verified
+individually; an unrelated green suite cannot satisfy a criterion without its proof command.
 
 `.yoke/loop-status.json`, `.yoke/loop.log`, `.yoke/loop.lock`, its takeover/recovery leases, lock/decision temp files, `.yoke/story-durations.json`,
 `.yoke/ambiguity.md`, and the critical-decision request/answering files are runtime artifacts;
 `yoke retrofit` gitignores them (along with
-`.yoke/worktrees/`, `.yoke/backup/`, and `.yoke/proof/`) so they never trip the clean-tree gate.
+`.yoke/worktrees/`, `.yoke/backup/`, `.yoke/proof/`, and `.yoke/changes/`) so they never trip the clean-tree gate.
 
 ### Single-flight guard + cleanup
 
@@ -693,6 +722,7 @@ canon/            # the source of truth — harness-agnostic
   AGENTS.md  skills/  policy/  loop/  tools/  manifest.yaml
 src/
   canon/          # manifest schema + validator (yoke validate)
+  change/         # append-only change inbox · planning · independent coverage review
   retrofit/       # detect · plan · apply · planners (claude/codex/gemini) · tools
   loop/           # prd · gates · runner · verify · git/worktree · loop · run-command · lock · cleanup
   new/            # yoke new — greenfield bootstrap
@@ -713,7 +743,7 @@ parallel dispatcher, broader benchmark samples, native output schemas, and relea
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (582 tests)
+npm test          # vitest (657 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

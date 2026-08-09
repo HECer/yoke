@@ -41,6 +41,17 @@ describe('buildClaudePrompt', () => {
   it('bounds the final message to a few sentences', () => {
     expect(buildClaudePrompt(story, '')).toMatch(/final message .*few short sentences/i)
   })
+
+  it('renders structured criteria for every provider prompt without object coercion', () => {
+    const structured: Story = {
+      ...story,
+      acceptance: [{ id: 'login-works', text: 'A valid login opens the app', verify: ['npm run test:login'] }],
+    }
+    const prompt = buildClaudePrompt(structured, '')
+    expect(prompt).toContain('[login-works] A valid login opens the app')
+    expect(prompt).toContain('npm run test:login')
+    expect(prompt).not.toContain('[object Object]')
+  })
 })
 
 describe('buildClaudePrompt ambiguity policy', () => {

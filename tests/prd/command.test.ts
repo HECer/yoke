@@ -25,6 +25,13 @@ function writingRun(content: string, calls: Invocation[] = []) {
 }
 
 describe('buildPrdDraftPrompt', () => {
+  it('requires structured executable evidence for every generated criterion', () => {
+    const prompt = buildPrdDraftPrompt('Build an app')
+    expect(prompt).toMatch(/stable id/i)
+    expect(prompt).toMatch(/verify.*command/i)
+    expect(prompt).toMatch(/criterion id.*verify command/i)
+    expect(prompt).toMatch(/without shell control operators/i)
+  })
   it('contains the idea, the story band, the scaffold rule and the write-only rule', () => {
     const p = buildPrdDraftPrompt('a todo cli')
     expect(p).toContain('a todo cli')
@@ -154,6 +161,27 @@ describe('runPrdCheck', () => {
 
   it('fails when acceptance criteria still contain unresolved planning decisions', () => {
     write('- id: STORY-1\n  title: t\n  priority: 1\n  acceptance: ["TBD: choose an auth provider"]\n  passes: false\n')
+    expect(runPrdCheck(dir)).toBe(1)
+  })
+
+  it('fails legacy string criteria when strict criterion evidence is configured', () => {
+    saveConfig(dir, {
+      canonVersion: '1.2.0', agents: ['codex'], loop: { enabled: true },
+      verify: { command: 'npm test', requireCriteria: true },
+    })
+    write('- id: STORY-1\n  title: t\n  priority: 1\n  acceptance: ["looks done"]\n  passes: false\n')
+    expect(runPrdCheck(dir)).toBe(1)
+  })
+
+  it('rejects the same unsafe or untargeted criterion commands as the loop gate', () => {
+    write(`- id: STORY-1
+  title: t
+  priority: 1
+  acceptance:
+    - { id: purchase-unlocks, text: Purchase unlocks Pro, verify: [npm test] }
+    - { id: relaunch-keeps-pro, text: Relaunch keeps Pro, verify: [npm run test:relaunch-keeps-pro && npm test] }
+  passes: false
+`)
     expect(runPrdCheck(dir)).toBe(1)
   })
 

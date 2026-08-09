@@ -3,11 +3,11 @@ import { existsSync } from 'node:fs'
 import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand, type DecisionPolicy } from '../retrofit/config.js'
 import { loadPrd, progress } from './prd.js'
 import { runLoop } from './loop.js'
-import { realGitOps } from './git.js'
+import { commitPaths, realGitOps } from './git.js'
 import { makeRunner, makeReviewRunner, isAgentAvailable, type AgentRunner, type AmbiguityPolicy } from './runner.js'
 import type { Agent } from '../retrofit/config.js'
 import type { GitOps } from './gates.js'
-import { commandVerifier, retryingVerifier, type Verifier } from './verify.js'
+import { commandVerifier, commandsVerifier, retryingVerifier, type Verifier } from './verify.js'
 import { readStatus, makeReporter, fmtDuration, type LoopReporter } from './reporter.js'
 import { acquireLock, releaseLock } from './lock.js'
 import { maybeAutoUpgrade } from '../update/upgrade.js'
@@ -20,6 +20,7 @@ import {
   readPendingDecision, writeDecisionResume,
 } from './decision.js'
 import { makeAdaptiveRunner } from '../routing/router.js'
+import { runChangeApply } from '../change/inbox.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -106,6 +107,8 @@ export interface RunLoopCommandOptions {
   parallel?: number
   /** Override config.routing.enabled for this invocation. */
   routing?: boolean
+  /** Test seam; production consumes the append-only change inbox. */
+  intake?: () => { ok: boolean; added: number; summary: string }
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
@@ -151,6 +154,9 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   if (!perf && config.perf?.command) {
     perf = retryingVerifier(commandVerifier(config.perf.command), config.perf.retries ?? 1)
   }
+  const completion = config.completion?.command
+    ? retryingVerifier(commandVerifier(config.completion.command), config.completion.retries ?? 1)
+    : undefined
   // Opt-in self-update, loop START only — this run keeps executing the version
   // it started with; a fetched upgrade applies from the next invocation.
   maybeAutoUpgrade(config.update?.auto)
@@ -186,6 +192,19 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     console.error('Adaptive routing was requested, but no worker profiles are configured. Run yoke setup . --routing or add routing.workers to .yoke/config.yaml.')
     return 2
   }
+  const intake = opts.intake ?? (() => runChangeApply(targetDir, {
+    runner: runnerAgent,
+    reviewer: opts.reviewer ?? runnerAgent,
+    timeoutMs: idleMs,
+    isAvailable: available,
+    permissions,
+    selection: {
+      model: config.runner?.model,
+      reasoningEffort: config.runner?.reasoningEffort,
+      bare: config.runner?.bare,
+    },
+    commit: (_path, request) => commitPaths(targetDir, ['.yoke/prd.yaml'], `yoke: plan change ${request.id}`, commitIdentity),
+  }))
 
   let runner = opts.runner
   if (!runner) {
@@ -268,6 +287,10 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       git,
       commitIdentity,
       verify,
+      verifyCriterion: (dir, _story, criterion) => commandsVerifier(criterion.verify)(dir),
+      requireCriterionEvidence: config.verify?.requireCriteria ?? false,
+      completion,
+      intake,
       perf,
       audit,
       maxIterations,

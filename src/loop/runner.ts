@@ -1,4 +1,4 @@
-import type { Story } from './prd.js'
+import { isAcceptanceCriterion, type Story } from './prd.js'
 import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -37,8 +37,15 @@ export function contextBlockFor(targetDir: string): string {
 // the planning round; a loop run never has anyone to ask.
 export type AmbiguityPolicy = 'resolve' | 'abort' | DecisionPolicy
 
+function formatAcceptance(story: Story): string {
+  return story.acceptance.map(criterion => {
+    if (!isAcceptanceCriterion(criterion)) return `- ${criterion}`
+    return `- [${criterion.id}] ${criterion.text}\n  Proof: ${criterion.verify.join(' && ')}`
+  }).join('\n')
+}
+
 export function buildClaudePrompt(story: Story, context: string, onAmbiguity: AmbiguityPolicy = 'resolve', perfCommand?: string): string {
-  const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
+  const criteria = formatAcceptance(story)
   const lines = [
     'You are an autonomous coding agent running inside the Yoke loop.',
     'Implement ONLY this story and nothing else. Follow test-driven development.',
@@ -81,7 +88,7 @@ export function buildClaudePrompt(story: Story, context: string, onAmbiguity: Am
 }
 
 export function buildReviewPrompt(story: Story, context: string, verdictPath?: string): string {
-  const criteria = story.acceptance.map(a => `- ${a}`).join('\n')
+  const criteria = formatAcceptance(story)
   const lines = [
     'You are an independent reviewer inside the Yoke loop. You did NOT implement this change.',
     'Review the current uncommitted working-tree changes against the story below.',

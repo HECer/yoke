@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadPrd, savePrd, selectNextStory, allPass, progress, validateDependencies } from '../../src/loop/prd.js'
+import { loadPrd, savePrd, selectNextStory, allPass, progress, storyPathSegment, validateDependencies } from '../../src/loop/prd.js'
 
 let dir: string
 const prd = () => join(dir, 'prd.yaml')
@@ -21,6 +21,76 @@ describe('prd', () => {
     const stories = loadPrd(prd())
     expect(stories).toHaveLength(3)
     expect(stories[0]).toMatchObject({ id: 'S1', priority: 2, passes: false })
+  })
+
+  it('loads structured acceptance criteria with stable ids and verification commands', () => {
+    writeFileSync(prd(), `
+- id: S1
+  title: Unlock paid access
+  priority: 1
+  acceptance:
+    - id: purchase-unlocks-pro
+      text: A successful purchase unlocks Pro in the app
+      verify:
+        - npm run test:purchase-unlocks-pro
+    - id: relaunch-keeps-pro
+      text: Pro remains unlocked after relaunch
+      verify:
+        - npm run test:relaunch-keeps-pro
+  passes: false
+`)
+
+    const [story] = loadPrd(prd())
+    expect(story.acceptance[0]).toEqual({
+      id: 'purchase-unlocks-pro',
+      text: 'A successful purchase unlocks Pro in the app',
+      verify: ['npm run test:purchase-unlocks-pro'],
+    })
+  })
+
+  it('rejects structured criteria without a verification command', () => {
+    writeFileSync(prd(), `
+- id: S1
+  title: Unlock paid access
+  priority: 1
+  acceptance:
+    - id: purchase-unlocks-pro
+      text: A successful purchase unlocks Pro in the app
+      verify: []
+  passes: false
+`)
+
+    expect(() => loadPrd(prd())).toThrow()
+  })
+
+  it('rejects duplicate structured criterion IDs within one story', () => {
+    writeFileSync(prd(), `
+- id: S1
+  title: Unlock paid access
+  priority: 1
+  acceptance:
+    - { id: purchase-unlocks, text: Purchase unlocks Pro, verify: [npm test] }
+    - { id: purchase-unlocks, text: Relaunch keeps Pro, verify: [npm test] }
+  passes: false
+`)
+
+    expect(() => loadPrd(prd())).toThrow(/criterion ids/i)
+  })
+
+  it.each([1, 6])('rejects structured stories with %i criteria', count => {
+    const criteria = Array.from({ length: count }, (_, index) =>
+      `    - { id: criterion-${index + 1}, text: Criterion ${index + 1}, verify: [npm run test:criterion-${index + 1}] }`).join('\n')
+    writeFileSync(prd(), [
+      '- id: S1', '  title: Strict story', '  priority: 1', '  acceptance:', criteria, '  passes: false', '',
+    ].join('\n'))
+    expect(() => loadPrd(prd())).toThrow(/2-5 structured acceptance criteria/i)
+  })
+
+  it('keeps legacy story ids compatible while encoding them for filesystem paths', () => {
+    writeFileSync(prd(), `- { id: "Auth callback: ../../outside", title: Legacy, priority: 1, acceptance: ["x"], passes: false }`)
+    expect(loadPrd(prd())[0].id).toBe('Auth callback: ../../outside')
+    expect(storyPathSegment('Auth callback: ../../outside')).toMatch(/^story-[A-Za-z0-9%._-]+$/)
+    expect(storyPathSegment('Auth callback: ../../outside')).not.toContain('..')
   })
 
   it('selects the highest-priority (lowest number) unfinished story', () => {

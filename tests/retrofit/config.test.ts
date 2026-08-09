@@ -10,6 +10,9 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-cfg-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('yoke config', () => {
+  it('makes criterion evidence strict for newly configured projects', () => {
+    expect(defaultConfig('1.0.0').verify).toEqual({ requireCriteria: true })
+  })
   it('returns null when no config exists', () => {
     expect(loadConfig(dir)).toBeNull()
   })
@@ -82,6 +85,18 @@ describe('yoke config', () => {
     const cfg = { ...defaultConfig('1.1.0'), agents: ['claude', 'codex'] as const, runner: { agent: 'codex' as const } }
     saveConfig(dir, cfg)
     expect(loadConfig(dir)?.runner).toEqual({ agent: 'codex' })
+  })
+
+  it('round-trips strict criterion evidence and a final system gate', () => {
+    const cfg = {
+      canonVersion: '1.3.0',
+      agents: ['claude', 'codex', 'gemini'] as const,
+      loop: { enabled: true },
+      verify: { command: 'npm test', requireCriteria: true },
+      completion: { command: 'npm run test:journeys', retries: 0 },
+    }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)).toEqual(cfg)
   })
 
   it('round-trips opt-in adaptive routing with opaque provider model ids', () => {
