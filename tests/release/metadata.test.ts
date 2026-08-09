@@ -35,6 +35,8 @@ describe('release metadata', () => {
       '<!-- yoke:tests:start -->0<!-- yoke:tests:end -->',
       '<!-- yoke:skills:start -->0<!-- yoke:skills:end -->',
       '<!-- yoke:agents:start -->old<!-- yoke:agents:end -->',
+      '![Tests](https://img.shields.io/badge/tests-12%20passing-brightgreen.svg)',
+      'npm test          # vitest (12 tests)',
       'keep me',
     ].join('\n')
 
@@ -46,6 +48,8 @@ describe('release metadata', () => {
       '<!-- yoke:tests:start -->500<!-- yoke:tests:end -->',
       '<!-- yoke:skills:start -->28<!-- yoke:skills:end -->',
       '<!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->',
+      '![Tests](https://img.shields.io/badge/tests-500%20passing-brightgreen.svg)',
+      'npm test          # vitest (500 tests)',
       'keep me',
     ].join('\n'))
   })

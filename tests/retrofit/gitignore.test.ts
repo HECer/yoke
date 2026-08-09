@@ -10,6 +10,10 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 const gi = () => join(dir, '.gitignore')
 
 describe('ensureGitignore', () => {
+  it('ignores the live change inbox', () => {
+    ensureGitignore(dir)
+    expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toContain('.yoke/changes/')
+  })
   it('creates .gitignore with the managed block when absent', () => {
     ensureGitignore(dir)
     const text = readFileSync(gi(), 'utf8')

@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from 'yaml'
@@ -50,14 +51,29 @@ export function updateReadme(readme, metadata) {
     if (!pattern.test(next)) throw new Error(`README is missing ${marker} metadata markers`)
     next = next.replace(pattern, `${start}${values[marker]}${end}`)
   }
+  next = next.replace(/tests-\d+%20passing-brightgreen\.svg/g, `tests-${metadata.testCount}%20passing-brightgreen.svg`)
+  next = next.replace(/vitest \(\d+ tests\)/g, `vitest (${metadata.testCount} tests)`)
   return next
+}
+
+function listedTestSummary(root) {
+  const vitest = join(root, 'node_modules', 'vitest', 'vitest.mjs')
+  const output = execFileSync(process.execPath, [vitest, 'list', '--json'], {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: 16 * 1024 * 1024,
+  })
+  const tests = JSON.parse(output)
+  if (!Array.isArray(tests)) throw new Error('Vitest list did not return a test array')
+  return `Tests ${tests.length} passed`
 }
 
 function main() {
   const root = dirname(dirname(fileURLToPath(import.meta.url)))
   const readmePath = join(root, 'README.md')
   const before = readFileSync(readmePath, 'utf8')
-  const after = updateReadme(before, collectMetadata(root))
+  const after = updateReadme(before, collectMetadata(root, listedTestSummary(root)))
   if (process.argv.includes('--check')) {
     if (after !== before) {
       console.error('README release metadata is stale. Run: npm run docs:update')

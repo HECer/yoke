@@ -24,6 +24,17 @@ export function commandVerifier(command: string): Verifier {
   }
 }
 
+/** Execute the proof commands attached to one acceptance criterion. */
+export function commandsVerifier(commands: string[]): Verifier {
+  return (targetDir: string): VerifyResult => {
+    for (const command of commands) {
+      const result = commandVerifier(command)(targetDir)
+      if (!result.passed) return result
+    }
+    return { passed: true, summary: `${commands.length} criterion command${commands.length === 1 ? '' : 's'} passed` }
+  }
+}
+
 // Re-run a failing verifier up to `retries` times; the first pass wins. Lets a
 // transient flake (e.g. a load-induced async timeout) self-heal while a real
 // failure still fails (it stays red across every attempt).

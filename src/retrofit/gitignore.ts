@@ -20,6 +20,7 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/decision-*.yaml.*.tmp',
   '.yoke/story-durations.json',
   '.yoke/proof/',
+  '.yoke/changes/',
 ]
 
 const HEADER = '# Yoke runtime artifacts (managed by yoke retrofit)'

@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync, mkdirSync, copyFileSync, existsSync
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runLoop } from '../../src/loop/loop.js'
-import { loadPrd } from '../../src/loop/prd.js'
+import { loadPrd, savePrd, storyPathSegment } from '../../src/loop/prd.js'
 import { contextDir } from '../../src/context/context.js'
 import type { GitOps } from '../../src/loop/gates.js'
 import type { AgentRunner } from '../../src/loop/runner.js'
@@ -124,6 +124,291 @@ describe('runLoop', () => {
     expect(res.reason).toMatch(/verif/i)
     expect(loadPrd(prd()).every(s => !s.passes)).toBe(true)
     expect(commits).toHaveLength(0)
+  })
+
+  it('requires and records fresh evidence for every structured acceptance criterion', () => {
+    writeFileSync(prd(), `
+- id: S1
+  title: Paid access
+  priority: 1
+  acceptance:
+    - id: purchase-unlocks-pro
+      text: A paid purchase unlocks Pro
+      verify: [npm run test:purchase-unlocks-pro]
+    - id: relaunch-keeps-pro
+      text: Pro remains unlocked after relaunch
+      verify: [npm run test:relaunch-keeps-pro]
+  passes: false
+`)
+    const seen: string[] = []
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk,
+      verifyCriterion: (_targetDir, _story, criterion) => {
+        seen.push(criterion.id)
+        return { passed: true, summary: `${criterion.id} passed` }
+      },
+      requireCriterionEvidence: true,
+      maxIterations: 10,
+    })
+
+    expect(res.status).toBe('complete')
+    expect(seen).toEqual(['purchase-unlocks-pro', 'relaunch-keeps-pro'])
+    const evidence = JSON.parse(readFileSync(join(dir, '.yoke', 'proof', storyPathSegment('S1'), 'evidence.json'), 'utf8'))
+    expect(evidence).toMatchObject({
+      version: 1,
+      storyId: 'S1',
+      criteria: [
+        { id: 'purchase-unlocks-pro', passed: true },
+        { id: 'relaunch-keeps-pro', passed: true },
+      ],
+    })
+  })
+
+  it('runs criterion proof before the independent review', () => {
+    writeFileSync(prd(), `
+- id: S1
+  title: Paid access
+  priority: 1
+  acceptance:
+    - { id: purchase-unlocks, text: Purchase unlocks Pro, verify: [npm run test:purchase-unlocks] }
+    - { id: relaunch-keeps-pro, text: Relaunch keeps Pro, verify: [npm run test:relaunch-keeps-pro] }
+  passes: false
+`)
+    const events: string[] = []
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk,
+      verifyCriterion: () => { events.push('criterion'); return { passed: true, summary: 'green' } },
+      requireCriterionEvidence: true,
+      review: () => { events.push('review'); return { success: true, summary: 'approved' } },
+      maxIterations: 1,
+    })
+
+    expect(res.status).toBe('complete')
+    expect(events).toEqual(['criterion', 'criterion', 'review'])
+  })
+
+  it('turns an evidence persistence failure into a blocked result', () => {
+    writeFileSync(prd(), `
+- id: S1
+  title: Paid access
+  priority: 1
+  acceptance:
+    - { id: purchase-unlocks, text: Purchase unlocks Pro, verify: [npm run test:purchase-unlocks] }
+    - { id: relaunch-keeps-pro, text: Relaunch keeps Pro, verify: [npm run test:relaunch-keeps-pro] }
+  passes: false
+`)
+    mkdirSync(join(dir, '.yoke'), { recursive: true })
+    writeFileSync(join(dir, '.yoke', 'proof'), 'not a directory')
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk,
+      verifyCriterion: () => ({ passed: true, summary: 'green' }),
+      requireCriterionEvidence: true,
+      maxIterations: 1,
+    })
+
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/acceptance evidence.*could not persist/i)
+    expect(loadPrd(prd())[0].passes).toBe(false)
+  })
+
+  it('runs criterion proof before the suite, performance, audit, and review gates', () => {
+    writeFileSync(prd(), `
+- id: S1
+  title: Paid access
+  priority: 1
+  acceptance:
+    - { id: purchase-unlocks, text: Purchase unlocks Pro, verify: [npm run test:purchase-unlocks] }
+    - { id: relaunch-keeps-pro, text: Relaunch keeps Pro, verify: [npm run test:relaunch-keeps-pro] }
+  passes: false
+`)
+    const events: string[] = []
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(),
+      verifyCriterion: () => { events.push('criterion'); return { passed: true, summary: 'green' } },
+      requireCriterionEvidence: true,
+      verify: () => { events.push('suite'); return { passed: true, summary: 'green' } },
+      perf: () => { events.push('perf'); return { passed: true, summary: 'green' } },
+      audit: () => { events.push('audit'); return { passed: true, summary: 'green' } },
+      review: () => { events.push('review'); return { success: true, summary: 'approved' } },
+      maxIterations: 1,
+    })
+
+    expect(res.status).toBe('complete')
+    expect(events).toEqual(['criterion', 'criterion', 'suite', 'perf', 'audit', 'review'])
+  })
+
+  it('blocks a strict story when any acceptance criterion lacks executable evidence', () => {
+    writeFileSync(prd(), `- { id: S1, title: Legacy, priority: 1, acceptance: ["looks done"], passes: false }`)
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk,
+      requireCriterionEvidence: true,
+      maxIterations: 10,
+    })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/criterion evidence/i)
+    expect(loadPrd(prd())[0].passes).toBe(false)
+  })
+
+  it('blocks completion when the final system gate fails and retries it on the next run', () => {
+    writeFileSync(prd(), `- { id: S1, title: Done, priority: 1, acceptance: ["x"], passes: true }`)
+    let calls = 0
+    const completion: Verifier = () => ({ passed: ++calls > 1, summary: calls > 1 ? 'journeys green' : 'login journey red' })
+
+    const first = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, completion, maxIterations: 10 })
+    expect(first.status).toBe('blocked')
+    expect(first.reason).toMatch(/login journey red/)
+
+    const second = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, completion, maxIterations: 10 })
+    expect(second.status).toBe('complete')
+    expect(calls).toBe(2)
+  })
+
+  it('sets the completion phase only for the integrated gate and restores the environment', () => {
+    writeFileSync(prd(), `- { id: S1, title: Done, priority: 1, acceptance: ["x"], passes: true }`)
+    const previous = process.env.YOKE_PHASE
+    process.env.YOKE_PHASE = 'outer-phase'
+    let seen: string | undefined
+    try {
+      const res = runLoop({
+        prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk,
+        completion: () => { seen = process.env.YOKE_PHASE; return { passed: true, summary: 'journey green' } },
+        maxIterations: 10,
+      })
+      expect(res.status).toBe('complete')
+      expect(seen).toBe('completion')
+      expect(process.env.YOKE_PHASE).toBe('outer-phase')
+    } finally {
+      if (previous === undefined) delete process.env.YOKE_PHASE
+      else process.env.YOKE_PHASE = previous
+    }
+  })
+
+  it('turns an integrated completion exception into a blocked result', () => {
+    writeFileSync(prd(), `- { id: S1, title: Done, priority: 1, acceptance: ["x"], passes: true }`)
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk,
+      completion: () => { throw new Error('journey harness crashed') },
+      maxIterations: 10,
+    })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/completion.*journey harness crashed/i)
+  })
+
+  it('refuses completion when only a dirty uncommitted state makes the system green', () => {
+    writeFileSync(prd(), `- { id: S1, title: Done, priority: 1, acceptance: ["x"], passes: true }`)
+    const dirtyGit: GitOps = {
+      isClean: () => false,
+      commitAll: () => {}, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {},
+    }
+    let completionCalls = 0
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: dirtyGit, verify: verifyOk,
+      completion: () => { completionCalls += 1; return { passed: true, summary: 'green only locally' } },
+      maxIterations: 10,
+    })
+    expect(res.status).toBe('blocked')
+    expect(completionCalls).toBe(0)
+  })
+
+  it('ingests newly requested stories at a story boundary before declaring completion', () => {
+    writeFileSync(prd(), `- { id: S1, title: Existing, priority: 1, acceptance: ["x"], passes: true }`)
+    let intakeCalls = 0
+    const ran: string[] = []
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir,
+      runner: ctx => { ran.push(ctx.story.id); return { success: true, summary: 'ok' } },
+      git: cleanGit(), verify: verifyOk,
+      verifyCriterion: () => ({ passed: true, summary: 'criterion green' }),
+      requireCriterionEvidence: true,
+      intake: () => {
+        if (intakeCalls++ > 0) return { ok: true, added: 0, summary: 'inbox empty' }
+        savePrd(prd(), [...loadPrd(prd()), {
+          id: 'S2', title: 'New request', priority: 2,
+          acceptance: [
+            { id: 'new-request-works', text: 'The new request works', verify: ['npm run test:new-request-works'] },
+            { id: 'new-request-recovers', text: 'The new request recovers', verify: ['npm run test:new-request-recovers'] },
+          ],
+          passes: false, sourceChange: 'change-1',
+        }])
+        return { ok: true, added: 1, summary: 'added S2' }
+      },
+      maxIterations: 10,
+    })
+    expect(res.status).toBe('complete')
+    expect(ran).toEqual(['S2'])
+  })
+
+  it('turns an intake exception into a blocked result instead of crashing the loop', () => {
+    writeFileSync(prd(), `- { id: S1, title: Existing, priority: 1, acceptance: ["x"], passes: true }`)
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk,
+      intake: () => { throw new Error('planner filesystem failed') },
+      maxIterations: 10,
+    })
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/change intake.*planner filesystem failed/i)
+  })
+
+  it('does not run change intake against a dirty worktree', () => {
+    writeFileSync(prd(), `- { id: S1, title: Existing, priority: 1, acceptance: ["x"], passes: true }`)
+    let intakeCalls = 0
+    const dirtyGit: GitOps = {
+      isClean: () => false,
+      commitAll: () => {}, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {},
+    }
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: dirtyGit, verify: verifyOk,
+      intake: () => { intakeCalls += 1; return { ok: true, added: 0, summary: 'unexpected' } },
+      maxIterations: 10,
+    })
+
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/change intake.*dirty worktree/i)
+    expect(intakeCalls).toBe(0)
+  })
+
+  it('rechecks the clean-tree gate after intake before dispatching a story', () => {
+    let clean = true
+    let runnerCalls = 0
+    const git: GitOps = {
+      isClean: () => clean,
+      commitAll: () => {}, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {},
+    }
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir,
+      runner: () => { runnerCalls += 1; return { success: true, summary: 'unexpected' } },
+      git, verify: verifyOk,
+      intake: () => { clean = false; return { ok: true, added: 1, summary: 'planner dirtied source' } },
+      maxIterations: 10,
+    })
+
+    expect(res.status).toBe('blocked')
+    expect(res.reason).toMatch(/intake.*dirty worktree/i)
+    expect(runnerCalls).toBe(0)
+  })
+
+  it('does not run change intake after the story cap is reached', () => {
+    let intakeCalls = 0
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk,
+      intake: () => { intakeCalls += 1; return { ok: true, added: 0, summary: 'unexpected' } },
+      maxIterations: 0,
+    })
+    expect(res.status).toBe('cap-reached')
+    expect(intakeCalls).toBe(0)
+  })
+
+  it('does not run change intake while a boundary pause is active', () => {
+    mkdirSync(join(dir, '.yoke'), { recursive: true })
+    writeFileSync(join(dir, '.yoke', 'loop.pause'), '')
+    let intakeCalls = 0
+    const res = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk,
+      intake: () => { intakeCalls += 1; return { ok: true, added: 0, summary: 'unexpected' } },
+      maxIterations: 10,
+    })
+    expect(res.status).toBe('paused')
+    expect(intakeCalls).toBe(0)
   })
 
   it('marks passed and commits only when runner AND verify both succeed', () => {
@@ -462,6 +747,29 @@ describe('runLoop with isolation', () => {
     expect(res.status).toBe('complete')
     expect(loadPrd(isoPrd())[0].passes).toBe(true)   // integrated back into main
     expect(removed.length).toBe(1)                    // worktree cleaned up
+  })
+
+  it('runs isolated criterion proof before the independent review', () => {
+    writeFileSync(isoPrd(), `
+- id: S1
+  title: Paid access
+  priority: 1
+  acceptance:
+    - { id: purchase-unlocks, text: Purchase unlocks Pro, verify: [npm run test:purchase-unlocks] }
+    - { id: relaunch-keeps-pro, text: Relaunch keeps Pro, verify: [npm run test:relaunch-keeps-pro] }
+  passes: false
+`)
+    const events: string[] = []
+    const res = runLoop({
+      prdPath: isoPrd(), targetDir: isoDir, runner: alwaysPass, git: fsWorktreeGit(isoDir, []),
+      verify: verifyOk, isolate: true, maxIterations: 1,
+      verifyCriterion: () => { events.push('criterion'); return { passed: true, summary: 'green' } },
+      requireCriterionEvidence: true,
+      review: () => { events.push('review'); return { success: true, summary: 'approved' } },
+    })
+
+    expect(res.status).toBe('complete')
+    expect(events).toEqual(['criterion', 'criterion', 'review'])
   })
 
   it('discards the worktree and leaves the main PRD untouched when verify fails', () => {

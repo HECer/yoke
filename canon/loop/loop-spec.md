@@ -1,36 +1,51 @@
 # Loop Specification (Ralph + GSD)
 
-The autonomous loop is OPTIONAL and toggle-able:
+The autonomous loop is optional and toggle-able:
 
-- `yoke loop on` / `yoke loop off` — enable/disable (recorded in `.yoke/config.yaml`, default off).
-- `yoke loop status` — show enabled state + PRD progress.
-- `yoke loop run [--max=N] [--isolate] [--decision-policy=auto|critical]` — run the loop (default cap 25 iterations).
-- `yoke loop decision` / `yoke loop answer --choice=<id>` — inspect and answer a structured critical stop; answering records a human-owned, decision-file-only commit and resumes by default with the original runner, isolation, review, permission, timeout, and policy settings. `yoke loop resume` retries a restart that could not begin without weakening those settings.
+- `yoke loop on` / `yoke loop off` — enable or disable it in `.yoke/config.yaml`.
+- `yoke loop status` — show enabled state and backlog progress.
+- `yoke loop run [--max=N] [--isolate] [--decision-policy=auto|critical]` — run until the current backlog is green or a gate blocks.
+- `yoke change add --idea="..."` — queue a product change at any time, including while the loop is running.
+- `yoke loop decision` / `yoke loop answer --choice=<id>` — inspect and answer a structured critical stop.
 
-Pass `--isolate` to run each iteration in a fresh git worktree: the agent works on a throwaway checkout, and only a verified, committed story is fast-forwarded back into the main tree. A failed iteration never touches your working tree. Requires `.yoke/prd.yaml` to be committed to git, since the worktree is a checkout of HEAD.
+Pass `--isolate` to implement each story in a fresh git worktree. Only a verified, committed
+story is fast-forwarded to the main tree. Pass `--review` or `--reviewer=<provider>` to require
+a separate, schema-validated review. Pass `--json` for NDJSON status on stdout.
 
-Pass `--review` (or `--reviewer=<claude|codex|gemini>` for a different agent) to add a role-separated review step: after the tests pass, an independent reviewer agent must approve the change before the story is committed and marked done. A rejection blocks the story (no commit). The reviewer is a fresh agent pass — the implementer never reviews its own work.
+At every story boundary, Yoke consumes at most one queued change. The configured Claude,
+Codex, or Gemini provider may propose only new stories in a separate runtime file. A fresh
+coverage-review pass must account for every distinct requested outcome before Yoke validates
+strict criterion evidence, appends the stories itself, commits only the PRD, and leaves existing
+stories untouched. The request stays pending on any failure or uncovered outcome.
 
-Pass `--json` for machine mode: each status transition is emitted as one NDJSON line on stdout (the `.yoke/loop-status.json` shape, tagged `"type":"status"`) instead of the human narrative, so a supervisor can consume the stream instead of polling the file.
+For each story:
 
-When enabled and run, each iteration:
+1. Require a clean git worktree.
+2. Pick the highest-priority ready unfinished story.
+3. Stop the line if acceptance is empty. With `verify.requireCriteria: true`, every criterion
+   must be structured. Every structured criterion, including in compatible legacy projects,
+   must use a single approved test command containing its criterion ID and no shell operators.
+4. Run a fresh configured provider to implement exactly one story. Under the `critical`
+   decision policy, only high-impact architecture, security/privacy, destructive data,
+   material cost, compliance, or irreversible choices may pause for a human decision.
+5. Run every structured criterion's targeted commands and write
+   `.yoke/proof/<story>/evidence.json`. Then run project-wide `verify.command` (or detected
+   `npm test`). Performance, audit, and independent review gates follow when configured. Any
+   failure blocks, and no proof command runs after review.
+6. Only after all gates pass, mark the story `passes: true`, log the decision, and commit
+   atomically. A failed commit restores the PRD state.
+7. When all current stories pass, run optional `completion.command` against the integrated
+   system. Only a green result reports `complete`; otherwise the loop blocks. This readiness
+   result is ephemeral, not a release and not a freeze on future changes.
 
-1. Pre-dispatch gate: the git worktree must be clean, else `blocked`.
-2. Pick the highest-priority unfinished PRD story (`.yoke/prd.yaml`).
-3. Stop-the-Line gate: the story must have acceptance criteria, else `blocked`.
-4. Run a fresh agent to implement ONE story. Runner precedence is explicit `--runner`, configured `runner.agent`, active agent host, then the first configured agent. The loop refuses to start if that CLI is not installed.
-   With `decisionPolicy: auto`, routine ambiguity is resolved from the approved plan and project conventions. With `critical`, only high-impact architecture, security/privacy, destructive data, material-cost, compliance, or irreversible choices may produce `.yoke/decision-request.yaml`; the loop validates its bounded single-line fields, unique options, and active story ID, blocks before verify, and preserves it for `yoke loop answer`.
-5. Run the project's verify command (config `verify.command`, or detected `npm test`).
-   **Verify is the source of truth** — the agent's exit code is advisory, so a spurious
-   non-zero exit (e.g. a Windows `.cmd` wrapper) cannot block a story whose tests are green.
-   A failing verify is retried up to `verify.retries` times (default 1) so a transient flake
-   self-heals; a real failure still fails. Only if verify passes is the story marked
-   `passes: true`, committed atomically, and a decision logged. If verify fails: `blocked`.
-6. Stop when all stories `passes: true` (`complete`), or the iteration cap is reached (`cap-reached`).
+A supervisor can pause the loop by creating `.yoke/loop.pause`. The running story finishes;
+the signal is consumed at the next story boundary and the process exits with code `3`.
 
-A supervisor can pause the loop by creating `.yoke/loop.pause`: at the next story boundary (before the next story is selected — the running story always finishes) the loop consumes the file, records `paused` in the status file and log, and exits with code `3`. Running `yoke loop run` again resumes.
-
-State lives outside the model context: the PRD file + git. The agent runner is pluggable. The PRD is re-read from disk at every story boundary, so stories appended to `.yoke/prd.yaml` mid-run are picked up at the next iteration without a restart.
+State lives outside model context: PRD, git, and the ignored `.yoke/changes/` inbox. All are
+re-read at story boundaries, so a request queued mid-run becomes additional stories without a
+restart.
 
 ## Limitations
-- The loop verifies via the project's test command and an optional agent review; it has no formal merge-queue or multi-reviewer quorum.
+
+Yoke cannot infer the correct end-to-end journey command. Projects that need integrated
+readiness must configure `completion.command`, for example a Playwright journey suite.

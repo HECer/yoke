@@ -1,4 +1,4 @@
-import type { Story } from './prd.js'
+import { criterionCommandProblem, isAcceptanceCriterion, type Story } from './prd.js'
 import type { CommitIdentity } from './identity.js'
 
 export interface GateResult {
@@ -14,9 +14,16 @@ export interface GitOps {
   integrate(repoDir: string, worktreePath: string): void
 }
 
-export function stopTheLineGate(story: Story): GateResult {
+export function stopTheLineGate(story: Story, requireCriterionEvidence = false): GateResult {
   if (story.acceptance.length === 0) {
     return { ok: false, reason: `story ${story.id} has no acceptance criteria (Stop-the-Line)` }
+  }
+  if (requireCriterionEvidence && story.acceptance.some(criterion => !isAcceptanceCriterion(criterion))) {
+    return { ok: false, reason: `story ${story.id} lacks executable criterion evidence (Stop-the-Line)` }
+  }
+  for (const criterion of story.acceptance.filter(isAcceptanceCriterion)) {
+    const problem = criterionCommandProblem(criterion)
+    if (problem) return { ok: false, reason: `${problem} (Stop-the-Line)` }
   }
   return { ok: true }
 }

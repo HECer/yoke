@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Agent } from '../retrofit/config.js'
 import { loadConfig } from '../retrofit/config.js'
-import { loadPrd, progress, type Story } from '../loop/prd.js'
+import { acceptanceText, criterionCommandProblem, isAcceptanceCriterion, loadPrd, progress, type Story } from '../loop/prd.js'
 import {
   agentInvocation,
   buildWatchdogInvocation,
@@ -23,8 +23,12 @@ export const PRD_TEMPLATE = `# Yoke PRD — the loop picks the lowest-priority o
 #   area: foundation      # optional collision domain for parallel runs
 #   agent: codex          # optional claude|codex|gemini affinity
 #   acceptance:
-#     - "the verify command exits 0"
-#     - "a placeholder test exists and passes"
+#     - id: suite-runs
+#       text: "the project test suite can run"
+#       verify: ["npm run test:suite-runs"]
+#     - id: scaffold-starts
+#       text: "the scaffolded application starts"
+#       verify: ["npm run test:scaffold-starts"]
 #   passes: false
 []
 `
@@ -58,6 +62,8 @@ export function buildPrdDraftPrompt(idea: string, planningBrief?: string): strin
     '- area: optional collision domain for safe parallel scheduling',
     '- agent: optional claude|codex|gemini affinity',
     '- acceptance: 2-5 testable, behavioral criteria (observable outcomes, never implementation steps)',
+    '  Each criterion is an object with a stable id, behavioral text, and verify: [one or more approved test commands].',
+    '  Every criterion id must appear in every verify command; use one test command without shell control operators.',
     '- passes: false',
     '',
     'If the project has no source code yet, STORY-1 must scaffold the project skeleton with a runnable',
@@ -158,6 +164,7 @@ export function runPrdCheck(targetDir: string): number {
     return 1
   }
   const errors: string[] = []
+  const requireCriteria = loadConfig(targetDir)?.verify?.requireCriteria ?? false
   if (stories.length === 0) errors.push('PRD has no stories')
   const seen = new Set<string>()
   for (const s of stories) {
@@ -165,7 +172,14 @@ export function runPrdCheck(targetDir: string): number {
     seen.add(s.id)
     // the schema allows [], but the loop's stop-the-line gate blocks it — fail fast here
     if (s.acceptance.length === 0) errors.push(`story ${s.id} has no acceptance criteria`)
-    if (s.acceptance.some(criterion => /\b(?:TBD|TODO|TO BE DECIDED|DECIDE LATER)\b|\?\?\?/i.test(criterion))) {
+    if (requireCriteria && s.acceptance.some(criterion => !isAcceptanceCriterion(criterion))) {
+      errors.push(`story ${s.id} lacks executable criterion evidence`)
+    }
+    for (const criterion of s.acceptance.filter(isAcceptanceCriterion)) {
+      const problem = criterionCommandProblem(criterion)
+      if (problem) errors.push(problem)
+    }
+    if (s.acceptance.some(criterion => /\b(?:TBD|TODO|TO BE DECIDED|DECIDE LATER)\b|\?\?\?/i.test(acceptanceText(criterion)))) {
       errors.push(`story ${s.id} has unresolved planning decisions in acceptance criteria`)
     }
   }

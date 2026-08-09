@@ -62,7 +62,14 @@ export const YokeConfigSchema = z.object({
     suppressionsVersion: z.literal(1).optional(),
     suppressions: z.array(z.object({ ruleId: z.string().min(1), file: z.string().min(1).optional(), reason: z.string(), expires: z.string().optional() })).optional(),
   }).optional(),
-  verify: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
+  verify: z.object({
+    command: z.string().min(1).optional(),
+    retries: z.number().int().nonnegative().optional(),
+    requireCriteria: z.boolean().optional(),
+  }).optional(),
+  // Runs only when no open stories remain. This proves the current integrated
+  // system, without introducing release objects or a persistent stale graph.
+  completion: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
   // Optional performance budget gate: a benchmark command that must exit 0 for a
   // story to land (runs after verify). Benchmarks are noisy → retried like verify.
   perf: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
@@ -97,7 +104,8 @@ export interface YokeConfig {
   }
   commit?: { authorName?: string; authorEmail?: string; allowCoAuthors?: boolean }
   audit?: { enabled: boolean; command?: string; suppressionsVersion?: 1; suppressions?: Array<{ ruleId: string; file?: string; reason: string; expires?: string }> }
-  verify?: { command: string; retries?: number }
+  verify?: { command?: string; retries?: number; requireCriteria?: boolean }
+  completion?: { command: string; retries?: number }
   perf?: { command: string; retries?: number }
   codeGraph?: CodeGraph
   smoke?: SmokeConfig
@@ -105,7 +113,7 @@ export interface YokeConfig {
 }
 
 export function defaultConfig(canonVersion: string): YokeConfig {
-  return { canonVersion, agents: [], loop: { enabled: false } }
+  return { canonVersion, agents: [], loop: { enabled: false }, verify: { requireCriteria: true } }
 }
 
 export function configPath(targetDir: string): string {

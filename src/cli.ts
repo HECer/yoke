@@ -16,6 +16,7 @@ import { maybeNotifyUpdate, currentYokeVersion } from './update/check.js'
 import { runUpgrade } from './update/upgrade.js'
 import { printAudit, runAudit } from './audit/command.js'
 import { runSetup } from './setup/command.js'
+import { pendingChanges, queueChange } from './change/inbox.js'
 import {
   answerPendingDecision, answeredDecisionResumeIsValid, clearDecisionResume, decisionProcessingExists, decisionResumeMatchesCurrent,
   finalizeCommittedDecisionResume,
@@ -103,6 +104,37 @@ export function main(argv: string[]): number | Promise<number> {
         return 1
       }
       return runRetrofit(targetDir, { loop, agents, codeGraph })
+    }
+    case 'change': {
+      const sub = rest[0]
+      const targetDir = rest.slice(1).find(a => !a.startsWith('-')) ?? '.'
+      if (sub === 'add') {
+        const idea = rest.find(a => a.startsWith('--idea='))?.slice('--idea='.length)
+        if (!idea?.trim()) {
+          console.error('usage: yoke change add [dir] --idea="..."')
+          return 1
+        }
+        try {
+          const request = queueChange(targetDir, idea)
+          console.log(`Queued change ${request.id}. A running loop will turn it into new stories at the next story boundary.`)
+          return 0
+        } catch (error) {
+          console.error(`Could not queue change: ${(error as Error).message}`)
+          return 1
+        }
+      }
+      if (sub === 'status') {
+        try {
+          const requests = pendingChanges(targetDir)
+          console.log(requests.length === 0 ? 'No pending changes.' : requests.map(item => `${item.id}  ${item.request}`).join('\n'))
+          return 0
+        } catch (error) {
+          console.error(`Could not read change inbox: ${(error as Error).message}`)
+          return 1
+        }
+      }
+      console.log('usage: yoke change <add|status> [dir] [--idea="..."]')
+      return 1
     }
     case 'loop': {
       const sub = rest[0]
@@ -362,7 +394,7 @@ export function main(argv: string[]): number | Promise<number> {
     case 'upgrade':
       return runUpgrade()
     default:
-      console.log('usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | prd <draft|check> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>')
+      console.log('usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | change <add|status> [dir] | prd <draft|check> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>')
       return cmd ? 1 : 0
   }
 }

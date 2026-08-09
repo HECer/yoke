@@ -1,6 +1,6 @@
 import { existsSync, unlinkSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { loadPrd, savePrd, selectNextStory, allPass, progress } from './prd.js'
+import { isAcceptanceCriterion, loadPrd, savePrd, selectNextStory, allPass, progress, storyPathSegment, type AcceptanceCriterion, type Story } from './prd.js'
 import { stopTheLineGate, preDispatchGate, type GitOps } from './gates.js'
 import type { AgentRunner } from './runner.js'
 import type { Verifier } from './verify.js'
@@ -8,6 +8,7 @@ import { appendDecision, contextDir } from '../context/context.js'
 import { noopReporter, type LoopReporter } from './reporter.js'
 import type { CommitIdentity } from './identity.js'
 import { consumeDecisionRequest } from './decision.js'
+import { writeCriterionEvidence } from './evidence.js'
 
 function blockReason(base: string, targetDir: string, git: GitOps): string {
   let dirty = false
@@ -23,6 +24,12 @@ export interface LoopOptions {
   runner: AgentRunner
   git: GitOps
   verify: Verifier
+  verifyCriterion?: (targetDir: string, story: Story, criterion: AcceptanceCriterion) => ReturnType<Verifier>
+  requireCriterionEvidence?: boolean
+  /** Optional integrated-system gate, run whenever no open stories remain. */
+  completion?: Verifier
+  /** Process at most one queued product change at each safe story boundary. */
+  intake?: () => { ok: boolean; added: number; summary: string }
   /** Optional performance budget gate — runs after verify; a red benchmark blocks the story. */
   perf?: Verifier
   audit?: Verifier
@@ -77,30 +84,69 @@ function consumeAmbiguity(dir: string): string | null {
   return compact || 'agent reported ambiguous acceptance criteria without details'
 }
 
+function runCompletionGate(opts: LoopOptions, stories: Story[]): LoopResult | null {
+  if (!opts.completion) return null
+  const previous = process.env.YOKE_PHASE
+  process.env.YOKE_PHASE = 'completion'
+  let verdict
+  try {
+    verdict = opts.completion(opts.targetDir)
+  } catch (error) {
+    const reason = `integrated completion gate failed: ${(error as Error).message}`
+    ;(opts.reporter ?? noopReporter).blocked(reason)
+    return { status: 'blocked', iterations: 0, reason, finalProgress: progress(stories) }
+  } finally {
+    if (previous === undefined) delete process.env.YOKE_PHASE
+    else process.env.YOKE_PHASE = previous
+  }
+  if (verdict.passed) return null
+  const reason = `integrated system did not verify: ${verdict.summary}`
+  ;(opts.reporter ?? noopReporter).blocked(reason)
+  return { status: 'blocked', iterations: 0, reason, finalProgress: progress(stories) }
+}
+
+function runCriterionGates(opts: LoopOptions, executionDir: string, story: Story): { passed: boolean; summary: string } {
+  const criteria = story.acceptance.filter(isAcceptanceCriterion)
+  if (criteria.length === 0) {
+    return opts.requireCriterionEvidence
+      ? { passed: false, summary: `story ${story.id} lacks executable criterion evidence` }
+      : { passed: true, summary: 'legacy acceptance criteria' }
+  }
+  if (!opts.verifyCriterion) return { passed: false, summary: `story ${story.id} has criteria but no criterion verifier` }
+  const evidence = criteria.map(criterion => ({
+    criterion,
+    result: opts.verifyCriterion!(executionDir, story, criterion),
+  }))
+  try {
+    writeCriterionEvidence(opts.targetDir, story, evidence)
+  } catch (error) {
+    return { passed: false, summary: `could not persist criterion evidence: ${(error as Error).message}` }
+  }
+  const failed = evidence.find(item => !item.result.passed)
+  return failed
+    ? { passed: false, summary: `${failed.criterion.id}: ${failed.result.summary}` }
+    : { passed: true, summary: `${evidence.length} acceptance criteria verified` }
+}
+
 export function runLoop(opts: LoopOptions): LoopResult {
   let iterations = 0
   const reporter = opts.reporter ?? noopReporter
 
-  const initial = loadPrd(opts.prdPath)
-  if (initial.length === 0) {
-    reporter.blocked('PRD has no stories')
-    return { status: 'blocked', iterations: 0, reason: 'PRD has no stories', finalProgress: { passed: 0, total: 0 } }
-  }
-
   for (;;) {
-    const stories = loadPrd(opts.prdPath)
+    let stories = loadPrd(opts.prdPath)
 
-    if (allPass(stories)) {
-      reporter.complete(progress(stories))
-      return { status: 'complete', iterations, finalProgress: progress(stories) }
+    if (stories.length === 0) {
+      reporter.blocked('PRD has no stories')
+      return { status: 'blocked', iterations, reason: 'PRD has no stories', finalProgress: { passed: 0, total: 0 } }
     }
-    if (iterations >= opts.maxIterations) {
+    const capReached = iterations >= opts.maxIterations
+    if (capReached && !allPass(stories)) {
       reporter.capReached(progress(stories))
       return { status: 'cap-reached', iterations, finalProgress: progress(stories) }
     }
 
-    // Story boundary: honour a pause signal before selecting the next story.
-    // complete/cap-reached above still win — pausing an already-finished loop is meaningless.
+    // Intake is work at a story boundary. Cap, pause, and clean-tree safety must
+    // win before a planner is allowed to edit and commit the PRD.
     const pauseFile = pauseFilePath(opts.targetDir)
     if (existsSync(pauseFile)) {
       try { unlinkSync(pauseFile) } catch { /* consumed best-effort — pausing still wins */ }
@@ -110,17 +156,66 @@ export function runLoop(opts: LoopOptions): LoopResult {
 
     const pre = preDispatchGate(opts.targetDir, opts.git)
     if (!pre.ok) {
-      reporter.blocked(pre.reason ?? 'pre-dispatch gate failed')
-      return { status: 'blocked', iterations, reason: pre.reason, finalProgress: progress(stories) }
+      const reason = opts.intake ? `change intake blocked by dirty worktree: ${pre.reason ?? 'pre-dispatch gate failed'}` : pre.reason
+      reporter.blocked(reason ?? 'pre-dispatch gate failed')
+      return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
     }
 
+    // A bounded run that finished its final story may report completion, but it
+    // must not plan additional queued work after the requested cap.
+    if (capReached) {
+      const completionFailure = runCompletionGate(opts, stories)
+      if (completionFailure) return { ...completionFailure, iterations }
+      reporter.complete(progress(stories))
+      return { status: 'complete', iterations, finalProgress: progress(stories) }
+    }
+
+    if (opts.intake) {
+      let intake: { ok: boolean; added: number; summary: string }
+      try {
+        intake = opts.intake()
+      } catch (error) {
+        const stories = loadPrd(opts.prdPath)
+        const reason = `change intake failed: ${(error as Error).message}`
+        reporter.blocked(reason)
+        return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+      }
+      if (!intake.ok) {
+        const stories = loadPrd(opts.prdPath)
+        const reason = `change intake failed: ${intake.summary}`
+        reporter.blocked(reason)
+        return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+      }
+      if (intake.added > 0) {
+        const afterIntake = preDispatchGate(opts.targetDir, opts.git)
+        if (!afterIntake.ok) {
+          const stories = loadPrd(opts.prdPath)
+          const reason = `change intake left a dirty worktree: ${afterIntake.reason ?? 'pre-dispatch gate failed'}`
+          reporter.blocked(reason)
+          return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+        }
+      }
+    }
+    stories = loadPrd(opts.prdPath)
+
+    if (stories.length === 0) {
+      reporter.blocked('PRD has no stories')
+      return { status: 'blocked', iterations, reason: 'PRD has no stories', finalProgress: { passed: 0, total: 0 } }
+    }
+
+    if (allPass(stories)) {
+      const completionFailure = runCompletionGate(opts, stories)
+      if (completionFailure) return { ...completionFailure, iterations }
+      reporter.complete(progress(stories))
+      return { status: 'complete', iterations, finalProgress: progress(stories) }
+    }
     const story = selectNextStory(stories)
     if (!story) {
       reporter.complete(progress(stories))
       return { status: 'complete', iterations, finalProgress: progress(stories) }
     }
 
-    const stl = stopTheLineGate(story)
+    const stl = stopTheLineGate(story, opts.requireCriterionEvidence)
     if (!stl.ok) {
       reporter.blocked(stl.reason ?? 'stop-the-line gate failed')
       return { status: 'blocked', iterations, reason: stl.reason, finalProgress: progress(stories) }
@@ -129,7 +224,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
     reporter.storyStart({ id: story.id, title: story.title }, iterations + 1, progress(stories))
 
     if (opts.isolate) {
-      const wt = join(opts.targetDir, '.yoke', 'worktrees', story.id)
+      const wt = join(opts.targetDir, '.yoke', 'worktrees', storyPathSegment(story.id))
       const wtPrd = join(wt, relative(opts.targetDir, opts.prdPath))
       let landed: { passed: number; total: number } | null = null
       try {
@@ -151,6 +246,13 @@ export function runLoop(opts: LoopOptions): LoopResult {
         const ambiguity = consumeAmbiguity(wt)
         if (ambiguity) {
           const reason = `story ${story.id} stopped: ambiguous acceptance criteria — ${ambiguity}`
+          reporter.blocked(reason)
+          return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+        }
+        const criteriaVerdict = runCriterionGates(opts, wt, story)
+        if (!criteriaVerdict.passed) {
+          result.routing?.recordOutcome(false)
+          const reason = blockReason(`story ${story.id} lacks acceptance evidence: ${criteriaVerdict.summary}`, opts.targetDir, opts.git)
           reporter.blocked(reason)
           return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
         }
@@ -245,6 +347,14 @@ export function runLoop(opts: LoopOptions): LoopResult {
     const ambiguity = consumeAmbiguity(opts.targetDir)
     if (ambiguity) {
       const reason = `story ${story.id} stopped: ambiguous acceptance criteria — ${ambiguity}`
+      reporter.blocked(reason)
+      return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+    }
+
+    const criteriaVerdict = runCriterionGates(opts, opts.targetDir, story)
+    if (!criteriaVerdict.passed) {
+      result.routing?.recordOutcome(false)
+      const reason = blockReason(`story ${story.id} lacks acceptance evidence: ${criteriaVerdict.summary}`, opts.targetDir, opts.git)
       reporter.blocked(reason)
       return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
     }

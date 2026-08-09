@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { commandVerifier, retryingVerifier, type Verifier, type VerifyResult } from '../../src/loop/verify.js'
+import { commandVerifier, commandsVerifier, retryingVerifier, type Verifier, type VerifyResult } from '../../src/loop/verify.js'
 
 let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-verify-')) })
@@ -27,6 +27,19 @@ describe('commandVerifier', () => {
     const r = commandVerifier('node boom.js')(dir)
     expect(r.passed).toBe(false)
     expect(r.summary).toContain('BOOM_MARKER')
+  })
+})
+
+describe('commandsVerifier', () => {
+  it('runs every criterion command and reports the first failure', () => {
+    writeFileSync(join(dir, 'fail.js'), "console.error('CRITERION_FAILED'); process.exit(1)")
+    const result = commandsVerifier([
+      'node -e "process.exit(0)"',
+      'node fail.js',
+      'node -e "process.exit(0)"',
+    ])(dir)
+    expect(result.passed).toBe(false)
+    expect(result.summary).toContain('CRITERION_FAILED')
   })
 })
 
