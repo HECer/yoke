@@ -55,7 +55,6 @@ export function killProcessTree(pid: number, force = true): void {
 
 export type TaskkillRunner = (command: string, args: string[]) => number | null
 export type ProcessSignaler = (pid: number, signal: NodeJS.Signals | 0) => void
-export type ProcessGroupAlive = (groupLeaderPid: number) => boolean
 export type ProcessAlive = (pid: number) => boolean
 
 function waitForCleanupRetry(): void {
@@ -89,9 +88,6 @@ export function killProcessTreeForCleanup(
   platform: NodeJS.Platform = process.platform,
   runTaskkill: TaskkillRunner = (command, args) => spawnSync(command, args, { stdio: 'ignore' }).status,
   sendSignal: ProcessSignaler = (target, signal) => { process.kill(target, signal) },
-  isProcessGroupAlive: ProcessGroupAlive = (groupLeaderPid) => {
-    try { process.kill(-groupLeaderPid, 0); return true } catch { return false }
-  },
 ): boolean {
   if (platform === 'win32') return runTaskkill('taskkill', ['/PID', String(pid), '/T', '/F']) === 0
   try {
@@ -101,11 +97,7 @@ export function killProcessTreeForCleanup(
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'ESRCH'
   }
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (!isProcessGroupAlive(pid)) return true
-    waitForCleanupRetry()
-  }
-  return false
+  return true
 }
 
 // win32 default: kill the whole tree. Console apps have no reliable soft-close

@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { collectCandidateArtifacts } from '../../src/quality/artifacts.js'
 
-const projectDir = 'C:\\workspace\\quality-app'
+const projectDir = resolve('quality-app')
 const proofDir = join(projectDir, '.yoke', 'proof')
 const home = new TextEncoder().encode('home screenshot')
 const settings = new TextEncoder().encode('settings screenshot')

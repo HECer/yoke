@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { join, resolve } from 'node:path'
 import { runQualityCritic } from '../../src/quality/runner.js'
 import { storyPathSegment } from '../../src/loop/prd.js'
 import type { QualityCriticRequest } from '../../src/quality/runner.js'
@@ -45,10 +46,11 @@ const providerStream = (provider: 'claude' | 'codex' | 'gemini', payload: string
 
 describe('runQualityCritic', () => {
   it('runs two read-only swapped blocking comparisons and persists raw verdict files', () => {
+    const targetDir = resolve('project')
     const calls: Array<{ readonly permissions: string; readonly candidateLabel: string }> = []
     const writes: string[] = []
     const result = runQualityCritic({
-      targetDir: 'C:\\project', storyId: 'S1', round: 1, policy: 'blocking', rubric: 'trusted rubric',
+      targetDir, storyId: 'S1', round: 1, policy: 'blocking', rubric: 'trusted rubric',
       reference: { digest: 'reference', contentType: 'image/png' }, candidate: { digests: ['candidate'] }, provider: 'codex', model: 'test',
       invoke: request => { calls.push({ permissions: request.permissions, candidateLabel: request.candidateLabel }); return { ok: true, output: verdictFor(request) } },
       mkdir: () => undefined,
@@ -59,8 +61,8 @@ describe('runQualityCritic', () => {
     expect(result).toMatchObject({ kind: 'pass' })
     expect(calls).toEqual([{ permissions: 'read-only', candidateLabel: 'A' }, { permissions: 'read-only', candidateLabel: 'B' }])
     expect(writes).toEqual([
-      `C:\\project\\.yoke\\proof\\${storyPathSegment('S1')}\\quality\\round-1\\normal.verdict.json`,
-      `C:\\project\\.yoke\\proof\\${storyPathSegment('S1')}\\quality\\round-1\\swapped.verdict.json`,
+      join(targetDir, '.yoke', 'proof', storyPathSegment('S1'), 'quality', 'round-1', 'normal.verdict.json'),
+      join(targetDir, '.yoke', 'proof', storyPathSegment('S1'), 'quality', 'round-1', 'swapped.verdict.json'),
     ])
   })
 

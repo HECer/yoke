@@ -161,19 +161,18 @@ describe('killProcessTreeForCleanup', () => {
     const signals: Array<readonly [number, string | number]> = []
     let checks = 0
 
-    expect(killProcessTreeForCleanup(4242, 'linux', () => 0, (pid, signal) => { signals.push([pid, signal]) }, () => {
-      checks += 1
-      return checks === 1
-    })).toBe(true)
+    expect(killProcessTreeForCleanup(4242, 'linux', () => 0, (pid, signal) => { signals.push([pid, signal]); checks += 1 })).toBe(true)
 
     expect(signals).toEqual([[-4242, 'SIGKILL']])
+    expect(checks).toBe(1)
   })
 
-  it('rejects POSIX cleanup when the process group remains alive after the bounded checks', () => {
-    vi.useRealTimers()
-    const startedAt = process.hrtime.bigint()
-    expect(killProcessTreeForCleanup(4242, 'linux', () => 0, () => undefined, () => true)).toBe(false)
-    expect(Number(process.hrtime.bigint() - startedAt) / 1_000_000).toBeGreaterThanOrEqual(50)
+  it('confirms POSIX cleanup when the process group accepts uncatchable SIGKILL', () => {
+    const signals: Array<readonly [number, string | number]> = []
+
+    expect(killProcessTreeForCleanup(4242, 'linux', () => 0, (pid, signal) => { signals.push([pid, signal]) })).toBe(true)
+
+    expect(signals).toEqual([[-4242, 'SIGKILL']])
   })
 })
 

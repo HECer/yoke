@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { acquireReference } from '../../src/quality/reference.js'
 
-const projectDir = 'C:\\workspace\\quality-app'
+const projectDir = resolve('quality-app')
 const referenceBytes = new TextEncoder().encode('trusted design reference')
 const referenceDigest = createHash('sha256').update(referenceBytes).digest('hex')
 

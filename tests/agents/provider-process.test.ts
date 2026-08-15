@@ -190,6 +190,8 @@ describe('startProviderProcess', () => {
     expect(unix).toMatchObject({ command: inv.command, args: inv.args, shell: false })
     expect(windows).toMatchObject({ command: 'provider-shim.cmd', args: inv.args, shell: true })
     expect(providerSpawnOptions(inv, 'win32')).toMatchObject({ command: inv.command, args: inv.args, shell: false })
+    expect(providerSpawnOptions({ ...inv, command: 'node' }, 'win32')).toMatchObject({ command: 'node', args: inv.args, shell: true })
+    expect(providerSpawnOptions({ ...inv, command: '/opt/node/bin/node' }, 'win32')).toMatchObject({ command: '/opt/node/bin/node', args: inv.args, shell: false })
   })
 
   it('records independent scoped PIDs for concurrent provider calls', async () => {

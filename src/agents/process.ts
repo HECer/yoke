@@ -71,12 +71,12 @@ function cancellationReason(signal: AbortSignal): string {
 }
 
 export function providerSpawnOptions(invocation: AgentInvocation, platform: NodeJS.Platform = process.platform): ProviderSpawnOptions {
-  const directExecutable = /\.(?:exe|com)$/iu.test(invocation.command)
+  const windowsCommandShim = !/[\\/]/u.test(invocation.command) || /\.(?:bat|cmd)$/iu.test(invocation.command)
   return {
     command: invocation.command,
     args: invocation.args,
     cwd: invocation.cwd,
-    shell: platform === 'win32' && !directExecutable,
+    shell: platform === 'win32' && windowsCommandShim,
     detached: platform !== 'win32',
   }
 }
