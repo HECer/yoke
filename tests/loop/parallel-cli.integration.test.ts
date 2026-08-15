@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -296,12 +296,21 @@ describe('yoke loop run --parallel', () => {
       '- { id: B, title: Web, priority: 2, acceptance: ["b"], passes: false, area: web }',
       '- { id: C, title: Depends, priority: 3, acceptance: ["c"], passes: false, needs: [A, B] }',
     ].join('\n'))
+    const preRebaseHook = join(dir, '.git', 'hooks', 'pre-rebase')
+    writeFileSync(preRebaseHook, '#!/bin/sh\nexit 1\n')
+    chmodSync(preRebaseHook, 0o755)
 
     const code = await Promise.resolve(runLoopCommand(dir, {
       parallel: 2,
       maxIterations: 3,
       runner: context => {
         writeFileSync(join(context.targetDir, `implemented-${context.story.id}.txt`), context.story.id)
+        if (context.story.id === 'B') {
+          execFileSync('git', ['add', 'implemented-B.txt'], { cwd: context.targetDir, stdio: 'pipe' })
+          execFileSync('git', ['commit', '-m', 'worker: intermediate B'], { cwd: context.targetDir, stdio: 'pipe' })
+          writeFileSync(join(context.targetDir, 'implemented-B.txt'), 'dirty B')
+          writeFileSync(join(context.targetDir, 'untracked-B.txt'), 'untracked B')
+        }
         return { success: true, summary: 'implemented' }
       },
       verify: verifyOk,
@@ -312,7 +321,9 @@ describe('yoke loop run --parallel', () => {
     expect(['A', 'B', 'C'].every(id => existsSync(join(dir, `implemented-${id}.txt`)))).toBe(true)
     expect(loadPrd(join(dir, '.yoke', 'prd.yaml')).every(story => story.passes)).toBe(true)
     expect(execFileSync('git', ['rev-list', '--count', `${baseCommit}..HEAD`], { cwd: dir, encoding: 'utf8' }).trim()).toBe('3')
-    expect(['A', 'B', 'C'].map(id => readFileSync(join(dir, `implemented-${id}.txt`), 'utf8'))).toEqual(['A', 'B', 'C'])
+    expect(['A', 'B', 'C'].map(id => readFileSync(join(dir, `implemented-${id}.txt`), 'utf8'))).toEqual(['A', 'dirty B', 'C'])
+    expect(readFileSync(join(dir, 'untracked-B.txt'), 'utf8')).toBe('untracked B')
+    expect(execFileSync('git', ['log', '--format=%s', `${baseCommit}..HEAD`], { cwd: dir, encoding: 'utf8' })).not.toMatch(/temporary candidate|worker: intermediate B/)
     expect(readdirSync(join(dir, '.yoke', 'worktrees'))).toEqual([])
     expect(execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: dir, encoding: 'utf8' }).match(/^worktree /gmu)).toHaveLength(1)
   })

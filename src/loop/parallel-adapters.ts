@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { CandidateLifecycle, CandidateOwnership, CandidateWorktreeRequest } from './candidate-contracts.js'
 import type { CommitIdentity } from './identity.js'
@@ -145,17 +146,40 @@ function writeCandidateStatus(
 
 function rebaseCandidate(targetDir: string, input: DispatcherWorkerInput): DispatcherRebase {
   const currentHead = gitText(targetDir, ['rev-parse', 'HEAD'])
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', input.worktree.baseCommit, 'HEAD'], { cwd: input.worktree.path, stdio: 'pipe' })
+  } catch {
+    return { kind: 'reopen', reason: `candidate history no longer descends from base ${input.worktree.baseCommit}` }
+  }
   if (currentHead !== input.worktree.baseCommit) {
     try {
       execFileSync('git', ['merge-base', '--is-ancestor', input.worktree.baseCommit, currentHead], { cwd: targetDir, stdio: 'pipe' })
     } catch {
       return { kind: 'reopen', reason: `candidate base ${input.worktree.baseCommit} is stale against target ${currentHead}` }
     }
+    const emptyHooks = mkdtempSync(join(tmpdir(), 'yoke-empty-hooks-'))
+    const mechanics = [
+      '-c', `core.hooksPath=${emptyHooks}`,
+      '-c', 'commit.gpgsign=false',
+      '-c', 'user.name=Yoke Temporary',
+      '-c', 'user.email=yoke@localhost',
+    ]
     try {
-      execFileSync('git', ['rebase', '--autostash', currentHead], { cwd: input.worktree.path, stdio: 'pipe' })
+      if (gitText(input.worktree.path, ['status', '--porcelain=v1', '--untracked-files=all'])) {
+        execFileSync('git', ['add', '-A'], { cwd: input.worktree.path, stdio: 'pipe' })
+        if (gitText(input.worktree.path, ['diff', '--cached', '--name-only'])) {
+          execFileSync('git', [...mechanics, 'commit', '--no-verify', '-m', 'yoke: temporary candidate snapshot'], { cwd: input.worktree.path, stdio: 'pipe' })
+        }
+        if (gitText(input.worktree.path, ['status', '--porcelain=v1', '--untracked-files=all'])) {
+          return { kind: 'reopen', reason: 'candidate contains changes Git cannot snapshot' }
+        }
+      }
+      execFileSync('git', [...mechanics, '-c', 'rebase.autoStash=false', '-c', 'rebase.updateRefs=false', 'rebase', '--no-verify', currentHead], { cwd: input.worktree.path, stdio: 'pipe' })
     } catch (error) {
-      try { execFileSync('git', ['rebase', '--abort'], { cwd: input.worktree.path, stdio: 'pipe' }) } catch {}
+      try { execFileSync('git', [...mechanics, 'rebase', '--abort'], { cwd: input.worktree.path, stdio: 'pipe' }) } catch {}
       return { kind: 'reopen', reason: `candidate rebase failed: ${errorMessage(error)}` }
+    } finally {
+      rmSync(emptyHooks, { recursive: true, force: true })
     }
   }
   // Preserve the worker's candidate tree, but return commit authority to the dispatcher.
