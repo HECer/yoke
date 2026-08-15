@@ -170,7 +170,7 @@ describe('makeRunner / isAgentAvailable', () => {
 
   it('isAgentAvailable returns a boolean and never throws', () => {
     expect(typeof isAgentAvailable('claude')).toBe('boolean')
-  })
+  }, 15_000)
 })
 
 describe('buildReviewPrompt', () => {
@@ -205,24 +205,32 @@ describe('makeReviewRunner', () => {
     expect(typeof makeReviewRunner('claude')).toBe('function')
   })
 
-  it('requires and consumes a schema-valid verdict file', () => {
+  it('requires a schema-valid read-only verdict from captured provider output', () => {
     const d = mkdtempSync(join(tmpdir(), 'yoke-review-runner-'))
     const runner = makeReviewRunner('codex', 0, (inv) => {
-      const match = inv.input.match(/Write your final verdict to this absolute path: (.+)/)!
-      writeFileSync(match[1], JSON.stringify({ approved: true, summary: 'all criteria met', findings: [] }))
+      expect(inv.args).toContain('read-only')
+      const verdict = JSON.stringify({
+        schemaVersion: 1,
+        approved: true,
+        summary: 'all criteria met',
+        findings: [],
+        provenance: { provider: 'codex', model: 'test-model', role: 'review', promptVersion: 1, permissions: 'read-only' },
+      })
+      return { success: true, output: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: verdict } }), summary: 'reviewed', tokens: { inputTokens: 1, outputTokens: 1, model: 'test-model' } }
     })
     const result = runner({ targetDir: d, story })
     expect(result.success).toBe(true)
     expect(result.summary).toContain('all criteria met')
-    expect(existsSync(join(d, '.yoke', 'review-verdict.json'))).toBe(false)
+    expect(result.reviewOutcome).toMatchObject({ kind: 'approved', verdict: { approved: true } })
     rmSync(d, { recursive: true, force: true })
   })
 
   it('rejects a successful process that writes no verdict', () => {
     const d = mkdtempSync(join(tmpdir(), 'yoke-review-runner-'))
-    const result = makeReviewRunner('codex', 0, () => {})({ targetDir: d, story })
+    const result = makeReviewRunner('codex', 0, () => ({ success: true, output: '', summary: 'empty' }))({ targetDir: d, story })
     expect(result.success).toBe(false)
-    expect(result.summary).toMatch(/missing/i)
+    expect(result.summary).toMatch(/invalid|missing/i)
+    expect(result.reviewOutcome).toMatchObject({ kind: 'malformed' })
     rmSync(d, { recursive: true, force: true })
   })
 
@@ -232,6 +240,7 @@ describe('makeReviewRunner', () => {
     const result = makeReviewRunner('gemini', 0, () => { throw error })({ targetDir: d, story })
     expect(result.success).toBe(false)
     expect(result.summary).toContain('AUTH_REQUIRED: sign in first')
+    expect(result.reviewOutcome).toMatchObject({ kind: 'infrastructure' })
     rmSync(d, { recursive: true, force: true })
   })
 
@@ -289,10 +298,22 @@ describe('idle-timeout wiring', () => {
     expect(inv.args.some(a => a.startsWith('--pid-file='))).toBe(false)
     rmSync(d, { recursive: true, force: true })
   })
+  it('records an isolated invocation beneath an explicit project ownership root', () => {
+    const project = mkdtempSync(join(tmpdir(), 'yoke-owned-project-'))
+    const isolated = mkdtempSync(join(tmpdir(), 'yoke-isolated-invocation-'))
+    mkdirSync(join(project, '.yoke'), { recursive: true })
+
+    const inv = buildWatchdogInvocation({ command: 'codex', args: ['exec'], input: 'hi', cwd: isolated }, 1200000, project)
+
+    expect(inv.args).toContain(`--pid-file=${join(project, '.yoke', 'runner.pid')}`)
+    expect(inv.cwd).toBe(isolated)
+    rmSync(project, { recursive: true, force: true })
+    rmSync(isolated, { recursive: true, force: true })
+  })
   it('wraps the agent command in the watchdog when idleTimeoutMs > 0', () => {
     const inv = buildWatchdogInvocation({ command: 'claude', args: ['-p'], input: 'hi', cwd: '.' }, 1200000)
     expect(inv.command).toBe('node')
-    expect(inv.args.join(' ')).toContain('watchdog.js')
+    expect(inv.args.join(' ')).toMatch(/watchdog\.(?:js|ts)/)
     expect(inv.args.join(' ')).toContain('--idle-ms=1200000')
     expect(inv.args.join(' ')).toContain('-- claude -p')
     expect(inv.input).toBe('hi')

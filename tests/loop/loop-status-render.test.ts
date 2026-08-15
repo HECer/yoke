@@ -56,6 +56,22 @@ describe('loopStatus with a status file', () => {
     expect(out).toContain('~24m remaining')
     expect(out).toContain('4m/story')
   })
+  it('renders observable parallel dispatcher counters without dropping quality status', () => {
+    writeStatus(dir, {
+      state: 'running', phase: 'comparing', story: 'S3', storyTitle: 'x', iteration: 3,
+      progress: { passed: 2, total: 8 },
+      quality: { currentRound: 2, usedRepairs: 1, maxRepairs: 3, elapsedMs: 1_000, policy: 'blocking' },
+      parallel: { dispatcherId: 'dispatch-7', maxConcurrency: 3, activeWorkers: 2, queuedCandidates: 1, integrated: 2, reopened: 1 },
+      startedAt: '2026-06-29T10:00:00.000Z', updatedAt: '2026-06-29T10:00:00.000Z',
+    })
+
+    const out = loopStatus(dir, () => new Date('2026-06-29T10:01:00.000Z'))
+    expect(out).toContain('dispatch-7')
+    expect(out).toContain('2/3 workers')
+    expect(out).toContain('1 queued')
+    expect(out).toContain('2 integrated')
+    expect(out).toContain('1 reopened')
+  })
   it('does NOT show the stuck hint for a blocked status even if old', () => {
     writeStatus(dir, { state: 'blocked', reason: 'verify failed', story: 'S5', storyTitle: 'x',
       iteration: 19, progress: { passed: 18, total: 45 },

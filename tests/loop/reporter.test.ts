@@ -60,6 +60,23 @@ describe('makeReporter', () => {
     r.phase('verifying')
     expect(readStatus(dir)).toMatchObject({ state: 'running', phase: 'verifying', story: 'S1' })
   })
+
+  it('records repairing as a machine-readable phase', () => {
+    const r = makeReporter(dir, { log: () => {} }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.phase('repairing')
+    expect(readStatus(dir)).toMatchObject({ state: 'running', phase: 'repairing', story: 'S1' })
+  })
+
+  it('records optional machine-readable quality progress in status and NDJSON', () => {
+    const lines: string[] = []
+    const r = makeReporter(dir, { log: line => lines.push(line), json: true }, fixedNow)
+    r.storyStart({ id: 'S1', title: 'First' }, 1, prog)
+    r.quality({ currentRound: 2, usedRepairs: 1, maxRepairs: 3, elapsedMs: 1_500, policy: 'blocking', referenceDigest: 'sha256:reference' })
+
+    expect(readStatus(dir)?.quality).toEqual({ currentRound: 2, usedRepairs: 1, maxRepairs: 3, elapsedMs: 1_500, policy: 'blocking', referenceDigest: 'sha256:reference' })
+    expect(JSON.parse(lines[1])).toMatchObject({ type: 'status', quality: { currentRound: 2, usedRepairs: 1, maxRepairs: 3, policy: 'blocking' } })
+  })
   it('blocked() records state + reason', () => {
     const r = makeReporter(dir, { log: () => {} }, fixedNow)
     r.storyStart({ id: 'S1', title: 'First' }, 1, prog)

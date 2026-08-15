@@ -83,6 +83,11 @@ export const DecisionResumeSchema = z.object({
   permissions: z.enum(['safe', 'unsafe', 'read-only']).optional(),
   parallel: z.number().int().positive().optional(),
   routing: z.boolean().optional(),
+  quality: z.boolean().optional(),
+  qualityRounds: z.number().int().positive().optional(),
+  qualityMinutes: z.number().int().positive().optional(),
+  qualityPolicy: z.enum(['blocking', 'advisory']).optional(),
+  candidates: z.number().int().positive().optional(),
   projectId: z.string().regex(/^[a-f0-9]{16}$/u).optional(),
   baseCommit: z.string().regex(/^[a-f0-9]{40,64}$/u).optional(),
   prdHash: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
@@ -91,6 +96,56 @@ export const DecisionResumeSchema = z.object({
 })
 
 export type DecisionResumeState = z.infer<typeof DecisionResumeSchema>
+
+export type TrustedDecisionResumeInput = {
+  readonly storyId: string
+  readonly requestId: string
+  readonly maxIterations?: number
+  readonly agent?: DecisionResumeState['agent']
+  readonly isolate: boolean
+  readonly reviewer?: DecisionResumeState['reviewer']
+  readonly review: boolean
+  readonly allowSelfReview: boolean
+  readonly timeoutMinutes?: number
+  readonly json: boolean
+  readonly onAmbiguity?: DecisionResumeState['onAmbiguity']
+  readonly decisionPolicy?: DecisionResumeState['decisionPolicy']
+  readonly permissions: NonNullable<DecisionResumeState['permissions']>
+  readonly parallel: number
+  readonly routing: boolean
+  readonly quality?: boolean
+  readonly qualityRounds?: number
+  readonly qualityMinutes?: number
+  readonly qualityPolicy?: NonNullable<DecisionResumeState['qualityPolicy']>
+  readonly candidates?: number
+}
+
+export function buildTrustedDecisionResumeState(input: TrustedDecisionResumeInput): DecisionResumeState {
+  return DecisionResumeSchema.parse({
+    version: 1,
+    storyId: input.storyId,
+    requestId: input.requestId,
+    answered: false,
+    ...(input.maxIterations !== undefined ? { maxIterations: input.maxIterations } : {}),
+    ...(input.agent ? { agent: input.agent } : {}),
+    isolate: input.isolate,
+    ...(input.reviewer ? { reviewer: input.reviewer } : {}),
+    review: input.review,
+    allowSelfReview: input.allowSelfReview,
+    ...(input.timeoutMinutes !== undefined ? { timeoutMinutes: input.timeoutMinutes } : {}),
+    json: input.json,
+    ...(input.onAmbiguity ? { onAmbiguity: input.onAmbiguity } : {}),
+    ...(input.decisionPolicy ? { decisionPolicy: input.decisionPolicy } : {}),
+    permissions: input.permissions,
+    parallel: input.parallel,
+    routing: input.routing,
+    ...(input.quality !== undefined ? { quality: input.quality } : {}),
+    ...(input.qualityRounds !== undefined ? { qualityRounds: input.qualityRounds } : {}),
+    ...(input.qualityMinutes !== undefined ? { qualityMinutes: input.qualityMinutes } : {}),
+    ...(input.qualityPolicy ? { qualityPolicy: input.qualityPolicy } : {}),
+    ...(input.candidates !== undefined ? { candidates: input.candidates } : {}),
+  })
+}
 
 export function decisionRequestPath(targetDir: string): string {
   return join(targetDir, '.yoke', 'decision-request.yaml')

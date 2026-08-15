@@ -29,6 +29,61 @@ const reviewOk: AgentRunner = () => ({ success: true, summary: 'approved' })
 const reviewReject: AgentRunner = () => ({ success: false, summary: 'rejected: criterion unmet' })
 
 describe('runLoop', () => {
+  it('runs injected blocking quality after audit and before review, committing only a consistent pass', () => {
+    const events: string[] = []
+    const commits: string[] = []
+    const result = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass,
+      git: { ...cleanGit(), commitAll: (_dir, message) => commits.push(message) },
+      verify: () => { events.push('verify'); return { passed: true, summary: 'green' } },
+      audit: () => { events.push('audit'); return { passed: true, summary: 'green' } },
+      qualityStage: () => { events.push('quality'); return { kind: 'pass' } },
+      review: () => { events.push('review'); return { success: true, summary: 'approved' } },
+      maxIterations: 1,
+    })
+    expect(result.status).toBe('cap-reached')
+    expect(events).toEqual(['verify', 'audit', 'quality', 'review'])
+    expect(commits).toHaveLength(1)
+  })
+
+  it('blocks an inconsistent quality result before review and commit', () => {
+    const commits: string[] = []
+    const result = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass,
+      git: { ...cleanGit(), commitAll: (_dir, message) => commits.push(message) }, verify: verifyOk,
+      qualityStage: () => ({ kind: 'inconsistent', summary: 'paired critics disagree' }),
+      review: reviewOk, maxIterations: 1,
+    })
+    expect(result.status).toBe('blocked')
+    expect(commits).toHaveLength(0)
+  })
+
+  it('repairs a quality loss, reruns gates, then commits after a fresh pass and review', () => {
+    const events: string[] = []
+    let comparisons = 0
+    const commits: string[] = []
+    const result = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass,
+      git: { ...cleanGit(), commitAll: (_dir, message) => commits.push(message) },
+      verify: () => { events.push('verify'); return { passed: true, summary: 'green' } },
+      qualityStage: () => { comparisons += 1; events.push('quality'); return comparisons === 1 ? { kind: 'lose', biggestGap: 'spacing', evidence: ['header'], summary: 'repair' } : { kind: 'pass' } },
+      repair: () => { events.push('repair'); return { success: true, summary: 'fixed' } },
+      review: () => { events.push('review'); return { success: true, summary: 'approved', reviewOutcome: { kind: 'approved', verdict: { approved: true, summary: 'approved', findings: [] } } } }, maxIterations: 1,
+    })
+    expect(result.status).toBe('cap-reached')
+    expect(events).toEqual(['verify', 'quality', 'repair', 'verify', 'quality', 'review'])
+    expect(commits).toHaveLength(1)
+  })
+
+  it('runs blocking quality preflight before invoking the story runner', () => {
+    let ran = false
+    const result = runLoop({
+      prdPath: prd(), targetDir: dir, runner: () => { ran = true; return { success: true, summary: 'done' } }, git: cleanGit(), verify: verifyOk,
+      qualityPreflight: () => ({ kind: 'blocked', summary: 'reference unavailable' }), maxIterations: 1,
+    })
+    expect(result.status).toBe('blocked')
+    expect(ran).toBe(false)
+  })
   it('completes all stories with a passing runner', () => {
     const commits: string[] = []
     const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m), addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
@@ -424,7 +479,7 @@ describe('runLoop', () => {
     const git: GitOps = { isClean: () => true, commitAll: (_d, m) => commits.push(m), addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} }
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git, verify: verifyOk, review: reviewReject, maxIterations: 10 })
     expect(res.status).toBe('blocked')
-    expect(res.reason).toMatch(/rejected in review/i)
+    expect(res.reason).toMatch(/review-malformed/i)
     expect(loadPrd(prd()).every(s => !s.passes)).toBe(true)
     expect(commits).toHaveLength(0)
   })
@@ -432,6 +487,63 @@ describe('runLoop', () => {
   it('completes when the reviewer approves', () => {
     const res = runLoop({ prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), verify: verifyOk, review: reviewOk, maxIterations: 10 })
     expect(res.status).toBe('complete')
+  })
+
+  it('repairs an actionable review rejection then reruns criterion, verify, perf, audit, and fresh review before committing', () => {
+    writeFileSync(prd(), `
+- id: S1
+  title: Quality loop
+  priority: 1
+  acceptance:
+    - { id: quality-loop-behaves, text: Quality loop behaves, verify: [npm run test:quality-loop-behaves] }
+    - { id: quality-loop-recovers, text: Quality loop recovers, verify: [npm run test:quality-loop-recovers] }
+  passes: false
+`)
+    const events: string[] = []
+    let reviews = 0
+    const result = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass, git: cleanGit(), maxIterations: 1,
+      requireCriterionEvidence: true,
+      verifyCriterion: () => { events.push('criterion'); return { passed: true, summary: 'green' } },
+      verify: () => { events.push('verify'); return { passed: true, summary: 'green' } },
+      perf: () => { events.push('perf'); return { passed: true, summary: 'green' } },
+      audit: () => { events.push('audit'); return { passed: true, summary: 'green' } },
+      review: () => {
+        events.push('review')
+        reviews += 1
+        return reviews === 1
+          ? { success: false, summary: 'rejected', reviewOutcome: { kind: 'rejected' as const, verdict: { approved: false, summary: 'repair', findings: [{ severity: 'blocking' as const, message: 'missing boundary' }] } } }
+          : { success: true, summary: 'approved', reviewOutcome: { kind: 'approved' as const, verdict: { approved: true, summary: 'approved', findings: [] } } }
+      },
+      repair: (_ctx, request) => { events.push(`repair:${request.round}:${request.finding.message}`); return { success: true, summary: 'repaired' } },
+    })
+
+    expect(result.status).toBe('complete')
+    expect(events).toEqual(['criterion', 'criterion', 'verify', 'perf', 'audit', 'review', 'repair:1:missing boundary', 'criterion', 'criterion', 'verify', 'perf', 'audit', 'review'])
+  })
+
+  it('stops repair at the configured round budget without committing the rejected story', () => {
+    const commits: string[] = []
+    let repairs = 0
+    let reviews = 0
+    const result = runLoop({
+      prdPath: prd(), targetDir: dir, runner: alwaysPass,
+      git: { ...cleanGit(), commitAll: (_targetDir, message) => commits.push(message) },
+      verify: verifyOk,
+      review: () => {
+        reviews += 1
+        return { success: false, summary: 'rejected', reviewOutcome: { kind: 'rejected' as const, verdict: { approved: false, summary: 'repair', findings: [{ severity: 'blocking' as const, message: 'missing boundary' }] } } }
+      },
+      repair: () => { repairs += 1; return { success: true, summary: 'repaired' } },
+      repairLimits: { maxRounds: 1 },
+      maxIterations: 1,
+    })
+
+    expect(result).toMatchObject({ status: 'blocked', reason: expect.stringMatching(/round-budget-exhausted/) })
+    expect(repairs).toBe(1)
+    expect(reviews).toBe(2)
+    expect(commits).toEqual([])
+    expect(loadPrd(prd())[0].passes).toBe(false)
   })
 
   it('picks up a story injected into the PRD mid-run at the next iteration (hot-reload)', () => {
@@ -791,9 +903,42 @@ describe('runLoop with isolation', () => {
       verify: verifyOk, review: reviewReject, isolate: true, maxIterations: 5,
     })
     expect(res.status).toBe('blocked')
-    expect(res.reason).toMatch(/rejected in review/i)
+    expect(res.reason).toMatch(/review-malformed/i)
     expect(loadPrd(isoPrd())[0].passes).toBe(false)
     expect(removed.length).toBe(1) // worktree still cleaned up
+  })
+
+  it('repairs actionable isolated review rejection and reruns all gates inside the worktree before integration', () => {
+    writeFileSync(isoPrd(), `
+- id: S1
+  title: Quality loop
+  priority: 1
+  acceptance:
+    - { id: quality-loop-behaves, text: Quality loop behaves, verify: [npm run test:quality-loop-behaves] }
+    - { id: quality-loop-recovers, text: Quality loop recovers, verify: [npm run test:quality-loop-recovers] }
+  passes: false
+`)
+    const events: string[] = []
+    let reviews = 0
+    const result = runLoop({
+      prdPath: isoPrd(), targetDir: isoDir, runner: alwaysPass, git: fsWorktreeGit(isoDir, []), isolate: true, maxIterations: 1,
+      requireCriterionEvidence: true,
+      verifyCriterion: () => { events.push('criterion'); return { passed: true, summary: 'green' } },
+      verify: () => { events.push('verify'); return { passed: true, summary: 'green' } },
+      perf: () => { events.push('perf'); return { passed: true, summary: 'green' } },
+      audit: () => { events.push('audit'); return { passed: true, summary: 'green' } },
+      review: () => {
+        events.push('review')
+        reviews += 1
+        return reviews === 1
+          ? { success: false, summary: 'rejected', reviewOutcome: { kind: 'rejected' as const, verdict: { approved: false, summary: 'repair', findings: [{ severity: 'blocking' as const, message: 'missing boundary' }] } } }
+          : { success: true, summary: 'approved', reviewOutcome: { kind: 'approved' as const, verdict: { approved: true, summary: 'approved', findings: [] } } }
+      },
+      repair: (_ctx, request) => { events.push(`repair:${request.round}:${request.finding.message}`); return { success: true, summary: 'repaired' } },
+    })
+
+    expect(result.status).toBe('complete')
+    expect(events).toEqual(['criterion', 'criterion', 'verify', 'perf', 'audit', 'review', 'repair:1:missing boundary', 'criterion', 'criterion', 'verify', 'perf', 'audit', 'review'])
   })
 
   it('exposes YOKE_STORY to the verifier in isolated mode too, and unsets it after', () => {

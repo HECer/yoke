@@ -49,4 +49,9 @@ describe('provider invocations', () => {
     expect(buildProviderInvocation('codex', 'P', '/w', 'safe', { bare: true }).args).toContain('--ignore-user-config')
     expect(buildProviderInvocation('claude', 'P', '/w', 'safe', { bare: true }).args).toContain('--bare')
   })
+
+  it('rejects provider selectors containing Windows shell metacharacters', () => {
+    expect(() => buildProviderInvocation('codex', 'P', '/w', 'safe', { model: 'safe&whoami' })).toThrow()
+    expect(() => buildProviderInvocation('codex', 'P', '/w', 'safe', { reasoningEffort: 'high|whoami' })).toThrow()
+  })
 })

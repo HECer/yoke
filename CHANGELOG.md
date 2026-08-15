@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.4.0 — 2026-08-15
+
+### Added
+- `yoke loop run --parallel=N` now executes dependency-ready, non-colliding stories through real provider subprocess workers, isolated worktrees, leased claims, and a FIFO integration queue with fresh integrated-system gates.
+- Reference-driven quality declarations can collect screenshots, files, command output, or benchmark results and run a schema-validated blind critic with bounded repair rounds, elapsed-time limits, blocking or advisory policy, and retained proof.
+- `--candidates=N` can fan out up to five isolated implementations, discard mechanically red candidates, select one green candidate through identity-blind pairwise comparison, and preserve selected/loser evidence before cleanup.
+- Loop status now exposes dispatcher, worker, integrator, candidate lifecycle, worktree, queue, integration, reopen, quality-round, repair-budget, and trusted provider/model provenance data.
+
+### Changed
+- Provider subprocesses use explicit lifecycle contracts and incarnation-aware process records so worker cancellation and cleanup target only the process tree Yoke actually started.
+- Parallel and candidate runs disable adaptive routing, honor story-level provider affinity, latch pause requests across the whole dispatcher, and rerun quality plus review after integration.
+- `yoke loop cleanup` retains Yoke worktrees unless `--remove-worktrees` is explicit, while still reaping recorded orphan runners and stale locks safely.
+
+### Fixed
+- Expired claims, worker crashes, merge conflicts, pause races, and integration failures now release ownership deterministically, retain terminal proof, and reopen stories without leaking worktrees or marking false completion.
+- Quality repair fails closed on malformed critic output, reference drift, provider/model provenance mismatch, candidate identity leakage, unavailable critics, exhausted limits, and mechanically red repairs.
+- The watchdog resolves its TypeScript loader from both source and built npm layouts on Node 20+, and read-only Codex comparisons can run in disposable candidate worktrees without weakening normal repository checks.
+
+### Security
+- Blind comparison requests expose only opaque labels and digests while binding every verdict to the trusted judge provider, model, prompt, rubric, reference, and candidate provenance.
+- Cleanup and cancellation use project-scoped leases, owner tokens, PID birth/incarnation checks, and recorded process handles rather than machine-wide process-name matching.
+
 ## 1.3.0 — 2026-08-09
 
 ### Added

@@ -21,11 +21,46 @@ export function appendLog(dir: string, line: string, capBytes: number = LOG_CAP_
 }
 
 export type LoopState = 'running' | 'blocked' | 'complete' | 'cap-reached' | 'paused'
-export type LoopPhase = 'implementing' | 'verifying' | 'perf' | 'audit' | 'reviewing' | 'committing'
+export type LoopPhase = 'implementing' | 'verifying' | 'perf' | 'audit' | 'quality-preflight' | 'comparing' | 'selecting-candidate' | 'reviewing' | 'repairing' | 'committing'
 
 // Remaining-time estimate from observed story durations (current run first,
 // falling back to the persisted history of previous runs).
 export interface LoopEta { avgStoryMs: number; remainingStories: number; etaMs: number }
+export interface QualityStatus {
+  currentRound: number
+  usedRepairs: number
+  maxRepairs?: number
+  unbounded?: true
+  elapsedMs: number
+  policy: 'blocking' | 'advisory'
+  referenceDigest?: string
+}
+
+export interface ParallelWorkerStatus {
+  readonly story: string
+  readonly storyTitle: string
+  readonly provider: string
+  readonly model?: string
+  readonly candidateId?: string
+  readonly worktree?: string
+  readonly lifecycle?: import('./candidate-contracts.js').CandidateLifecycleState
+  readonly reason?: string
+  readonly phase?: LoopPhase
+  readonly quality?: QualityStatus
+}
+
+export interface ParallelStatus {
+  readonly dispatcherId: string
+  readonly maxConcurrency: number
+  readonly activeWorkers: number
+  readonly queuedCandidates: number
+  readonly integrated: number
+  readonly reopened: number
+  readonly iteration?: number
+  readonly progress?: Progress
+  readonly workers?: readonly ParallelWorkerStatus[]
+  readonly integrator?: ParallelWorkerStatus
+}
 
 export function fmtDuration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000))
@@ -104,6 +139,8 @@ export interface LoopStatus {
   startedAt: string
   updatedAt: string
   tokens?: TokenUsage
+  quality?: QualityStatus
+  parallel?: ParallelStatus
 }
 
 function statusPath(dir: string): string {
@@ -140,8 +177,12 @@ export interface LoopReporter {
   complete(progress: Progress): void
   capReached(progress: Progress): void
   paused(progress: Progress): void
+  quality(status: QualityStatus): void
   /** Accumulate runner token usage; totals ride along on every subsequent status write. */
   addTokens(usage: TokenUsage): void
+  parallel?(status: ParallelStatus): void
+  parallelWorker?(status: ParallelWorkerStatus): void
+  parallelIntegrator?(status: ParallelWorkerStatus | null): void
 }
 
 export interface ReporterOpts {
@@ -226,23 +267,87 @@ export function makeReporter(
     },
     blocked(reason) {
       const base = current ?? emptyStatus(now().toISOString())
-      persist({ ...base, state: 'blocked', reason, updatedAt: now().toISOString() },
+      persist({ ...withoutParallel(base), state: 'blocked', reason, updatedAt: now().toISOString() },
         'blocked', `■ blocked on ${base.story ?? '?'}: ${reason}`)
     },
     complete(progress) {
-      persist({ ...(current ?? emptyStatus(now().toISOString())), state: 'complete', phase: undefined,
+      persist({ ...withoutParallel(current ?? emptyStatus(now().toISOString())), state: 'complete', phase: undefined,
         progress, reason: undefined, updatedAt: now().toISOString() },
         'complete', `✔ loop complete — ${progress.passed}/${progress.total}`)
     },
     capReached(progress) {
-      persist({ ...(current ?? emptyStatus(now().toISOString())), state: 'cap-reached', phase: undefined,
+      persist({ ...withoutParallel(current ?? emptyStatus(now().toISOString())), state: 'cap-reached', phase: undefined,
         progress, updatedAt: now().toISOString() },
         'cap-reached', `◾ iteration cap reached — ${progress.passed}/${progress.total}`)
     },
     paused(progress) {
-      persist({ ...(current ?? emptyStatus(now().toISOString())), state: 'paused', phase: undefined,
+      persist({ ...withoutParallel(current ?? emptyStatus(now().toISOString())), state: 'paused', phase: undefined,
         progress, updatedAt: now().toISOString() },
         'paused', `⏸ loop paused — ${progress.passed}/${progress.total}`)
+    },
+    quality(status) {
+      const base = current ?? emptyStatus(now().toISOString())
+      persist({ ...base, quality: status, updatedAt: now().toISOString() }, 'quality', `  · quality round ${status.currentRound}…`)
+    },
+    parallel(status) {
+      const base = current ?? emptyStatus(now().toISOString())
+      const previousWorkers = base.parallel?.workers ?? []
+      const previousIntegrator = base.parallel?.integrator
+      const workers = status.workers?.map(worker => {
+        const previous = previousWorkers.find(candidate => sameWorker(candidate, worker))
+        return previous
+          ? {
+              ...worker,
+              ...(previous.phase ? { phase: previous.phase } : {}),
+              ...(previous.quality ? { quality: previous.quality } : {}),
+            }
+          : worker
+      })
+      const reportedCandidates = previousWorkers.filter(worker => worker.candidateId && !(workers ?? []).some(candidate => sameWorker(candidate, worker)))
+      const parallel = {
+        ...status,
+        ...(workers !== undefined
+          ? { workers: [...workers, ...reportedCandidates] }
+          : previousWorkers.length > 0 ? { workers: previousWorkers } : {}),
+        ...(status.integrator !== undefined
+          ? { integrator: status.integrator }
+          : previousIntegrator ? { integrator: previousIntegrator } : {}),
+      }
+      persist({
+        ...base,
+        iteration: status.iteration ?? base.iteration,
+        progress: status.progress ?? base.progress,
+        parallel,
+        updatedAt: now().toISOString(),
+      }, 'parallel', `  · parallel ${status.activeWorkers}/${status.maxConcurrency}`)
+    },
+    parallelWorker(status) {
+      const base = current
+      const parallel = base?.parallel
+      if (!base || !parallel?.workers) return
+      persist({
+        ...base,
+        parallel: {
+          ...parallel,
+          workers: upsertWorker(parallel.workers, status),
+        },
+        updatedAt: now().toISOString(),
+      }, 'parallel-worker', `  · ${status.story} ${status.phase ?? 'quality'}…`)
+    },
+    parallelIntegrator(status) {
+      const base = current
+      const parallel = base?.parallel
+      if (!base || !parallel) return
+      if (status) {
+        persist({
+          ...base,
+          parallel: { ...parallel, integrator: status },
+          updatedAt: now().toISOString(),
+        }, 'parallel-integrator', `  · integrating ${status.story} ${status.phase ?? 'quality'}…`)
+        return
+      }
+      const { integrator: _integrator, ...withoutIntegrator } = parallel
+      persist({ ...base, parallel: withoutIntegrator, updatedAt: now().toISOString() }, 'parallel-integrator', '  · integration complete')
     },
     addTokens(usage) {
       const model = usage.model ?? tokens?.model
@@ -268,6 +373,24 @@ function emptyStatus(ts: string): LoopStatus {
   return { state: 'running', iteration: 0, progress: { passed: 0, total: 0 }, startedAt: ts, updatedAt: ts }
 }
 
+function sameWorker(left: ParallelWorkerStatus, right: ParallelWorkerStatus): boolean {
+  return left.candidateId || right.candidateId
+    ? left.story === right.story && left.candidateId === right.candidateId && left.worktree === right.worktree
+    : left.story === right.story
+}
+
+function upsertWorker(workers: readonly ParallelWorkerStatus[], status: ParallelWorkerStatus): ParallelWorkerStatus[] {
+  const index = workers.findIndex(worker => sameWorker(worker, status))
+  return index < 0
+    ? [...workers, status]
+    : workers.map((worker, workerIndex) => workerIndex === index ? { ...worker, ...status } : worker)
+}
+
+function withoutParallel(status: LoopStatus): Omit<LoopStatus, 'parallel'> {
+  const { parallel: _parallel, ...withoutParallel } = status
+  return withoutParallel
+}
+
 export const noopReporter: LoopReporter = {
-  storyStart() {}, storyDone() {}, phase() {}, blocked() {}, complete() {}, capReached() {}, paused() {}, addTokens() {},
+  storyStart() {}, storyDone() {}, phase() {}, blocked() {}, complete() {}, capReached() {}, paused() {}, quality() {}, addTokens() {},
 }

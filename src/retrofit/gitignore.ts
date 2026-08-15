@@ -12,6 +12,8 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/loop.lock.*.tmp',
   '.yoke/loop.pause',
   '.yoke/runner.pid',
+  '.yoke/provider-processes/',
+  '.yoke/claims/',
   '.yoke/ambiguity.md',
   '.yoke/decision-request.yaml',
   '.yoke/pending-decision.yaml',
@@ -20,6 +22,7 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/decision-*.yaml.*.tmp',
   '.yoke/story-durations.json',
   '.yoke/proof/',
+  '.yoke/references/',
   '.yoke/changes/',
 ]
 

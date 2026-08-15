@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { runWatchdog, parseWatchdogArgs, type SpawnLike } from '../../src/loop/watchdog.js'
+import { killProcessForCleanup, killProcessTreeForCleanup, runWatchdog, parseWatchdogArgs, type SpawnLike } from '../../src/loop/watchdog.js'
 
 function fakeChild() {
   const child: any = new EventEmitter()
@@ -95,6 +95,15 @@ describe('runWatchdog', () => {
     child.emit('close', 3)
     await expect(p).resolves.toBe(3)
   })
+
+  it('reports an externally signaled child as a nonzero exit', async () => {
+    const child = fakeChild()
+    const completion = runWatchdog({ command: 'x', args: [], idleMs: 0, spawnFn: () => child, stdin: new EventEmitter() as any })
+
+    child.emit('close', null, 'SIGTERM')
+
+    await expect(completion).resolves.toBe(143)
+  })
 })
 
 describe('runWatchdog process-tree kill (win32 orphan fix)', () => {
@@ -124,7 +133,50 @@ describe('runWatchdog process-tree kill (win32 orphan fix)', () => {
   })
 })
 
-describe('runWatchdog pid file (scoped-cleanup contract)', () => {
+describe('killProcessTreeForCleanup', () => {
+  it('keeps legacy runner cleanup scoped to its direct PID', () => {
+    const signals: Array<readonly [number, string | number]> = []
+
+    expect(killProcessForCleanup(4242, 'linux', () => 0, (pid, signal) => { signals.push([pid, signal]) }, () => false)).toBe(true)
+
+    expect(signals).toEqual([[4242, 'SIGKILL']])
+  })
+
+  it('confirms Windows taskkill only after a zero exit status', () => {
+    const calls: string[][] = []
+
+    expect(killProcessTreeForCleanup(4242, 'win32', (command, args) => {
+      calls.push([command, ...args])
+      return 0
+    })).toBe(true)
+
+    expect(calls).toEqual([['taskkill', '/PID', '4242', '/T', '/F']])
+  })
+
+  it('rejects a nonzero Windows taskkill exit status', () => {
+    expect(killProcessTreeForCleanup(4242, 'win32', () => 1)).toBe(false)
+  })
+
+  it('kills and confirms the dedicated POSIX process group', () => {
+    const signals: Array<readonly [number, string | number]> = []
+    let checks = 0
+
+    expect(killProcessTreeForCleanup(4242, 'linux', () => 0, (pid, signal) => { signals.push([pid, signal]); checks += 1 })).toBe(true)
+
+    expect(signals).toEqual([[-4242, 'SIGKILL']])
+    expect(checks).toBe(1)
+  })
+
+  it('confirms POSIX cleanup when the process group accepts uncatchable SIGKILL', () => {
+    const signals: Array<readonly [number, string | number]> = []
+
+    expect(killProcessTreeForCleanup(4242, 'linux', () => 0, (pid, signal) => { signals.push([pid, signal]) })).toBe(true)
+
+    expect(signals).toEqual([[-4242, 'SIGKILL']])
+  })
+})
+
+describe('runWatchdog pid file (scoped-cleanup contract)', { timeout: 15_000 }, () => {
   it('records watchdog + child pids on spawn and removes the file on close', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'yoke-wd-pid-'))
     const pidFile = join(dir, 'runner.pid')
@@ -135,6 +187,34 @@ describe('runWatchdog pid file (scoped-cleanup contract)', () => {
     expect(rec.watchdogPid).toBe(process.pid)
     child.emit('close', 0)
     await expect(p).resolves.toBe(0)
+    expect(existsSync(pidFile)).toBe(false)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('retains runner.pid when requested tree termination is unconfirmed', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yoke-wd-unconfirmed-'))
+    const pidFile = join(dir, 'runner.pid')
+    const child = fakeChild()
+    const completion = runWatchdog({ command: 'x', args: [], idleMs: 100, spawnFn: () => child, stdin: new EventEmitter() as any, pidFile, killTree: () => false })
+
+    vi.advanceTimersByTime(150)
+    child.emit('close', null)
+
+    await expect(completion).resolves.toBe(124)
+    expect(existsSync(pidFile)).toBe(true)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('removes runner.pid after requested tree termination is confirmed', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yoke-wd-confirmed-'))
+    const pidFile = join(dir, 'runner.pid')
+    const child = fakeChild()
+    const completion = runWatchdog({ command: 'x', args: [], idleMs: 100, spawnFn: () => child, stdin: new EventEmitter() as any, pidFile, killTree: () => true })
+
+    vi.advanceTimersByTime(150)
+    child.emit('close', null)
+
+    await expect(completion).resolves.toBe(124)
     expect(existsSync(pidFile)).toBe(false)
     rmSync(dir, { recursive: true, force: true })
   })

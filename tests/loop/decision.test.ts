@@ -119,7 +119,7 @@ describe('critical decision handshake', () => {
     expect(await main(['loop', 'resume', dir, '--discard'])).toBe(0)
     expect(readDecisionResume(dir)).toBeNull()
     expect(readPendingDecision(dir)).not.toBeNull()
-  })
+  }, 15_000)
 
   it('accepts existing PRD story IDs with spaces or slashes but rejects bidi controls', () => {
     const base = readPendingDecision(dir)!

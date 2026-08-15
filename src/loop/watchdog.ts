@@ -1,16 +1,18 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { constants } from 'node:os'
 import { writeFileSync, rmSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import type { Readable } from 'node:stream'
+import { processIncarnation } from '../agents/process-incarnation.js'
 
 export interface SpawnLike {
-  (command: string, args: string[], opts: { shell: boolean }): {
+  (command: string, args: string[], opts: { shell: boolean; detached: boolean }): {
     stdout: { on(ev: 'data', cb: (d: unknown) => void): void }
     stderr: { on(ev: 'data', cb: (d: unknown) => void): void }
     stdin: unknown
     kill(signal?: string): void
     pid?: number
-    on(ev: 'close', cb: (code: number | null) => void): void
+    on(ev: 'close', cb: (code: number | null, signal: string | null) => void): void
     on(ev: 'error', cb: (e: Error) => void): void
   }
 }
@@ -31,7 +33,7 @@ export interface WatchdogOpts {
    * orphans the actual agent process — which then keeps writing to the
    * worktree, holds file handles, and burns API tokens. Injectable for tests.
    */
-  killTree?: (pid: number, force: boolean) => void
+  killTree?: (pid: number, force: boolean) => boolean | void
   /**
    * Record {watchdogPid, childPid} here on spawn, remove on exit. This is the
    * scoped-cleanup contract: `yoke loop cleanup` kills ONLY pids recorded in
@@ -43,12 +45,59 @@ export interface WatchdogOpts {
 
 // Kill one recorded process tree, platform-appropriately. Exported for
 // `yoke loop cleanup` (scoped reaping of recorded runner pids).
-export function killProcessTree(pid: number): void {
+export function killProcessTree(pid: number, force = true): void {
   if (process.platform === 'win32') {
     try { spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }) } catch { /* best-effort */ }
   } else {
-    try { process.kill(pid, 'SIGKILL') } catch { /* already gone */ }
+    try { process.kill(pid, force ? 'SIGKILL' : 'SIGTERM') } catch { /* already gone */ }
   }
+}
+
+export type TaskkillRunner = (command: string, args: string[]) => number | null
+export type ProcessSignaler = (pid: number, signal: NodeJS.Signals | 0) => void
+export type ProcessAlive = (pid: number) => boolean
+
+function waitForCleanupRetry(): void {
+  spawnSync(process.execPath, ['-e', 'Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)'], { stdio: 'ignore' })
+}
+
+export function killProcessForCleanup(
+  pid: number,
+  platform: NodeJS.Platform = process.platform,
+  runTaskkill: TaskkillRunner = (command, args) => spawnSync(command, args, { stdio: 'ignore' }).status,
+  sendSignal: ProcessSignaler = (target, signal) => { process.kill(target, signal) },
+  isProcessAlive: ProcessAlive = (target) => {
+    try { process.kill(target, 0); return true } catch { return false }
+  },
+): boolean {
+  if (platform === 'win32') return runTaskkill('taskkill', ['/PID', String(pid), '/T', '/F']) === 0
+  try {
+    sendSignal(pid, 'SIGKILL')
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ESRCH'
+  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!isProcessAlive(pid)) return true
+    waitForCleanupRetry()
+  }
+  return false
+}
+
+export function killProcessTreeForCleanup(
+  pid: number,
+  platform: NodeJS.Platform = process.platform,
+  runTaskkill: TaskkillRunner = (command, args) => spawnSync(command, args, { stdio: 'ignore' }).status,
+  sendSignal: ProcessSignaler = (target, signal) => { process.kill(target, signal) },
+): boolean {
+  if (platform === 'win32') return runTaskkill('taskkill', ['/PID', String(pid), '/T', '/F']) === 0
+  try {
+    // Provider processes run detached on POSIX, so their PID is also the
+    // process-group leader. Signal the group to reap descendants as well.
+    sendSignal(-pid, 'SIGKILL')
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ESRCH'
+  }
+  return true
 }
 
 // win32 default: kill the whole tree. Console apps have no reliable soft-close
@@ -62,7 +111,7 @@ export function runWatchdog(opts: WatchdogOpts): Promise<number> {
   const spawnFn = opts.spawnFn ?? (spawn as unknown as SpawnLike)
   const out = opts.out ?? ((d) => process.stdout.write(d as Buffer))
   const err = opts.err ?? ((d) => process.stderr.write(d as Buffer))
-  const child = spawnFn(opts.command, opts.args, { shell: process.platform === 'win32' })
+  const child = spawnFn(opts.command, opts.args, { shell: process.platform === 'win32', detached: process.platform !== 'win32' })
 
   if (opts.stdin && (child.stdin as unknown)) {
     try { (opts.stdin as Readable).pipe(child.stdin as never) } catch { /* no stdin */ }
@@ -70,7 +119,7 @@ export function runWatchdog(opts: WatchdogOpts): Promise<number> {
 
   if (opts.pidFile && child.pid !== undefined) {
     try {
-      writeFileSync(opts.pidFile, JSON.stringify({ watchdogPid: process.pid, childPid: child.pid, startedAt: new Date().toISOString() }))
+      writeFileSync(opts.pidFile, JSON.stringify({ watchdogPid: process.pid, watchdogIncarnation: processIncarnation(process.pid), childPid: child.pid, childIncarnation: processIncarnation(child.pid), startedAt: new Date().toISOString() }))
     } catch { /* best-effort — cleanup falls back to worktree/lock handling */ }
   }
   const removePidFile = () => {
@@ -80,11 +129,17 @@ export function runWatchdog(opts: WatchdogOpts): Promise<number> {
   const graceMs = opts.graceMs ?? 5000
   // Explicitly-passed killTree wins (including an explicit undefined, which pins
   // the per-process signal path — tests use this to be platform-independent).
-  const killTree = 'killTree' in opts ? opts.killTree : (process.platform === 'win32' ? taskkillTree : undefined)
+  const killTree = 'killTree' in opts ? opts.killTree : (pid: number, _force: boolean) => killProcessTreeForCleanup(pid)
   // Terminate the child — via the tree-killer when we have one and a pid,
   // otherwise per-process signals (POSIX default; SIGKILL is uncatchable).
+  let terminationRequested = false
+  let terminationConfirmed = false
   const terminate = (child: { pid?: number; kill(signal?: string): void }, force: boolean): void => {
-    if (killTree && child.pid !== undefined) { killTree(child.pid, force); return }
+    terminationRequested = true
+    if (killTree && child.pid !== undefined) {
+      terminationConfirmed = killTree(child.pid, force) === true || terminationConfirmed
+      return
+    }
     try { child.kill(force ? 'SIGKILL' : 'SIGTERM') } catch { /* already gone */ }
   }
 
@@ -124,7 +179,14 @@ export function runWatchdog(opts: WatchdogOpts): Promise<number> {
     child.stdout.on('data', (d) => { out(d); arm() })
     child.stderr.on('data', (d) => { err(d); arm() })
     child.on('error', () => { clear(); removePidFile(); resolve(127) })
-    child.on('close', (code) => { clear(); removePidFile(); resolve(killedForIdle ? 124 : (code ?? 0)) })
+    child.on('close', (code, signal) => {
+      clear()
+      if (!terminationRequested || terminationConfirmed) removePidFile()
+      if (killedForIdle) { resolve(124); return }
+      if (code !== null) { resolve(code); return }
+      const signalNumber = signal ? constants.signals[signal as NodeJS.Signals] : undefined
+      resolve(signalNumber === undefined ? 1 : 128 + signalNumber)
+    })
     arm()
   })
 }
