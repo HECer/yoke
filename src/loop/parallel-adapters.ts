@@ -1,6 +1,5 @@
-import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { CandidateLifecycle, CandidateOwnership, CandidateWorktreeRequest } from './candidate-contracts.js'
 import type { CommitIdentity } from './identity.js'
@@ -146,6 +145,7 @@ function writeCandidateStatus(
 
 function rebaseCandidate(targetDir: string, input: DispatcherWorkerInput): DispatcherRebase {
   const currentHead = gitText(targetDir, ['rev-parse', 'HEAD'])
+  const candidateHead = gitText(input.worktree.path, ['rev-parse', 'HEAD'])
   try {
     execFileSync('git', ['merge-base', '--is-ancestor', input.worktree.baseCommit, 'HEAD'], { cwd: input.worktree.path, stdio: 'pipe' })
   } catch {
@@ -157,29 +157,37 @@ function rebaseCandidate(targetDir: string, input: DispatcherWorkerInput): Dispa
     } catch {
       return { kind: 'reopen', reason: `candidate base ${input.worktree.baseCommit} is stale against target ${currentHead}` }
     }
-    const emptyHooks = mkdtempSync(join(tmpdir(), 'yoke-empty-hooks-'))
-    const mechanics = [
-      '-c', `core.hooksPath=${emptyHooks}`,
-      '-c', 'commit.gpgsign=false',
-      '-c', 'user.name=Yoke Temporary',
-      '-c', 'user.email=yoke@localhost',
-    ]
+    let candidateTree: string
     try {
-      if (gitText(input.worktree.path, ['status', '--porcelain=v1', '--untracked-files=all'])) {
-        execFileSync('git', ['add', '-A'], { cwd: input.worktree.path, stdio: 'pipe' })
-        if (gitText(input.worktree.path, ['diff', '--cached', '--name-only'])) {
-          execFileSync('git', [...mechanics, 'commit', '--no-verify', '-m', 'yoke: temporary candidate snapshot'], { cwd: input.worktree.path, stdio: 'pipe' })
-        }
-        if (gitText(input.worktree.path, ['status', '--porcelain=v1', '--untracked-files=all'])) {
-          return { kind: 'reopen', reason: 'candidate contains changes Git cannot snapshot' }
-        }
-      }
-      execFileSync('git', [...mechanics, '-c', 'rebase.autoStash=false', '-c', 'rebase.updateRefs=false', 'rebase', '--no-verify', currentHead], { cwd: input.worktree.path, stdio: 'pipe' })
+      execFileSync('git', ['add', '-A'], { cwd: input.worktree.path, stdio: 'pipe' })
+      const unstaged = spawnSync('git', ['diff', '--quiet', '--ignore-submodules=none'], { cwd: input.worktree.path, stdio: 'pipe' })
+      if (unstaged.error || unstaged.status !== 0) return { kind: 'reopen', reason: 'candidate contains changes Git cannot snapshot' }
+      candidateTree = gitText(input.worktree.path, ['write-tree'])
     } catch (error) {
-      try { execFileSync('git', [...mechanics, 'rebase', '--abort'], { cwd: input.worktree.path, stdio: 'pipe' }) } catch {}
-      return { kind: 'reopen', reason: `candidate rebase failed: ${errorMessage(error)}` }
-    } finally {
-      rmSync(emptyHooks, { recursive: true, force: true })
+      return { kind: 'reopen', reason: `candidate snapshot failed: ${errorMessage(error)}` }
+    }
+    const merge = spawnSync('git', ['merge-tree', '--write-tree', '--messages', '--name-only', `--merge-base=${input.worktree.baseCommit}`, currentHead, candidateTree], {
+      cwd: input.worktree.path,
+      encoding: 'utf8',
+    })
+    const mergedTree = merge.stdout.trim().split(/\r?\n/u)[0] ?? ''
+    if (merge.error || merge.status !== 0 || !/^[0-9a-f]{40,64}$/u.test(mergedTree)) {
+      const detail = [merge.stderr, merge.stdout].map(value => value.trim()).filter(Boolean).join(' · ')
+      return { kind: 'reopen', reason: `candidate tree merge failed${detail ? `: ${detail}` : ''}` }
+    }
+    try {
+      execFileSync('git', ['reset', '--soft', currentHead], { cwd: input.worktree.path, stdio: 'pipe' })
+      execFileSync('git', ['read-tree', '--reset', '-u', mergedTree], { cwd: input.worktree.path, stdio: 'pipe' })
+      const unstaged = spawnSync('git', ['diff', '--quiet', '--ignore-submodules=none'], { cwd: input.worktree.path, stdio: 'pipe' })
+      if (unstaged.error || unstaged.status !== 0 || gitText(input.worktree.path, ['ls-files', '--unmerged']) || gitText(input.worktree.path, ['write-tree']) !== mergedTree) {
+        throw new Error('materialized candidate tree did not match the computed merge')
+      }
+    } catch (error) {
+      try {
+        execFileSync('git', ['reset', '--soft', candidateHead], { cwd: input.worktree.path, stdio: 'pipe' })
+        execFileSync('git', ['read-tree', '--reset', '-u', candidateTree], { cwd: input.worktree.path, stdio: 'pipe' })
+      } catch {}
+      return { kind: 'reopen', reason: `candidate tree materialization failed: ${errorMessage(error)}` }
     }
   }
   // Preserve the worker's candidate tree, but return commit authority to the dispatcher.
