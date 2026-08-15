@@ -93,6 +93,15 @@ describe('prd', () => {
     expect(storyPathSegment('Auth callback: ../../outside')).not.toContain('..')
   })
 
+  it('uses lowercase fixed-length keys that distinguish case-folding filesystem story ids', () => {
+    const lowercase = storyPathSegment('story-a')
+    const uppercase = storyPathSegment('STORY-A')
+
+    expect(lowercase).toMatch(/^story-[a-f0-9]{64}$/)
+    expect(uppercase).toMatch(/^story-[a-f0-9]{64}$/)
+    expect(lowercase).not.toBe(uppercase)
+  })
+
   it('selects the highest-priority (lowest number) unfinished story', () => {
     writeFileSync(prd(), sample)
     const next = selectNextStory(loadPrd(prd()))
@@ -128,6 +137,39 @@ describe('PRD dependency graph', () => {
   it('accepts optional needs, area, and agent fields', () => {
     const stories = [{ id: 'A', title: 'A', priority: 1, acceptance: ['x'], passes: false, needs: [], area: 'api', agent: 'codex' as const }]
     expect(validateDependencies(stories)).toEqual([])
+  })
+  it('accepts the required story quality reference, candidate, and rubric contract', () => {
+    writeFileSync(prd(), `
+- id: A
+  title: A
+  priority: 1
+  acceptance: [x]
+  passes: false
+  quality:
+    reference: { name: product-brief, source: docs/brief.md, kind: file, digest: sha256:abc }
+    candidate: { kind: screenshots, paths: [artifacts/home.png] }
+    rubric: Screenshot matches the approved product brief
+    policy: advisory
+`)
+    expect(loadPrd(prd())[0].quality).toMatchObject({
+      reference: { name: 'product-brief', kind: 'file' },
+      candidate: { kind: 'screenshots', paths: ['artifacts/home.png'] },
+      policy: 'advisory',
+    })
+  })
+  it('requires candidate paths for file evidence and a command for command evidence', () => {
+    writeFileSync(prd(), `
+- id: A
+  title: A
+  priority: 1
+  acceptance: [x]
+  passes: false
+  quality:
+    reference: { name: product-brief, source: docs/brief.md, kind: file }
+    candidate: { kind: files }
+    rubric: Check output
+`)
+    expect(() => loadPrd(prd())).toThrow()
   })
   it('diagnoses unknown, self, duplicate, and cyclic dependencies', () => {
     const base = (id: string, needs: string[] = []) => ({ id, title: id, priority: 1, acceptance: ['x'], passes: false, needs })

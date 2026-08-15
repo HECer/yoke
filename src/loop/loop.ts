@@ -2,13 +2,17 @@ import { existsSync, unlinkSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { isAcceptanceCriterion, loadPrd, savePrd, selectNextStory, allPass, progress, storyPathSegment, type AcceptanceCriterion, type Story } from './prd.js'
 import { stopTheLineGate, preDispatchGate, type GitOps } from './gates.js'
-import type { AgentRunner } from './runner.js'
+import type { AgentContext, AgentResult, AgentRunner } from './runner.js'
 import type { Verifier } from './verify.js'
 import { appendDecision, contextDir } from '../context/context.js'
 import { noopReporter, type LoopReporter } from './reporter.js'
 import type { CommitIdentity } from './identity.js'
 import { consumeDecisionRequest } from './decision.js'
 import { writeCriterionEvidence } from './evidence.js'
+import { runQualityRepairLoop, type QualityStage, type RepairRequest } from '../quality/loop.js'
+import type { RepairLimits, ReviewOutcome } from '../quality/repair.js'
+import type { QualityStatusMetadata } from '../quality/types.js'
+export type { QualityStage } from '../quality/loop.js'
 
 function blockReason(base: string, targetDir: string, git: GitOps): string {
   let dirty = false
@@ -36,8 +40,90 @@ export interface LoopOptions {
   maxIterations: number
   isolate?: boolean
   review?: AgentRunner
+  repair?: (context: AgentContext, request: RepairRequest) => AgentResult
+  repairLimits?: RepairLimits
+  qualityPreflight?: (context: AgentContext) => { readonly kind: 'ready' } | { readonly kind: 'blocked'; readonly summary: string } | { readonly kind: 'skipped'; readonly summary: string }
+  qualityStage?: (context: AgentContext, round: number) => QualityStage
+  qualityEnabled?: (story: Story) => boolean
+  qualityMetadata?: (context: AgentContext) => QualityStatusMetadata | undefined
   reporter?: LoopReporter
   commitIdentity?: CommitIdentity
+}
+
+function reviewOutcome(result: AgentResult): ReviewOutcome {
+  if (result.reviewOutcome) return result.reviewOutcome
+  if (result.success) {
+    return { kind: 'approved', verdict: { approved: true, summary: result.summary, findings: [] } }
+  }
+  return { kind: 'malformed', summary: result.summary }
+}
+
+function repairBlockReason(
+  outcome: ReturnType<typeof runQualityRepairLoop>,
+  story: Story,
+  targetDir: string,
+  git: GitOps,
+): string | null {
+  if (outcome.kind === 'approved' || outcome.kind === 'paused' || outcome.kind === 'cancelled') return null
+  const detail = outcome.summary ? `: ${outcome.summary}` : ''
+  const stage = outcome.reason === 'gate-failed' ? ` (${outcome.stage})` : ''
+  return blockReason(`story ${story.id} repair blocked${stage}: ${outcome.reason}${detail}`, targetDir, git)
+}
+
+function runQualityReview(
+  opts: LoopOptions,
+  executionDir: string,
+  story: Story,
+  reporter: LoopReporter,
+): ReturnType<typeof runQualityRepairLoop> | null {
+  const qualityAssessment = opts.qualityEnabled?.(story) === false ? undefined : opts.qualityStage
+  const reviewAssessment = opts.review
+  if (!qualityAssessment && !reviewAssessment) return null
+  const qualityMetadata = opts.qualityMetadata?.({ targetDir: executionDir, story })
+  const rerunGates = () => {
+    const criteria = runCriterionGates(opts, executionDir, story)
+    if (!criteria.passed) return { kind: 'failed' as const, stage: 'criterion' as const, summary: criteria.summary }
+    reporter.phase('verifying')
+    const verify = runGate(opts.verify, executionDir, story.id)
+    if (!verify.passed) return { kind: 'failed' as const, stage: 'verify' as const, summary: verify.summary }
+    if (opts.perf) {
+      reporter.phase('perf')
+      const perf = runGate(opts.perf, executionDir, story.id)
+      if (!perf.passed) return { kind: 'failed' as const, stage: 'perf' as const, summary: perf.summary }
+    }
+    if (opts.audit) {
+      reporter.phase('audit')
+      const audit = runGate(opts.audit, executionDir, story.id)
+      if (!audit.passed) return { kind: 'failed' as const, stage: 'audit' as const, summary: audit.summary }
+    }
+    return { kind: 'passed' as const }
+  }
+  return runQualityRepairLoop({
+    quality: qualityAssessment
+      ? round => {
+        reporter.phase('comparing')
+        return qualityAssessment({ targetDir: executionDir, story }, round)
+      }
+      : undefined,
+    review: reviewAssessment
+      ? () => {
+        reporter.phase('reviewing')
+        return reviewOutcome(reviewAssessment({ targetDir: executionDir, story }))
+      }
+      : undefined,
+    repair: request => {
+      reporter.phase('repairing')
+      if (!opts.repair) return { kind: 'blocked', summary: 'repair callback is not configured' }
+      const result = opts.repair({ targetDir: executionDir, story }, request)
+      return result.success ? { kind: 'repaired' } : { kind: 'blocked', summary: result.summary }
+    },
+    rerunGates,
+    limits: opts.repairLimits,
+    pause: () => consumePause(opts.targetDir),
+    onStatus: status => {
+      if (qualityMetadata) reporter.quality({ ...status, ...qualityMetadata })
+    },
+  })
 }
 
 export interface LoopResult {
@@ -51,6 +137,13 @@ export interface LoopResult {
 // The loop consumes (deletes) it and stops with state 'paused' — never mid-story.
 export function pauseFilePath(targetDir: string): string {
   return join(targetDir, '.yoke', 'loop.pause')
+}
+
+function consumePause(targetDir: string): boolean {
+  const file = pauseFilePath(targetDir)
+  if (!existsSync(file)) return false
+  try { unlinkSync(file) } catch { /* consumed best-effort — pausing still wins */ }
+  return true
 }
 
 // Abort channel for an agent that hits genuinely undecidable acceptance criteria
@@ -147,9 +240,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
 
     // Intake is work at a story boundary. Cap, pause, and clean-tree safety must
     // win before a planner is allowed to edit and commit the PRD.
-    const pauseFile = pauseFilePath(opts.targetDir)
-    if (existsSync(pauseFile)) {
-      try { unlinkSync(pauseFile) } catch { /* consumed best-effort — pausing still wins */ }
+    if (consumePause(opts.targetDir)) {
       reporter.paused(progress(stories))
       return { status: 'paused', iterations, finalProgress: progress(stories) }
     }
@@ -223,6 +314,16 @@ export function runLoop(opts: LoopOptions): LoopResult {
 
     reporter.storyStart({ id: story.id, title: story.title }, iterations + 1, progress(stories))
 
+    if (opts.qualityPreflight && opts.qualityEnabled?.(story) !== false) {
+      reporter.phase('quality-preflight')
+      const preflight = opts.qualityPreflight({ targetDir: opts.targetDir, story })
+      if (preflight.kind === 'blocked') {
+        const reason = blockReason(`story ${story.id} quality preflight: ${preflight.summary}`, opts.targetDir, opts.git)
+        reporter.blocked(reason)
+        return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+      }
+    }
+
     if (opts.isolate) {
       const wt = join(opts.targetDir, '.yoke', 'worktrees', storyPathSegment(story.id))
       const wtPrd = join(wt, relative(opts.targetDir, opts.prdPath))
@@ -292,12 +393,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
         const summary = result.success
           ? result.summary
           : `${result.summary} (runner exited non-zero but verify is green)`
-        if (opts.review) {
-          reporter.phase('reviewing')
-          const reviewResult = opts.review({ targetDir: wt, story })
-          if (!reviewResult.success) {
+        const repairOutcome = runQualityReview(opts, wt, story, reporter)
+        if (repairOutcome) {
+          if (repairOutcome.kind === 'paused') {
+            reporter.paused(progress(stories))
+            return { status: 'paused', iterations, finalProgress: progress(stories) }
+          }
+          const reason = repairBlockReason(repairOutcome, story, opts.targetDir, opts.git)
+          if (reason) {
             result.routing?.recordOutcome(false)
-            const reason = blockReason(`story ${story.id} rejected in review: ${reviewResult.summary}`, opts.targetDir, opts.git)
             reporter.blocked(reason)
             return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
           }
@@ -401,12 +505,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
       ? result.summary
       : `${result.summary} (runner exited non-zero but verify is green)`
 
-    if (opts.review) {
-      reporter.phase('reviewing')
-      const reviewResult = opts.review({ targetDir: opts.targetDir, story })
-      if (!reviewResult.success) {
+    const repairOutcome = runQualityReview(opts, opts.targetDir, story, reporter)
+    if (repairOutcome) {
+      if (repairOutcome.kind === 'paused') {
+        reporter.paused(progress(stories))
+        return { status: 'paused', iterations, finalProgress: progress(stories) }
+      }
+      const reason = repairBlockReason(repairOutcome, story, opts.targetDir, opts.git)
+      if (reason) {
         result.routing?.recordOutcome(false)
-        const reason = blockReason(`story ${story.id} rejected in review: ${reviewResult.summary}`, opts.targetDir, opts.git)
         reporter.blocked(reason)
         return {
           status: 'blocked',

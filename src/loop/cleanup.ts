@@ -1,16 +1,20 @@
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { parseProviderProcessRecord } from '../agents/process-record.js'
+import { processIncarnation } from '../agents/process-incarnation.js'
 import {
   acquireTakeoverLease, acquireTakeoverRecoveryLease, lockPath, takeoverLockPath, readLock, isPidAlive,
   releaseTakeoverLease, releaseTakeoverRecoveryLease, takeoverRecoveryPath,
 } from './lock.js'
-import { killProcessTree } from './watchdog.js'
+import { killProcessForCleanup, killProcessTreeForCleanup } from './watchdog.js'
+import { cleanupClaims } from './claims.js'
 
 export interface CleanupOptions {
   git?: (args: string[], cwd: string) => void
   isAlive?: (pid: number) => boolean
-  killTree?: (pid: number) => void
+  killTree?: (pid: number) => boolean
+  processIncarnation?: (pid: number) => string | undefined
   removeWorktrees?: boolean
   discardStaleRecovery?: boolean
 }
@@ -20,7 +24,7 @@ export interface CleanupOptions {
 // command-line pattern — that takes down runners belonging to OTHER projects,
 // which then stall mid-story. Skipped entirely while the loop lock holder is
 // alive: a live loop's runner is healthy, not an orphan.
-function reapRecordedRunners(targetDir: string, wtDir: string, isAlive: (pid: number) => boolean, killTree: (pid: number) => void): number {
+export function reapRecordedRunners(targetDir: string, wtDir: string, isAlive: (pid: number) => boolean, isTreeAlive: (pid: number) => boolean, killChildTree: (pid: number) => boolean, killWatchdog: (pid: number) => boolean, currentIncarnation: (pid: number) => string | undefined): number {
   const pidFiles = [join(targetDir, '.yoke', 'runner.pid')]
   if (existsSync(wtDir)) {
     for (const name of readdirSync(wtDir)) pidFiles.push(join(wtDir, name, '.yoke', 'runner.pid'))
@@ -28,19 +32,63 @@ function reapRecordedRunners(targetDir: string, wtDir: string, isAlive: (pid: nu
   let killed = 0
   for (const file of pidFiles) {
     if (!existsSync(file)) continue
+    let rec: { watchdogPid?: unknown; childPid?: unknown; watchdogIncarnation?: unknown; childIncarnation?: unknown } | undefined
     try {
-      const rec = JSON.parse(readFileSync(file, 'utf8')) as { watchdogPid?: unknown; childPid?: unknown }
-      // Child (agent tree) first, then the watchdog wrapper.
-      for (const pid of [rec.childPid, rec.watchdogPid]) {
-        if (typeof pid === 'number' && Number.isInteger(pid) && pid > 0 && isAlive(pid)) {
-          killTree(pid)
-          killed++
-        }
-      }
+      rec = JSON.parse(readFileSync(file, 'utf8')) as { watchdogPid?: unknown; childPid?: unknown; watchdogIncarnation?: unknown; childIncarnation?: unknown }
     } catch { /* malformed record — still consume the file below */ }
+    if (!rec) {
+      rmSync(file, { force: true })
+      continue
+    }
+    // Child (agent tree) first, then the watchdog wrapper.
+    for (const [pid, incarnation, treeOwned] of [[rec.childPid, rec.childIncarnation, true], [rec.watchdogPid, rec.watchdogIncarnation, false]] as const) {
+      const alive = typeof pid === 'number' && Number.isInteger(pid) && pid > 0 && (isAlive(pid) || (treeOwned && isTreeAlive(pid)))
+      if (alive && typeof pid === 'number') {
+        if (isAlive(pid) && (typeof incarnation !== 'string' || currentIncarnation(pid) !== incarnation)) {
+          throw new Error(`could not confirm legacy runner process incarnation for pid ${pid}`)
+        }
+        const terminated = treeOwned ? killChildTree(pid) : killWatchdog(pid)
+        if (!terminated && (isAlive(pid) || (treeOwned && isTreeAlive(pid)))) {
+          throw new Error(`could not confirm legacy runner process tree termination for pid ${pid}`)
+        }
+        if (terminated) killed++
+      }
+    }
     rmSync(file, { force: true })
   }
   return killed
+}
+
+export function reapProviderProcesses(targetDir: string, isAlive: (pid: number) => boolean, isTreeAlive: (pid: number) => boolean, killTree: (pid: number) => boolean, currentIncarnation: (pid: number) => string | undefined = processIncarnation): number {
+  const recordsDir = join(targetDir, '.yoke', 'provider-processes')
+  if (!existsSync(recordsDir)) return 0
+  const expectedTarget = resolve(targetDir)
+  let killed = 0
+  for (const name of readdirSync(recordsDir)) {
+    const recordPath = join(recordsDir, name)
+    let parsed: ReturnType<typeof parseProviderProcessRecord> = null
+    try {
+      parsed = parseProviderProcessRecord(JSON.parse(readFileSync(recordPath, 'utf8')))
+    } catch { /* malformed records are not trusted or consumed */ }
+    if (!parsed || parsed.targetDir !== expectedTarget) continue
+    if (isAlive(parsed.childPid) || isTreeAlive(parsed.childPid)) {
+      if (isAlive(parsed.childPid) && currentIncarnation(parsed.childPid) !== parsed.startedAt) {
+        throw new Error(`could not confirm provider process incarnation for pid ${parsed.childPid}`)
+      }
+      const terminated = killTree(parsed.childPid)
+      if (!terminated && (isAlive(parsed.childPid) || isTreeAlive(parsed.childPid))) {
+        throw new Error(`could not confirm provider process tree termination for pid ${parsed.childPid}`)
+      }
+      if (terminated) killed++
+    }
+    rmSync(recordPath, { force: true })
+  }
+  return killed
+}
+
+export function isProviderTreeAlive(pid: number): boolean {
+  if (process.platform === 'win32') return isPidAlive(pid)
+  try { process.kill(-pid, 0); return true } catch { return false }
 }
 
 // Cleans ONLY yoke-created runtime artifacts: recorded orphan runners,
@@ -49,7 +97,10 @@ function reapRecordedRunners(targetDir: string, wtDir: string, isAlive: (pid: nu
 export function runLoopCleanup(targetDir: string, opts: CleanupOptions = {}): number {
   const git = opts.git ?? ((args: string[], cwd: string) => { execFileSync('git', args, { cwd, stdio: 'pipe' }) })
   const isAlive = opts.isAlive ?? isPidAlive
-  const killTree = opts.killTree ?? killProcessTree
+  const killWatchdog = opts.killTree ?? killProcessForCleanup
+  const killProviderTree = opts.killTree ?? killProcessTreeForCleanup
+  const providerTreeAlive = process.platform === 'win32' ? isAlive : isProviderTreeAlive
+  const currentIncarnation = opts.processIncarnation ?? processIncarnation
   const wtDir = join(targetDir, '.yoke', 'worktrees')
 
   const recoveryFile = takeoverRecoveryPath(targetDir)
@@ -116,20 +167,33 @@ export function runLoopCleanup(targetDir: string, opts: CleanupOptions = {}): nu
       return 0
     }
 
-    const killed = reapRecordedRunners(targetDir, wtDir, isAlive, killTree)
-    if (killed > 0) console.log(`Killed ${killed} orphaned runner process tree(s) recorded in runner.pid files.`)
+    let killed: number
+    try {
+      killed = reapRecordedRunners(targetDir, wtDir, isAlive, providerTreeAlive, killProviderTree, killWatchdog, currentIncarnation) + reapProviderProcesses(targetDir, isAlive, providerTreeAlive, killProviderTree, currentIncarnation)
+    } catch (error) {
+      console.error(`Failed to reap recorded process trees: ${(error as Error).message}`)
+      return 1
+    }
 
     let removed = 0
     let failed = 0
     if (existsSync(wtDir)) {
       for (const name of readdirSync(wtDir)) {
         const path = join(wtDir, name)
+        try {
+          killed += reapProviderProcesses(path, isAlive, providerTreeAlive, killProviderTree, currentIncarnation)
+        } catch (error) {
+          console.error(`Failed to reap provider processes for worktree ${path}: ${(error as Error).message}`)
+          failed++
+          continue
+        }
         if (!opts.removeWorktrees) {
           console.log(`Yoke worktree retained: ${path} (pass --remove-worktrees to remove it)`)
           continue
         }
         try {
           git(['worktree', 'remove', '--force', path], targetDir)
+          markCandidateWorktreeRemoved(targetDir, path)
           removed++
         } catch (e) {
           console.error(`Failed to remove worktree ${path}: ${(e as Error).message}`)
@@ -138,6 +202,8 @@ export function runLoopCleanup(targetDir: string, opts: CleanupOptions = {}): nu
       }
       if (opts.removeWorktrees) { try { git(['worktree', 'prune'], targetDir) } catch { /* best-effort */ } }
     }
+    if (killed > 0) console.log(`Killed ${killed} orphaned process tree(s) from project-scoped Yoke records.`)
+    if (opts.removeWorktrees && failed === 0) cleanupClaims(targetDir)
 
     const lockFile = lockPath(targetDir)
     if (existsSync(lockFile)) {
@@ -148,5 +214,23 @@ export function runLoopCleanup(targetDir: string, opts: CleanupOptions = {}): nu
     return failed === 0 ? 0 : 1
   } finally {
     releaseTakeoverLease(targetDir, cleanupLease.ownerToken)
+  }
+}
+
+function markCandidateWorktreeRemoved(targetDir: string, worktree: string): void {
+  const proofRoot = join(targetDir, '.yoke', 'proof')
+  if (!existsSync(proofRoot)) return
+  for (const storyId of readdirSync(proofRoot)) {
+    const candidates = join(proofRoot, storyId, 'candidates')
+    if (!existsSync(candidates)) continue
+    for (const candidateId of readdirSync(candidates)) {
+      const status = join(candidates, candidateId, 'status.json')
+      if (!existsSync(status)) continue
+      try {
+        const parsed = JSON.parse(readFileSync(status, 'utf8')) as { worktree?: unknown }
+        if (parsed.worktree !== worktree) continue
+        writeFileSync(status, JSON.stringify({ ...parsed, state: 'removed', reason: 'external cleanup recovered candidate worktree' }))
+      } catch { continue }
+    }
   }
 }

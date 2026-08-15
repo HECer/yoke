@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { parse, stringify } from 'yaml'
 import { z } from 'zod'
+import { StoryQualityDeclarationSchema } from '../quality/types.js'
 
 export const AcceptanceCriterionSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
@@ -43,6 +45,7 @@ export const StorySchema = z.object({
   agent: z.enum(['claude', 'codex', 'gemini']).optional(),
   /** Inbox request that created this story. Used for idempotent append-only intake. */
   sourceChange: z.string().min(1).optional(),
+  quality: StoryQualityDeclarationSchema.optional(),
 }).superRefine((story, ctx) => {
   const structured = story.acceptance.filter(isAcceptanceCriterion)
   const ids = structured.map(criterion => criterion.id)
@@ -65,7 +68,7 @@ export const StorySchema = z.object({
 export type Story = z.infer<typeof StorySchema>
 
 export function storyPathSegment(id: string): string {
-  return `story-${Buffer.from(id, 'utf8').toString('base64url')}`
+  return `story-${createHash('sha256').update(id, 'utf8').digest('hex')}`
 }
 
 export function isAcceptanceCriterion(value: Story['acceptance'][number]): value is AcceptanceCriterion {

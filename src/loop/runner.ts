@@ -1,15 +1,18 @@
 import { isAcceptanceCriterion, type Story } from './prd.js'
 import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { Agent, DecisionPolicy } from '../retrofit/config.js'
 import type { TokenUsage } from './reporter.js'
 import { loadContext, formatForPrompt, contextDir } from '../context/context.js'
-import { buildProviderInvocation } from '../agents/providers.js'
-import { parseProviderTelemetry } from '../agents/telemetry.js'
+import { buildProviderInvocation, startProviderProcess } from '../agents/providers.js'
+import { parseProviderResult, parseProviderTelemetry } from '../agents/telemetry.js'
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
-import { formatReviewContract, readReviewVerdict, reviewVerdictPath } from '../review/verdict.js'
+import type { ProviderProcessHandle, ProviderProcessOptions } from '../agents/process.js'
+import { formatReviewContract, formatReviewStdoutContract, parseReviewVerdict, type ReviewVerdict } from '../review/verdict.js'
+import type { ReviewOutcome } from '../quality/repair.js'
 
 export interface AgentContext {
   targetDir: string
@@ -19,6 +22,7 @@ export interface AgentContext {
 export interface AgentResult {
   success: boolean
   summary: string
+  reviewOutcome?: ReviewOutcome
   /** Cumulative token usage of this invocation (agents running in JSON mode only). */
   tokens?: TokenUsage
   /** Adaptive runners defer capability learning until Yoke's independent gates decide. */
@@ -87,7 +91,7 @@ export function buildClaudePrompt(story: Story, context: string, onAmbiguity: Am
   return lines.join('\n')
 }
 
-export function buildReviewPrompt(story: Story, context: string, verdictPath?: string): string {
+export function buildReviewPrompt(story: Story, context: string, verdictPath?: string, provider?: Agent): string {
   const criteria = formatAcceptance(story)
   const lines = [
     'You are an independent reviewer inside the Yoke loop. You did NOT implement this change.',
@@ -108,11 +112,11 @@ export function buildReviewPrompt(story: Story, context: string, verdictPath?: s
       : 'Do not modify files. Do not commit.',
     'Keep your verdict to a few short sentences.',
   )
-  if (verdictPath) lines.push('', formatReviewContract(verdictPath))
+  lines.push('', verdictPath ? formatReviewContract(verdictPath, provider) : formatReviewStdoutContract(provider ?? 'claude'))
   return lines.join('\n')
 }
 
-export function buildStandaloneReviewPrompt(scope: string, focus?: string, verdictPath?: string): string {
+export function buildStandaloneReviewPrompt(scope: string, focus?: string, verdictPath?: string, provider?: Agent): string {
   const lines = [
     'You are an independent reviewer. You did NOT write this change.',
     `Review ${scope}. Run git yourself to see the diff (e.g. \`git diff\`, or \`git diff <base>..HEAD\`).`,
@@ -129,7 +133,7 @@ export function buildStandaloneReviewPrompt(scope: string, focus?: string, verdi
       : 'Do not modify files. Do not commit.',
     'Keep your verdict to a few short sentences.',
   )
-  if (verdictPath) lines.push('', formatReviewContract(verdictPath))
+  lines.push('', verdictPath ? formatReviewContract(verdictPath, provider) : formatReviewStdoutContract(provider ?? 'claude'))
   return lines.join('\n')
 }
 
@@ -211,9 +215,12 @@ export function parseClaudeStreamUsage(lines: string[]): TokenUsage {
   return model ? { ...usage, model } : usage
 }
 
-function watchdogPath(): string {
-  // runner.js and watchdog.js sit side by side (dist/loop/ at runtime, src/loop/ under tsx)
-  return fileURLToPath(new URL('./watchdog.js', import.meta.url))
+function watchdogArgs(): string[] {
+  const compiled = fileURLToPath(new URL('./watchdog.js', import.meta.url))
+  if (existsSync(compiled)) return [compiled]
+  const source = fileURLToPath(new URL('./watchdog.ts', import.meta.url))
+  const tsxLoader = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href
+  return ['--import', tsxLoader, source]
 }
 
 // When idleTimeoutMs > 0, run the agent THROUGH the watchdog so a silent hang is
@@ -223,13 +230,13 @@ function watchdogPath(): string {
 // killing by process-name/command-line pattern takes down other projects'
 // runners too. (Plain repos, e.g. `yoke review` outside a yoke project, get
 // no pid file rather than a littered .yoke dir.)
-export function buildWatchdogInvocation(inv: Invocation, idleTimeoutMs: number): Invocation {
+export function buildWatchdogInvocation(inv: Invocation, idleTimeoutMs: number, ownershipRoot: string = inv.cwd): Invocation {
   if (idleTimeoutMs <= 0) return inv
-  const yokeDir = join(inv.cwd, '.yoke')
+  const yokeDir = join(ownershipRoot, '.yoke')
   const pidArgs = existsSync(yokeDir) ? [`--pid-file=${join(yokeDir, 'runner.pid')}`] : []
   return {
     command: 'node',
-    args: [watchdogPath(), `--idle-ms=${idleTimeoutMs}`, ...pidArgs, '--', inv.command, ...inv.args],
+    args: [...watchdogArgs(), `--idle-ms=${idleTimeoutMs}`, ...pidArgs, '--', inv.command, ...inv.args],
     input: inv.input,
     cwd: inv.cwd,
   }
@@ -250,7 +257,7 @@ export function win32CommandString(command: string, args: string[]): string {
 }
 
 function runCli(inv: Invocation): void {
-  if (process.platform === 'win32') {
+  if (process.platform === 'win32' && !/\.(?:exe|com)$/iu.test(inv.command) && inv.command !== process.execPath && inv.command !== 'node') {
     execSync(win32CommandString(inv.command, inv.args), {
       cwd: inv.cwd,
       input: inv.input,
@@ -271,7 +278,7 @@ function runCli(inv: Invocation): void {
 // through it. Throws on a non-zero exit; the error carries the partial stdout.
 function runCliCapture(inv: Invocation): string {
   const opts = { cwd: inv.cwd, input: inv.input, stdio: ['pipe', 'pipe', 'inherit'] as ['pipe', 'pipe', 'inherit'], encoding: 'utf8' as const, maxBuffer: 64 * 1024 * 1024 }
-  return process.platform === 'win32'
+  return process.platform === 'win32' && !/\.(?:exe|com)$/iu.test(inv.command) && inv.command !== process.execPath && inv.command !== 'node'
     ? execSync(win32CommandString(inv.command, inv.args), opts)
     : execFileSync(inv.command, inv.args, opts)
 }
@@ -289,7 +296,7 @@ function runReviewCli(inv: Invocation): void {
     encoding: 'utf8' as const,
     maxBuffer: 64 * 1024 * 1024,
   }
-  if (process.platform === 'win32') execSync(win32CommandString(inv.command, inv.args), opts)
+  if (process.platform === 'win32' && !/\.(?:exe|com)$/iu.test(inv.command) && inv.command !== process.execPath && inv.command !== 'node') execSync(win32CommandString(inv.command, inv.args), opts)
   else execFileSync(inv.command, inv.args, opts)
 }
 
@@ -381,6 +388,31 @@ export interface RunnerOpts {
   execCapture?: (inv: Invocation) => string
 }
 
+export type AsyncAgentRunner = (ctx: AgentContext) => ProviderProcessHandle
+
+export interface AsyncRunnerOpts {
+  readonly onAmbiguity?: AmbiguityPolicy
+  readonly perfCommand?: string
+  readonly permissions?: PermissionProfile
+  readonly selection?: ModelSelection
+  readonly process?: ProviderProcessOptions
+}
+
+export function makeAsyncRunner(agent: Agent, opts: AsyncRunnerOpts = {}): AsyncAgentRunner {
+  return (ctx: AgentContext): ProviderProcessHandle => startProviderProcess(
+    agent,
+    runnerInvocation(
+      agent,
+      buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir), opts.onAmbiguity, opts.perfCommand),
+      ctx.targetDir,
+      true,
+      opts.permissions ?? 'safe',
+      opts.selection,
+    ),
+    opts.process,
+  )
+}
+
 export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {}): AgentRunner {
   // Claude always streams (see runnerInvocation) — capture the stream so tokens are
   // always reported; other agents keep inherit stdio. opts.tokenReport is now
@@ -415,29 +447,57 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
 
 export const claudeRunner: AgentRunner = makeRunner('claude')
 
-export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec: (inv: Invocation) => void = runReviewCli): AgentRunner {
+export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: Invocation) => void | CapturedAgentRun): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
-    const verdictPath = reviewVerdictPath(ctx.targetDir)
-    mkdirSync(join(ctx.targetDir, '.yoke'), { recursive: true })
-    rmSync(verdictPath, { force: true })
-    const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir), verdictPath), ctx.targetDir, 'safe')
+    const before = repositoryFingerprint(ctx.targetDir)
+    const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir), undefined, agent), ctx.targetDir, 'read-only')
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     let processFailure: string | undefined
+    let actualModel: string | undefined
+    let output = ''
     try {
-      exec(inv)
+      const result = exec?.(inv) ?? runCapturedAgent(agent, inv)
+      if (!result.success) processFailure = result.summary
+      actualModel = result.tokens?.model
+      output = result.output
+      if (!exec && !actualModel && !processFailure) processFailure = 'review provider did not report its model'
     } catch (e) {
       processFailure = processFailureSummary(e)
     }
     try {
-      const verdict = readReviewVerdict(verdictPath)
-      if (processFailure) return { success: false, summary: `review process failed: ${processFailure}; verdict: ${verdict.summary}` }
+      if (repositoryFingerprint(ctx.targetDir) !== before) throw new Error('reviewer modified the repository during a read-only review')
+      const expected = { provider: agent, ...(actualModel ? { model: actualModel } : {}) }
+      const verdict = parseReviewVerdict(parseProviderResult(agent, output), expected)
+      if (processFailure) {
+        return {
+          success: false,
+          summary: `review process failed: ${processFailure}; verdict: ${verdict.summary}`,
+          reviewOutcome: { kind: 'infrastructure', summary: processFailure },
+        }
+      }
       return verdict.approved
-        ? { success: true, summary: `${agent} approved ${ctx.story.id}: ${verdict.summary}` }
-        : { success: false, summary: `${agent} rejected ${ctx.story.id}: ${verdict.summary}` }
+        ? reviewResult(agent, ctx.story.id, verdict, { kind: 'approved', verdict })
+        : reviewResult(agent, ctx.story.id, verdict, { kind: 'rejected', verdict })
     } catch (e) {
-      return { success: false, summary: `${processFailure ? `review process failed: ${processFailure}; ` : ''}${(e as Error).message}` }
+      const summary = `${processFailure ? `review process failed: ${processFailure}; ` : ''}${(e as Error).message}`
+      return { success: false, summary, reviewOutcome: processFailure ? { kind: 'infrastructure', summary } : { kind: 'malformed', summary } }
     }
   }
+}
+
+export function repositoryFingerprint(targetDir: string): string {
+  try {
+    return execFileSync('git', ['diff', '--binary', 'HEAD'], { cwd: targetDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      + execFileSync('git', ['status', '--porcelain=v1', '-z'], { cwd: targetDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch {
+    return ''
+  }
+}
+
+function reviewResult(agent: Agent, storyId: string, verdict: ReviewVerdict, reviewOutcome: ReviewOutcome): AgentResult {
+  return verdict.approved
+    ? { success: true, summary: `${agent} approved ${storyId}: ${verdict.summary}`, reviewOutcome }
+    : { success: false, summary: `${agent} rejected ${storyId}: ${verdict.summary}`, reviewOutcome }
 }
 
 // Probe whether the agent's CLI is on PATH (so the loop can refuse upfront with a

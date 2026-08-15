@@ -11,7 +11,7 @@ import type { GitOps } from '../../src/loop/gates.js'
 import type { AgentRunner } from '../../src/loop/runner.js'
 import type { Verifier } from '../../src/loop/verify.js'
 import { readDecisionResume } from '../../src/loop/decision.js'
-import { main } from '../../src/cli.js'
+import { main, parseQualityFlags } from '../../src/cli.js'
 
 let dir: string
 const cfg = () => ({ canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true } })
@@ -39,8 +39,36 @@ describe('yoke loop CLI', () => {
     expect(main(['loop', 'run', dir, '--max=1.5'])).toBe(1)
   })
 
-  it('rejects unsupported parallel CLI workers instead of silently running serially', () => {
-    expect(runLoopCommand(dir, { maxIterations: 1, parallel: 2 })).toBe(2)
+  it.each([
+    ['--quality with --no-quality', ['--quality', '--no-quality']],
+    ['--quality-unbounded with --no-quality', ['--quality-unbounded', '--no-quality']],
+    ['--quality-unbounded with bounded rounds', ['--quality-unbounded', '--quality-rounds=2']],
+    ['a non-positive quality round limit', ['--quality-rounds=0']],
+    ['a non-positive quality minute limit', ['--quality-minutes=0']],
+    ['a non-positive candidate count', ['--candidates=0']],
+  ])('rejects %s before dispatching the loop', (_case, flags) => {
+    expect(main(['loop', 'run', dir, ...flags])).toBe(1)
+  })
+
+  it('parses an explicit unbounded quality invocation as enabled', () => {
+    expect(parseQualityFlags(['--quality-unbounded', '--quality-policy=advisory', '--candidates=1'])).toEqual({
+      ok: true,
+      options: { quality: true, qualityUnbounded: true, qualityPolicy: 'advisory', candidates: 1 },
+    })
+  })
+
+  it('fails closed when multiple quality candidates are requested before parallel candidates exist', () => {
+    saveConfig(dir, cfg())
+    expect(runLoopCommand(dir, { maxIterations: 1, candidates: 2, runner: passRunner, git: stubGit, verify: verifyOk })).toBe(2)
+  })
+
+  it('uses the serial loop when parallel is explicitly one', () => {
+    saveConfig(dir, cfg())
+    let worktreeCreates = 0
+    const git: GitOps = { ...stubGit, addWorktree: () => { worktreeCreates += 1 } }
+
+    expect(runLoopCommand(dir, { maxIterations: 1, parallel: 1, runner: passRunner, git, verify: verifyOk })).toBe(0)
+    expect(worktreeCreates).toBe(0)
   })
   it('setLoopEnabled on/off updates the config', () => {
     saveConfig(dir, cfg())
@@ -119,6 +147,24 @@ describe('yoke loop CLI', () => {
       timeoutMinutes: 12, json: true, onAmbiguity: 'resolve', permissions: 'safe', parallel: 1,
     })
     expect(readDecisionResume(dir)?.decisionPolicy).toBeUndefined()
+  })
+
+  it('preserves bounded quality options but never persists unbounded mode after a critical decision', () => {
+    saveConfig(dir, { ...cfg(), agents: ['codex'], loop: { enabled: true, decisionPolicy: 'critical' } })
+    const decisionRunner: AgentRunner = (ctx) => {
+      writeFileSync(join(ctx.targetDir, '.yoke', 'decision-request.yaml'), [
+        'version: 1', `storyId: ${ctx.story.id}`, 'question: Which identity model?', 'reason: Public API choice.',
+        'options:', '  - { id: A, label: Accounts }', '  - { id: B, label: Profiles }', 'recommended: A', '',
+      ].join('\n'))
+      return { success: true, summary: 'waiting' }
+    }
+
+    expect(runLoopCommand(dir, {
+      maxIterations: 1, agent: 'codex', runner: decisionRunner, git: stubGit, verify: verifyOk,
+      quality: true, qualityRounds: 7, qualityMinutes: 12, qualityPolicy: 'advisory', qualityUnbounded: true,
+    })).toBe(1)
+    expect(readDecisionResume(dir)).toMatchObject({ quality: true, qualityRounds: 7, qualityMinutes: 12, qualityPolicy: 'advisory' })
+    expect(readDecisionResume(dir)).not.toHaveProperty('qualityUnbounded')
   })
 
   it('run completes the PRD with an injected passing runner', () => {

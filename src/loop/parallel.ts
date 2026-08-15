@@ -24,7 +24,7 @@ export async function runParallelLoop(stories: Story[], opts: ParallelOptions): 
     if (story.area) activeAreas.add(story.area)
     const affinity = story.agent ?? (opts.agents?.length ? opts.agents[agentIndex++ % opts.agents.length] : undefined)
     const promise = opts.worker(story, affinity).then(result => {
-      if (result.success) { story.passes = true; completed.push(story.id) } else failed.push(story.id)
+      if (result.success) completed.push(story.id); else failed.push(story.id)
     }).catch(() => { failed.push(story.id) }).finally(() => {
       active.delete(story.id)
       if (story.area) activeAreas.delete(story.area)
@@ -33,7 +33,7 @@ export async function runParallelLoop(stories: Story[], opts: ParallelOptions): 
   }
   while (iterations < opts.maxIterations && !opts.paused?.()) {
     const slots = Math.max(0, opts.maxConcurrency - active.size)
-    const ready = readyStories(stories, { activeAreas }).filter(s => !active.has(s.id) && !failed.includes(s.id)).slice(0, slots)
+    const ready = readyStories(stories, { activeAreas }).filter(s => !active.has(s.id) && !completed.includes(s.id) && !failed.includes(s.id)).slice(0, slots)
     for (const story of ready) launch(story)
     if (active.size === 0) break
     await Promise.race(active.values())

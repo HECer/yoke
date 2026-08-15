@@ -16,11 +16,14 @@ import { resolveCommitIdentity, type CommitIdentity } from './identity.js'
 import { runAudit } from '../audit/command.js'
 import { detectHostAgent, resolveRunnerAgent } from '../agents/host.js'
 import {
-  clearDecisionResume, decisionProcessingExists, decisionRequestId, formatPendingDecision,
+  buildTrustedDecisionResumeState, clearDecisionResume, decisionProcessingExists, decisionRequestId, formatPendingDecision,
   readPendingDecision, writeDecisionResume,
 } from './decision.js'
 import { makeAdaptiveRunner } from '../routing/router.js'
 import { runChangeApply } from '../change/inbox.js'
+import { createQualityCommandHooks, type QualityCommandRuntime } from '../quality/command.js'
+import { resolveQualityPolicy, type QualityPolicy, type QualityRunOverrides } from '../quality/types.js'
+import { runParallelLoopCommand } from './parallel-command.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -67,6 +70,22 @@ export function loopStatus(targetDir: string, now: () => Date = () => new Date()
     lines.push(`  ~${fmtDuration(st.eta.etaMs)} remaining (Ø ${fmtDuration(st.eta.avgStoryMs)}/story)`)
   }
   if (st.reason) lines.push(`  reason: ${st.reason}`)
+  if (st.quality) lines.push(`  quality: round ${st.quality.currentRound} · ${st.quality.usedRepairs}${st.quality.unbounded ? ' unbounded repairs' : `/${st.quality.maxRepairs ?? 0} repairs`} · ${st.quality.policy}`)
+  if (st.parallel) lines.push(`  parallel ${st.parallel.dispatcherId}: ${st.parallel.activeWorkers}/${st.parallel.maxConcurrency} workers · ${st.parallel.queuedCandidates} queued · ${st.parallel.integrated} integrated · ${st.parallel.reopened} reopened`)
+  const integrator = st.parallel?.integrator
+  if (integrator) {
+    const quality = integrator.quality
+      ? ` · quality round ${integrator.quality.currentRound} · ${integrator.quality.usedRepairs}${integrator.quality.unbounded ? ' unbounded repairs' : `/${integrator.quality.maxRepairs ?? 0} repairs`}`
+      : ''
+    lines.push(`  integrator ${integrator.story} "${integrator.storyTitle}" (${integrator.provider}${integrator.model ? `/${integrator.model}` : ''}) · ${integrator.phase ?? 'working'}${quality}`)
+  }
+  for (const worker of st.parallel?.workers ?? []) {
+    const quality = worker.quality
+      ? ` · quality round ${worker.quality.currentRound} · ${worker.quality.usedRepairs}${worker.quality.unbounded ? ' unbounded repairs' : `/${worker.quality.maxRepairs ?? 0} repairs`}`
+      : ''
+    const candidate = worker.candidateId ? ` candidate ${worker.candidateId} · ${worker.worktree ?? 'worktree unknown'} · ${worker.lifecycle ?? 'working'}` : ''
+    lines.push(`  worker ${worker.story} "${worker.storyTitle}" (${worker.provider}${worker.model ? `/${worker.model}` : ''})${candidate} · ${worker.phase ?? 'working'}${quality}`)
+  }
   const ageMs = now().getTime() - Date.parse(st.updatedAt)
   if (st.state === 'running' && ageMs > STALE_MINUTES * 60_000) {
     lines.push(`  ⚠ possibly stuck — no update in ${relativeTime(st.updatedAt, now())}`)
@@ -109,14 +128,37 @@ export interface RunLoopCommandOptions {
   routing?: boolean
   /** Test seam; production consumes the append-only change inbox. */
   intake?: () => { ok: boolean; added: number; summary: string }
+  qualityRuntime?: QualityCommandRuntime
+  quality?: boolean
+  qualityRounds?: number
+  qualityMinutes?: number
+  qualityPolicy?: QualityPolicy
+  qualityUnbounded?: true
+  candidates?: number
 }
 
-export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number {
-  if ((opts.parallel ?? 1) > 1) {
-    console.error('Parallel CLI workers are not enabled yet. The dependency-aware dispatcher and merge queue are available as APIs; use --parallel=1 for the synchronous provider runner.')
+export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number | Promise<number> {
+  const parallel = opts.parallel ?? 1
+  const candidates = opts.candidates ?? 1
+  if (!Number.isInteger(parallel) || parallel < 1) {
+    console.error('--parallel must be a positive integer')
+    return 2
+  }
+  if (!Number.isInteger(candidates) || candidates < 1 || candidates > 5) {
+    console.error('--candidates must be an integer from 1 to 5')
     return 2
   }
   const config = loadConfig(targetDir)
+  const maxParallelCandidates = config?.quality?.maxParallelCandidates ?? 1
+  if (candidates > maxParallelCandidates) {
+    console.error(`--candidates=${candidates} exceeds quality.maxParallelCandidates=${maxParallelCandidates}`)
+    return 2
+  }
+  const qualityDisabled = opts.quality === false || (!config?.quality?.enabled && opts.quality !== true && opts.qualityUnbounded !== true)
+  if (candidates > 1 && qualityDisabled) {
+    console.error(`--candidates=${candidates} requires quality; quality cannot be disabled for candidate dispatch.`)
+    return 2
+  }
   if (!config?.loop.enabled) {
     console.error('Loop is disabled. Enable it with: yoke loop on')
     return 2
@@ -138,6 +180,13 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   if (!existsSync(path)) {
     console.error(`No PRD found at ${path}. Create one (see canon loop/prd.schema.md).`)
     return 2
+  }
+  if (candidates > 1) {
+    const missingQuality = loadPrd(path).find(story => !story.passes && !story.quality)
+    if (missingQuality) {
+      console.error(`Story ${missingQuality.id} needs a quality declaration before --candidates=${candidates} can dispatch.`)
+      return 2
+    }
   }
   let verify = opts.verify
   if (!verify) {
@@ -186,8 +235,83 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   }
 
   const idleMs = resolveIdleMs(opts.timeoutMinutes, config.loop.timeoutMinutes)
+  const qualityOverrides: QualityRunOverrides = {
+    ...(opts.qualityUnbounded ? { quality: true, qualityUnbounded: true } : opts.quality !== undefined ? { quality: opts.quality } : {}),
+    ...(opts.qualityRounds !== undefined ? { qualityRounds: opts.qualityRounds } : {}),
+    ...(opts.qualityMinutes !== undefined ? { qualityMinutes: opts.qualityMinutes } : {}),
+    ...(opts.qualityPolicy ? { qualityPolicy: opts.qualityPolicy } : {}),
+    ...(opts.candidates !== undefined ? { candidates: opts.candidates } : {}),
+  }
+  if (qualityOverrides.qualityUnbounded) {
+    console.error('WARNING: Quality repair limits are unbounded for this invocation. Mechanical gates, watchdog, isolation, and commit safety remain active.')
+  }
+  const configuredCriticAgent = config.quality?.critic?.agent ?? config.quality?.criticAgent ?? config.agents.find(agent => agent !== runnerAgent) ?? runnerAgent
+  const configuredCriticModel = config.quality?.critic?.model ?? config.quality?.criticModel ?? (configuredCriticAgent === runnerAgent ? config.runner?.model : undefined)
+  if (candidates > 1 && !configuredCriticModel) {
+    console.error('Quality candidate selection requires quality.critic.model (or legacy quality.criticModel) before any runner or worktree is started.')
+    return 2
+  }
+  const quality = createQualityCommandHooks({
+    targetDir,
+    config,
+    runnerAgent,
+    idleMs,
+    policy: qualityOverrides,
+    ...(opts.qualityRuntime ? { runtime: opts.qualityRuntime } : {}),
+  })
+  if (quality) {
+    const resolved = resolveQualityPolicy({ defaults: config.quality, overrides: qualityOverrides })
+    const criticAgent = configuredCriticAgent
+    const repairAgent = config.quality?.repair?.agent ?? config.quality?.repairAgent ?? runnerAgent
+    const limit = resolved.limits.unbounded ? 'unbounded' : `${resolved.limits.maxRounds ?? 3} rounds/${resolved.limits.maxMinutes ?? 60} minutes`
+    const announce = opts.json ? console.error : console.log
+    announce(`Quality: ${resolved.policy} · critic: ${criticAgent}${configuredCriticModel ? `/${configuredCriticModel}` : '/provider-default'} · repair: ${repairAgent}${config.quality?.repair?.model ?? config.quality?.repairModel ? `/${config.quality?.repair?.model ?? config.quality?.repairModel}` : '/provider-default'} · permissions: read-only critic/safe repair · budget: ${limit}`)
+  }
   const permissions = opts.permissions ?? config.runner?.permissions ?? 'safe'
   const routingEnabled = opts.routing ?? config.routing?.enabled ?? false
+  const runnerSelection = {
+    model: config.runner?.model,
+    reasoningEffort: config.runner?.reasoningEffort,
+    bare: config.runner?.bare,
+    ...((routingEnabled || opts.routing === false) ? { nativeMultiAgent: false } : {}),
+  }
+  if ((parallel > 1 || candidates > 1) && routingEnabled) {
+    console.error('Adaptive routing is not available with parallel workers or quality candidates. Run with --parallel=1 --candidates=1 or disable routing.')
+    return 2
+  }
+  const parallelProviders = [{
+    provider: runnerAgent,
+    ...(runnerSelection.model ? { model: runnerSelection.model } : {}),
+    ...(runnerSelection.reasoningEffort ? { reasoningEffort: runnerSelection.reasoningEffort } : {}),
+  }]
+  const parallelAffinityProviders = (config.routing?.workers ?? []).map(worker => ({
+    provider: worker.agent,
+    ...(worker.model ? { model: worker.model } : {}),
+    ...(worker.reasoningEffort ? { reasoningEffort: worker.reasoningEffort } : {}),
+  }))
+  const parallelStories = parallel > 1 || candidates > 1 ? loadPrd(path).filter(story => !story.passes) : []
+  const ambiguousAffinityProvider = [...new Set(parallelStories.flatMap(story => story.agent ? [story.agent] : []))]
+    .find(agent => parallelAffinityProviders.filter(provider => provider.provider === agent).length > 1)
+  if (ambiguousAffinityProvider) {
+    console.error(`Parallel affinity provider "${ambiguousAffinityProvider}" has multiple profiles. Configure exactly one profile for each story agent.`)
+    return 2
+  }
+  if (opts.runner) {
+    const mismatchedAffinity = parallelStories.find(story => {
+      if (!story.agent) return false
+      const provider = parallelAffinityProviders.find(candidate => candidate.provider === story.agent)
+        ?? parallelProviders.find(candidate => candidate.provider === story.agent)
+      return !provider
+        || provider.provider !== runnerAgent
+        || provider.model !== runnerSelection.model
+        || provider.reasoningEffort !== runnerSelection.reasoningEffort
+    })
+    if (mismatchedAffinity) {
+      console.error(`Injected runner cannot truthfully execute affinity provider for story ${mismatchedAffinity.id}. Remove the affinity or use the configured provider runner.`)
+      return 2
+    }
+  }
+  const ambiguityPolicy = opts.decisionPolicy ?? opts.onAmbiguity ?? config.loop.decisionPolicy ?? config.loop.onAmbiguity ?? 'auto'
   if (routingEnabled && (!config.routing || config.routing.workers.length === 0)) {
     console.error('Adaptive routing was requested, but no worker profiles are configured. Run yoke setup . --routing or add routing.workers to .yoke/config.yaml.')
     return 2
@@ -208,23 +332,22 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
 
   let runner = opts.runner
   if (!runner) {
-    if (!available(runnerAgent)) {
-      console.error(`Agent CLI "${runnerAgent}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
+    const requiredProviders = parallel > 1 || candidates > 1
+      ? [...new Set(loadPrd(path).filter(story => !story.passes).map(story => story.agent ?? runnerAgent))]
+      : [runnerAgent]
+    const unavailableProvider = requiredProviders.find(agent => !available(agent))
+    if (unavailableProvider) {
+      console.error(`Agent CLI "${unavailableProvider}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
       return 2
     }
     // Token reporting is part of the machine interface: in --json mode a claude
     // runner switches to stream-json so cumulative usage rides on every status.
     const runnerOpts = {
       tokenReport: opts.json === true,
-      onAmbiguity: opts.decisionPolicy ?? opts.onAmbiguity ?? config.loop.decisionPolicy ?? config.loop.onAmbiguity ?? 'auto',
+      onAmbiguity: ambiguityPolicy,
       perfCommand: config.perf?.command,
       permissions,
-      selection: {
-        model: config.runner?.model,
-        reasoningEffort: config.runner?.reasoningEffort,
-        bare: config.runner?.bare,
-        ...((routingEnabled || opts.routing === false) ? { nativeMultiAgent: false } : {}),
-      },
+      selection: runnerSelection,
     }
     runner = routingEnabled && config.routing
       ? makeAdaptiveRunner({
@@ -277,8 +400,73 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   if (lock.stalePid !== undefined) {
     console.warn(`Took over a stale loop lock (pid ${lock.stalePid} is gone).`)
   }
+  const reporter = opts.reporter ?? makeReporter(targetDir, { json: opts.json })
+  const buildResume = (storyId: string, requestId: string) => buildTrustedDecisionResumeState({
+    storyId,
+    requestId,
+    ...(opts.maxIterations !== undefined ? { maxIterations: opts.maxIterations } : {}),
+    agent: runnerAgent,
+    isolate: parallel > 1 || candidates > 1 || (opts.isolate ?? false),
+    reviewer: opts.reviewer,
+    review: opts.review === true || opts.reviewRunner !== undefined,
+    allowSelfReview: opts.allowSelfReview ?? false,
+    timeoutMinutes: opts.timeoutMinutes ?? config.loop.timeoutMinutes,
+    json: opts.json ?? false,
+    onAmbiguity: opts.decisionPolicy ? undefined : opts.onAmbiguity === 'resolve' || opts.onAmbiguity === 'abort' ? opts.onAmbiguity : (config.loop.decisionPolicy ? undefined : config.loop.onAmbiguity),
+    decisionPolicy: opts.decisionPolicy ?? (opts.onAmbiguity ? (opts.onAmbiguity === 'auto' || opts.onAmbiguity === 'critical' ? opts.onAmbiguity : undefined) : config.loop.decisionPolicy),
+    permissions,
+    parallel,
+    routing: routingEnabled,
+    ...(qualityOverrides.quality !== undefined ? { quality: qualityOverrides.quality } : {}),
+    ...(opts.qualityRounds !== undefined ? { qualityRounds: opts.qualityRounds } : {}),
+    ...(opts.qualityMinutes !== undefined ? { qualityMinutes: opts.qualityMinutes } : {}),
+    ...(opts.qualityPolicy ? { qualityPolicy: opts.qualityPolicy } : {}),
+    ...(opts.candidates !== undefined ? { candidates: opts.candidates } : {}),
+  })
+  const reconcileDecisionResume = (): number | undefined => {
+    try {
+      const pendingDecision = readPendingDecision(targetDir)
+      if (pendingDecision) {
+        writeDecisionResume(targetDir, buildResume(pendingDecision.storyId, decisionRequestId(pendingDecision)))
+      } else {
+        clearDecisionResume(targetDir)
+      }
+      return undefined
+    } catch (error) {
+      reporter.blocked(`could not persist trusted decision resume state: ${error instanceof Error ? error.message : String(error)}`)
+      return 1
+    }
+  }
+  if (parallel > 1 || candidates > 1) {
+    return runParallelLoopCommand({
+      targetDir,
+      prdPath: path,
+      maxConcurrency: parallel,
+      candidateCount: candidates,
+      maxIterations: opts.maxIterations ?? Number.POSITIVE_INFINITY,
+      runner: opts.runner,
+      runnerAgent,
+      idleMs,
+      permissions,
+      selection: runnerSelection,
+      providers: parallelProviders,
+      affinityProviders: parallelAffinityProviders,
+      onAmbiguity: ambiguityPolicy,
+      git: opts.git,
+      identity: commitIdentity,
+      verify,
+      verifyCriterion: (dir, _story, criterion) => commandsVerifier(criterion.verify)(dir),
+      requireCriterionEvidence: config.verify?.requireCriteria ?? false,
+      perf,
+      audit,
+      review,
+      reporter,
+      completion,
+      quality,
+      onCriticalDecision: decision => writeDecisionResume(targetDir, buildResume(decision.storyId, decisionRequestId(decision))),
+    }).then(code => reconcileDecisionResume() ?? code).finally(() => releaseLock(targetDir, lock.ownerToken))
+  }
   try {
-    const reporter = opts.reporter ?? makeReporter(targetDir, { json: opts.json })
     const maxIterations = opts.maxIterations ?? Number.POSITIVE_INFINITY
     const result = runLoop({
       prdPath: path,
@@ -297,42 +485,11 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       isolate: (opts.parallel ?? 1) > 1 ? true : (opts.isolate ?? false),
       review,
       reporter,
+      ...(quality ?? {}),
+      ...(quality ? { qualityEnabled: quality.qualityEnabled, qualityMetadata: quality.qualityMetadata } : {}),
     })
-    try {
-      const pendingDecision = readPendingDecision(targetDir)
-      if (pendingDecision) {
-        writeDecisionResume(targetDir, {
-          version: 1,
-          storyId: pendingDecision.storyId,
-          requestId: decisionRequestId(pendingDecision),
-          answered: false,
-          ...(opts.maxIterations !== undefined ? { maxIterations: opts.maxIterations } : {}),
-          agent: runnerAgent,
-          isolate: opts.isolate ?? false,
-          reviewer: opts.reviewer,
-          review: opts.review === true || opts.reviewRunner !== undefined,
-          allowSelfReview: opts.allowSelfReview ?? false,
-          timeoutMinutes: opts.timeoutMinutes ?? config.loop.timeoutMinutes,
-          json: opts.json ?? false,
-          onAmbiguity: opts.decisionPolicy
-            ? undefined
-            : opts.onAmbiguity === 'resolve' || opts.onAmbiguity === 'abort'
-              ? opts.onAmbiguity
-              : (config.loop.decisionPolicy ? undefined : config.loop.onAmbiguity),
-          decisionPolicy: opts.decisionPolicy
-            ?? (opts.onAmbiguity
-              ? (opts.onAmbiguity === 'auto' || opts.onAmbiguity === 'critical' ? opts.onAmbiguity : undefined)
-              : config.loop.decisionPolicy),
-          permissions,
-          parallel: opts.parallel ?? 1,
-          routing: routingEnabled,
-        })
-      } else clearDecisionResume(targetDir)
-    } catch (error) {
-      const reason = `could not persist trusted decision resume state: ${(error as Error).message}`
-      reporter.blocked(reason)
-      return 1
-    }
+    const resumeCode = reconcileDecisionResume()
+    if (resumeCode !== undefined) return resumeCode
     // In json mode stdout belongs to the NDJSON stream — route the narrative summary to stderr.
     const say = opts.json ? (line: string) => console.error(line) : (line: string) => console.log(line)
     say(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
