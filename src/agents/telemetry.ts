@@ -1,8 +1,70 @@
 import type { Agent } from '../retrofit/config.js'
 import type { ProviderTelemetry } from './types.js'
 
+type JsonParseResult =
+  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: false }
+
 const finite = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+function parseJson(value: string): JsonParseResult {
+  try {
+    return { ok: true, value: JSON.parse(value) }
+  } catch (error) {
+    if (error instanceof SyntaxError) return { ok: false }
+    throw error
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function directMachineResult(value: unknown): unknown | undefined {
+  return isRecord(value) && value.schemaVersion === 1 ? value : undefined
+}
+
+export function parseProviderResult(agent: Agent, output: string): unknown {
+  const whole = parseJson(output)
+  if (whole.ok) {
+    const direct = directMachineResult(whole.value)
+    if (direct !== undefined) return direct
+  }
+
+  const fragments: string[] = []
+  for (const line of output.split(/\r?\n/u)) {
+    const parsed = parseJson(line)
+    if (!parsed.ok || !isRecord(parsed.value)) continue
+    const event = parsed.value
+    switch (agent) {
+      case 'claude':
+        if (event.type === 'result' && typeof event.result === 'string') fragments.push(event.result)
+        break
+      case 'codex': {
+        const item = isRecord(event.item) ? event.item : undefined
+        if (event.type === 'item.completed' && item?.type === 'agent_message' && typeof item.text === 'string') fragments.push(item.text)
+        break
+      }
+      case 'gemini':
+        if (event.type === 'message' && event.role === 'assistant' && typeof event.content === 'string') fragments.push(event.content)
+        break
+    }
+  }
+
+  const joined = parseJson(fragments.join(''))
+  if (joined.ok) {
+    const direct = directMachineResult(joined.value)
+    if (direct !== undefined) return direct
+  }
+  for (const fragment of fragments.reverse()) {
+    const parsed = parseJson(fragment)
+    if (!parsed.ok) continue
+    const direct = directMachineResult(parsed.value)
+    if (direct !== undefined) return direct
+  }
+  return null
+}
 
 export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderTelemetry {
   let inputTokens: number | undefined

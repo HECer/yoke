@@ -1,5 +1,16 @@
 import type { Agent } from '../retrofit/config.js'
 import type { AgentInvocation, ModelSelection, PermissionProfile } from './types.js'
+import { ModelSelectionSchema } from './contracts.js'
+
+export {
+  providerSpawnOptions,
+  startProviderProcess,
+  type ProviderProcessHandle,
+  type ProviderProcessOptions,
+  type ProviderProcessOutput,
+  type ProviderProcessResult,
+  type ProviderSpawnOptions,
+} from './process.js'
 
 const argsFor = (agent: Agent, permissions: PermissionProfile): string[] => {
   if (agent === 'claude') {
@@ -25,14 +36,15 @@ export function buildProviderInvocation(
   permissions: PermissionProfile = 'safe',
   selection: ModelSelection = {},
 ): AgentInvocation {
+  const parsedSelection = ModelSelectionSchema.parse(selection)
   const args = argsFor(agent, permissions)
-  if (selection.model) args.push('--model', selection.model)
-  if (selection.reasoningEffort) {
-    if (agent === 'claude') args.push('--effort', selection.reasoningEffort)
-    else if (agent === 'codex') args.push('--config', `model_reasoning_effort=${selection.reasoningEffort}`)
+  if (parsedSelection.model) args.push('--model', parsedSelection.model)
+  if (parsedSelection.reasoningEffort) {
+    if (agent === 'claude') args.push('--effort', parsedSelection.reasoningEffort)
+    else if (agent === 'codex') args.push('--config', `model_reasoning_effort=${parsedSelection.reasoningEffort}`)
   }
-  if (agent === 'codex' && selection.nativeMultiAgent === false) args.push('--disable', 'multi_agent')
-  if (selection.bare) {
+  if (agent === 'codex' && parsedSelection.nativeMultiAgent === false) args.push('--disable', 'multi_agent')
+  if (parsedSelection.bare) {
     if (agent === 'codex') args.push('--ignore-user-config')
     else if (agent === 'claude') args.push('--bare')
   }
