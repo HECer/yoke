@@ -66,6 +66,14 @@ describe('ensureGitignore', () => {
     ensureGitignore(dir)
     expect(readFileSync(gi(), 'utf8')).toContain('.yoke/runner.pid')
   })
+  it('ensures parallel ownership records are ignored', () => {
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/claims/')
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/provider-processes/')
+    ensureGitignore(dir)
+    const text = readFileSync(gi(), 'utf8')
+    expect(text).toContain('.yoke/claims/')
+    expect(text).toContain('.yoke/provider-processes/')
+  })
   it('ensures the ambiguity abort file and story duration history are ignored', () => {
     expect(YOKE_IGNORE_LINES).toContain('.yoke/ambiguity.md')
     expect(YOKE_IGNORE_LINES).toContain('.yoke/story-durations.json')

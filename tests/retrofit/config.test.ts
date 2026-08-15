@@ -175,6 +175,51 @@ describe('yoke config', () => {
     }
   })
 
+  it('round-trips nested quality critic and repair provider selections', () => {
+    const cfg = {
+      ...defaultConfig('1.4.0'),
+      agents: ['codex', 'claude'] as const,
+      quality: {
+        enabled: true, policy: 'blocking' as const, maxRounds: 3, maxMinutes: 60,
+        consistencyChecks: 2 as const, maxParallelCandidates: 2,
+        critic: { agent: 'codex' as const, model: 'critic-model', reasoningEffort: 'high' },
+        repair: { agent: 'claude' as const, model: 'repair-model' },
+      },
+    }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)?.quality).toEqual(cfg.quality)
+  })
+
+  it('applies the approved project quality defaults and round-trips optional provider overrides', () => {
+    const cfg = {
+      ...defaultConfig('1.3.0'),
+      quality: {
+        enabled: true,
+        policy: 'advisory' as const,
+        maxRounds: 5,
+        maxMinutes: 90,
+        consistencyChecks: 2,
+        maxParallelCandidates: 4,
+        criticAgent: 'gemini' as const,
+        criticModel: 'provider-current',
+        criticReasoningEffort: 'high',
+        repairAgent: 'codex' as const,
+        repairModel: 'repair-current',
+        repairReasoningEffort: 'medium',
+      },
+    }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)?.quality).toEqual(cfg.quality)
+    expect(YokeConfigSchema.parse({ ...defaultConfig('1.3.0'), quality: {} }).quality).toEqual({
+      enabled: false,
+      policy: 'blocking',
+      maxRounds: 3,
+      maxMinutes: 60,
+      consistencyChecks: 2,
+      maxParallelCandidates: 2,
+    })
+  })
+
   it('leaves loop.onAmbiguity undefined when omitted (default: do not stop)', () => {
     saveConfig(dir, defaultConfig('1.0.0'))
     expect(loadConfig(dir)!.loop.onAmbiguity).toBeUndefined()

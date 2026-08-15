@@ -2,14 +2,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { parse, stringify } from 'yaml'
 import { z } from 'zod'
+import { AgentSchema, PermissionProfileSchema } from '../agents/contracts.js'
 import type { PermissionProfile } from '../agents/types.js'
+import { ProjectQualityDefaultsSchema } from '../quality/types.js'
 
-export type Agent = 'claude' | 'codex' | 'gemini'
+export type Agent = z.infer<typeof AgentSchema>
 export type CodeGraph = 'graphify' | 'serena'
 export type DecisionPolicy = 'auto' | 'critical'
 export type RoutingStrategy = 'balanced' | 'cost' | 'speed' | 'quality'
 
-const AgentSchema = z.enum(['claude', 'codex', 'gemini'])
 const CodeGraphSchema = z.enum(['graphify', 'serena'])
 
 const SmokeFlowSchema = z.object({ name: z.string().min(1), path: z.string().min(1), landmark: z.string().optional() })
@@ -39,7 +40,7 @@ export const YokeConfigSchema = z.object({
     model: z.string().min(1).optional(),
     reasoningEffort: z.string().min(1).optional(),
     bare: z.boolean().optional(),
-    permissions: z.enum(['safe', 'unsafe', 'read-only']).optional(),
+    permissions: PermissionProfileSchema.optional(),
   }).optional(),
   routing: z.object({
     enabled: z.boolean(),
@@ -75,6 +76,7 @@ export const YokeConfigSchema = z.object({
   perf: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
   codeGraph: CodeGraphSchema.optional(),
   smoke: SmokeSchema.optional(),
+  quality: ProjectQualityDefaultsSchema.optional(),
   // Opt-in: upgrade yoke at loop START when a newer version is cached (never mid-run).
   update: z.object({ auto: z.boolean() }).optional(),
 })
@@ -109,6 +111,7 @@ export interface YokeConfig {
   perf?: { command: string; retries?: number }
   codeGraph?: CodeGraph
   smoke?: SmokeConfig
+  quality?: import('../quality/types.js').ProjectQualityDefaults
   update?: { auto: boolean }
 }
 

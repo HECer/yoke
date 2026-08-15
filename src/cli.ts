@@ -53,6 +53,52 @@ export function runDesignScan(targetDir: string, opts: { max: number; report: bo
   return 0
 }
 
+export type ParsedQualityFlags = {
+  readonly quality?: boolean
+  readonly qualityRounds?: number
+  readonly qualityMinutes?: number
+  readonly qualityPolicy?: 'blocking' | 'advisory'
+  readonly qualityUnbounded?: true
+  readonly candidates?: number
+}
+
+export function parseQualityFlags(args: readonly string[]): { readonly ok: true; readonly options: ParsedQualityFlags } | { readonly ok: false; readonly error: string } {
+  const quality = args.includes('--quality') ? true : args.includes('--no-quality') ? false : undefined
+  const qualityUnbounded = args.includes('--quality-unbounded') || undefined
+  const parsePositive = (flag: '--quality-rounds=' | '--quality-minutes=' | '--candidates='): number | undefined | string => {
+    const raw = args.find(arg => arg.startsWith(flag))
+    if (!raw) return undefined
+    const value = Number(raw.slice(flag.length))
+    return Number.isInteger(value) && value > 0 ? value : `Invalid ${flag.slice(0, -1)} value: ${raw}`
+  }
+  const qualityRounds = parsePositive('--quality-rounds=')
+  if (typeof qualityRounds === 'string') return { ok: false, error: qualityRounds }
+  const qualityMinutes = parsePositive('--quality-minutes=')
+  if (typeof qualityMinutes === 'string') return { ok: false, error: qualityMinutes }
+  const candidates = parsePositive('--candidates=')
+  if (typeof candidates === 'string') return { ok: false, error: candidates }
+  const policyArg = args.find(arg => arg.startsWith('--quality-policy='))?.slice('--quality-policy='.length)
+  if (policyArg && policyArg !== 'blocking' && policyArg !== 'advisory') {
+    return { ok: false, error: `Invalid --quality-policy value: ${policyArg} (expected blocking|advisory)` }
+  }
+  const qualityPolicy = policyArg === 'blocking' || policyArg === 'advisory' ? policyArg : undefined
+  if (quality === true && args.includes('--no-quality')) return { ok: false, error: 'Cannot use --quality with --no-quality.' }
+  if (qualityUnbounded && quality === false) return { ok: false, error: 'Cannot use --quality-unbounded with --no-quality.' }
+  if (qualityUnbounded && (qualityRounds !== undefined || qualityMinutes !== undefined)) {
+    return { ok: false, error: 'Cannot use --quality-unbounded with --quality-rounds or --quality-minutes.' }
+  }
+  return {
+    ok: true,
+    options: {
+      ...(qualityUnbounded ? { quality: true, qualityUnbounded: true } : quality !== undefined ? { quality } : {}),
+      ...(qualityRounds !== undefined ? { qualityRounds } : {}),
+      ...(qualityMinutes !== undefined ? { qualityMinutes } : {}),
+      ...(qualityPolicy ? { qualityPolicy } : {}),
+      ...(candidates !== undefined ? { candidates } : {}),
+    },
+  }
+}
+
 export function main(argv: string[]): number | Promise<number> {
   const [cmd, ...rest] = argv
   switch (cmd) {
@@ -177,7 +223,9 @@ export function main(argv: string[]): number | Promise<number> {
           return 1
         }
         const { version: _version, storyId: _storyId, requestId: _requestId, answered: _answered, ...resumeOptions } = resume
-        return runLoopCommand(targetDir, resumeOptions)
+        const qualityFlags = parseQualityFlags(rest)
+        if (!qualityFlags.ok) { console.error(qualityFlags.error); return 1 }
+        return runLoopCommand(targetDir, { ...resumeOptions, ...qualityFlags.options })
       }
       if (sub === 'answer') {
         const choice = rest.find(a => a.startsWith('--choice='))?.slice('--choice='.length)
@@ -284,9 +332,11 @@ export function main(argv: string[]): number | Promise<number> {
           console.error(`Invalid --decision-policy value: ${dpArg} (expected auto|critical)`)
           return 1
         }
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, parallel, reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions })
+        const qualityFlags = parseQualityFlags(rest)
+        if (!qualityFlags.ok) { console.error(qualityFlags.error); return 1 }
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, parallel, reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions, ...qualityFlags.options })
       }
-      console.log('usage: yoke loop <on|off|status|decision|answer|resume [--discard]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--json]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|decision|answer|resume [--discard] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]')
       return 1
     }
     case 'new': {
