@@ -83,21 +83,20 @@ describe('Phase 5 parallel integration', { timeout: 30_000 }, () => {
 
   it('reopens a real conflicting candidate without marking it passed', async () => {
     const project = createProject([{ id: 'A' }, { id: 'B' }, { id: 'C', needs: ['A', 'B'] }], false)
+    mkdirSync(project.barrier, { recursive: true })
     const starts: string[] = []
     const prerequisites: string[][] = []
-    useProviderProcesses(project, 'conflict', starts, prerequisites)
-    let reviewsForA = 0
 
     const code = await Promise.resolve(runLoopCommand(project.dir, {
       parallel: 2,
       maxIterations: 2,
-      isAvailable: () => true,
       commitIdentity: identity,
-      verify: () => ({ passed: true, summary: 'green' }),
-      reviewRunner: context => {
-        if (context.story.id === 'A' && ++reviewsForA === 2) writeFileSync(join(project.barrier, 'release-B'), '')
-        return { success: true, summary: 'approved' }
+      runner: context => {
+        starts.push(context.story.id)
+        writeFileSync(join(context.targetDir, 'shared.txt'), context.story.id)
+        return { success: true, summary: `${context.story.id} implemented` }
       },
+      verify: () => ({ passed: true, summary: 'green' }),
     }))
 
     const stories = loadPrd(join(project.dir, '.yoke', 'prd.yaml'))
