@@ -3,16 +3,16 @@ import {
   agentInvocation,
   buildStandaloneReviewPrompt,
   buildWatchdogInvocation,
-  runReviewAgent,
+  runCapturedAgent,
+  repositoryFingerprint,
   isAgentAvailable,
   type Invocation,
-  type AgentResult,
+  type CapturedAgentRun,
 } from '../loop/runner.js'
+import { parseProviderResult } from '../agents/telemetry.js'
 import { resolveIdleMs } from '../loop/run-command.js'
-import { existsSync, mkdirSync, rmSync, rmdirSync } from 'node:fs'
-import { join } from 'node:path'
 import { loadConfig } from '../retrofit/config.js'
-import { readReviewVerdict, reviewVerdictPath, type ReviewVerdict } from './verdict.js'
+import { parseReviewVerdict } from './verdict.js'
 
 export interface RunReviewOptions {
   reviewer?: Agent
@@ -20,7 +20,7 @@ export interface RunReviewOptions {
   focus?: string
   timeoutMinutes?: number
   isAvailable?: (a: Agent) => boolean
-  run?: (inv: Invocation) => AgentResult
+  run?: (inv: Invocation) => CapturedAgentRun
   implementer?: Agent
   allowSelfReview?: boolean
   json?: boolean
@@ -55,40 +55,39 @@ export function runReview(targetDir: string, opts: RunReviewOptions = {}): numbe
   const scope = opts.base
     ? `the diff ${opts.base}..HEAD`
     : 'the uncommitted working-tree changes (working tree + staged)'
-  const verdictPath = reviewVerdictPath(targetDir)
-  const yokeDir = join(targetDir, '.yoke')
-  const createdYokeDir = !existsSync(yokeDir)
-  mkdirSync(yokeDir, { recursive: true })
-  rmSync(verdictPath, { force: true })
-  const prompt = buildStandaloneReviewPrompt(scope, opts.focus, verdictPath)
+  const prompt = buildStandaloneReviewPrompt(scope, opts.focus, undefined, reviewer)
   const idleMs = resolveIdleMs(opts.timeoutMinutes, undefined)
   // Pass the *agent* invocation to the runner so callers (and tests) see the
   // reviewer command. The default runner adds the watchdog wrapper before exec;
   // an injected run() gets the raw invocation.
-  const inv = agentInvocation(reviewer, prompt, targetDir, 'safe')
+  const inv = agentInvocation(reviewer, prompt, targetDir, 'read-only')
 
   const say = opts.json ? console.error : console.log
   say(`Reviewing ${scope} with ${reviewer}...`)
-  const run = opts.run ?? ((i: Invocation) => runReviewAgent(buildWatchdogInvocation(i, idleMs)))
+  const before = repositoryFingerprint(targetDir)
+  const run = opts.run ?? ((i: Invocation) => runCapturedAgent(reviewer, buildWatchdogInvocation(i, idleMs)))
   const processResult = run(inv)
-  let verdict: ReviewVerdict
+  if (repositoryFingerprint(targetDir) !== before) {
+    say(`✗ ${reviewer} modified the repository during a read-only review`)
+    return 1
+  }
   try {
-    verdict = readReviewVerdict(verdictPath)
+    const actualModel = opts.run ? undefined : processResult.tokens?.model
+    if (!opts.run && processResult.success && !actualModel) throw new Error('review provider did not report its model')
+    const verdict = parseReviewVerdict(parseProviderResult(reviewer, processResult.output), { provider: reviewer, ...(actualModel ? { model: actualModel } : {}) })
+    if (opts.json) console.log(JSON.stringify({ reviewer, process: processResult, verdict }))
+    if (!processResult.success) {
+      say(`✗ ${reviewer} process failed (${processResult.summary}); verdict: ${verdict.summary}`)
+      return 1
+    }
+    if (verdict.approved) {
+      say(`✓ ${reviewer} approved: ${verdict.summary}`)
+      return 0
+    }
+    say(`✗ ${reviewer} rejected: ${verdict.summary}`)
+    return 1
   } catch (error) {
     say(`✗ ${reviewer} produced no valid verdict (${(error as Error).message})${processResult.success ? '' : `; process: ${processResult.summary}`}`)
-    if (createdYokeDir) { try { rmdirSync(yokeDir) } catch {} }
     return 1
   }
-  if (createdYokeDir) { try { rmdirSync(yokeDir) } catch {} }
-  if (opts.json) console.log(JSON.stringify({ reviewer, process: processResult, verdict }))
-  if (!processResult.success) {
-    say(`✗ ${reviewer} process failed (${processResult.summary}); verdict: ${verdict.summary}`)
-    return 1
-  }
-  if (verdict.approved) {
-    say(`✓ ${reviewer} approved: ${verdict.summary}`)
-    return 0
-  }
-  say(`✗ ${reviewer} rejected: ${verdict.summary}`)
-  return 1
 }
