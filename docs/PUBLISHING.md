@@ -1,6 +1,6 @@
 # Publishing channels — status & playbook
 
-Where Yoke is published, and how each channel gets updated. (Reviewed 2026-07-30.)
+Where Yoke is published, and how each channel gets updated. (Reviewed 2026-08-15.)
 
 ## Live
 
@@ -14,12 +14,26 @@ Where Yoke is published, and how each channel gets updated. (Reviewed 2026-07-30
 
 ## GitHub release (required, not just a tag)
 
+Before the release commit, update every user-facing version and README statistic, then require the
+same checks npm will run:
+
+```bash
+npm run docs:update
+npm run docs:check
+npm run prepublishOnly
+```
+
+`docs:update` synchronizes the README's package version, test count, skill count, and supported
+agents from `package.json`, Vitest discovery, and `canon/manifest.yaml`. The version must also be
+kept in sync in `package-lock.json`, `canon/manifest.yaml`, `.claude-plugin/plugin.json`,
+`.codex-plugin/plugin.json`, and `gemini-extension.json`.
+
 A pushed tag appears under **Tags**, but GitHub only shows an entry under **Releases** after a
 release object is created. Use this idempotent check after the version commit reaches `main`:
 
 ```bash
 set -euo pipefail
-VERSION=1.1.0
+VERSION=1.4.0
 TARGET=$(git rev-parse HEAD)
 git fetch --tags origin
 

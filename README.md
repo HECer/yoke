@@ -2,8 +2,8 @@
 
 # 🐂 Yoke
 
-<!-- yoke:version:start -->1.3.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->657<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.4.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->928<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->29<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-657%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-928%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -25,7 +25,11 @@
 
 </div>
 
-> **TL;DR** — `yoke setup .` asks six questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it story by story behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. If any gate is red, nothing is committed. When a story is done, there's a photo of it in `.yoke/proof/<story>/`.
+> **TL;DR** — `yoke setup .` asks six questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. Add `--parallel=N` for dependency-aware workers, or declare a reference and add `--quality` for a bounded critic/repair gauntlet. If any blocking gate is red, nothing is committed. Proof lives in `.yoke/proof/<story>/`.
+
+Yoke 1.4 adds opt-in parallel workers and a bounded, reference-driven quality gauntlet without
+changing existing serial loop defaults. See [the 1.4 migration guide](docs/MIGRATING-TO-1.4.md)
+for the new flags, configuration, cleanup behavior, and review-verdict contract.
 
 Yoke 1.1 is safe-by-default: provider CLIs use autonomous sandbox profiles unless `--unsafe`
 is explicit; reviews require a schema-valid verdict and a different model unless
@@ -72,7 +76,7 @@ $ ls reading-app/.yoke/proof/STORY-2/
 home.png  list.png                            # photographic evidence, labelled per story
 ```
 
-Every claim in that transcript is enforced by code paths with tests behind them — 657 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
+Every claim in that transcript is enforced by code paths with tests behind them — 928 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
 
 ## 🚀 Quickstart
 
@@ -87,7 +91,7 @@ yoke loop on my-app && yoke loop run my-app --isolate
 # — or retrofit an existing project —
 yoke setup /path/to/project                                  # interactive: agents, graph, loop, runner, decisions, routing
 yoke validate canon                                          # sanity-check the canon
-yoke loop run /path/to/project --isolate --reviewer=codex --max=20
+yoke loop run /path/to/project --isolate --parallel=3 --reviewer=codex --max=20
 ```
 
 > Requires Node ≥ 20 and git. No global install? `node /path/to/yoke/dist/cli.js …` or `npm --prefix /path/to/yoke run yoke -- …` work too. The MCP tools (rtk, graphify/Serena, Playwright MCP) are wired by Yoke but installed separately — the generated config is a clearly-labelled, adjustable template.
@@ -156,7 +160,7 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke prd check [dir]` | PRD lint gate (schema, dependencies, cycles, duplicate ids, acceptance) | `0` valid · `1` violations |
 | `yoke change add\|status [dir] [--idea=]` | Queue a change at any time; the loop turns it into append-only stories at the next safe boundary | `0` · `1` invalid inbox/request |
 | `yoke context init\|status [dir]` | Durable context layer (`PROJECT/DECISIONS/KNOWLEDGE.md`) | `0` |
-| `yoke loop on\|off\|status\|decision\|answer\|resume\|run\|cleanup [dir]` | Autonomous loop; `run` is unlimited by default and `--max=N` creates an intentional batch cap; `decision` shows a critical stop, `answer` records it and resumes, `resume` retries a failed restart with the preserved safety options | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
+| `yoke loop on\|off\|status\|decision\|answer\|resume\|run\|cleanup [dir]` | Autonomous loop; `run` supports `--parallel=N`, bounded reference-driven `--quality`, and blind `--candidates=N` selection; `--max=N` creates an intentional batch cap; `cleanup` retains worktrees unless `--remove-worktrees` is explicit | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
 | `yoke review [dir] [--reviewer=] [--base=] [--focus=] [--json] [--allow-self-review]` | An independent model writes a schema-valid verdict | `0` approved · `1` findings/invalid verdict · `2` no independent reviewer |
 | `yoke audit [dir] [--json]` | Dependency, high-confidence secret, and sensitive-change audit | `0` green · `1` blocking findings · `2` not runnable |
 | `yoke design-scan [dir] [--max=N] [--report]` | Static AI-slop design gate | `0` within budget · `1` over |
@@ -337,6 +341,7 @@ yoke loop run . \
   --runner=codex \               # implement with Codex…
   --reviewer=claude \            # …review with Claude (role separation)
   --isolate \                    # each story in a throwaway git worktree
+  --parallel=3 \                  # run dependency-ready, non-colliding stories concurrently
   --decision-policy=critical     # pause only for high-impact decisions; routine choices stay autonomous
 # Optional: add --max=20 only when this run should stop after a bounded batch.
 yoke loop off .                 # disable
@@ -370,6 +375,49 @@ closes the mechanical false-done paths—targeted evidence, coverage review, cle
 and integrated journeys—while the project still owns the correctness of its tests and production
 observability.
 
+### Parallel workers and the quality gauntlet
+
+`--parallel=N` dispatches dependency-ready stories concurrently. Claims carry leases, workers use
+isolated worktrees, collision areas are serialized, and only a mechanically green candidate enters
+the FIFO integration queue. Integration repeats the project gates against the merged tree; a worker
+success can never bypass a red integrated result. `yoke loop status` reports the dispatcher,
+workers, providers, worktrees, lifecycle, queue, integrations, and reopened stories.
+
+Quality is reference-driven and opt-in. Declare what one story should match:
+
+```yaml
+quality:
+  reference: { name: approved-home, source: design/home.png, kind: file }
+  candidate: { kind: screenshots, paths: [.yoke/proof/STORY-1/home.png] }
+  rubric: Match the approved layout, hierarchy, spacing, and states.
+  policy: blocking                 # or advisory
+```
+
+Configure project defaults, then enable the gauntlet for a run:
+
+```yaml
+quality:
+  enabled: false                   # keep opt-in, or make it the project default
+  policy: blocking
+  maxRounds: 3
+  maxMinutes: 60
+  consistencyChecks: 2
+  maxParallelCandidates: 2
+  critic: { agent: codex, model: gpt-5.6-sol }  # model required for --candidates
+  repair: { agent: claude }
+```
+
+```bash
+yoke loop run . --quality --quality-rounds=3 --quality-minutes=60
+yoke loop run . --quality --candidates=2   # blind pairwise selection; stories need quality declarations
+```
+
+The critic compares opaque candidate/reference labels, writes schema-validated provenance, and
+cannot modify the project. Blocking findings enter a bounded repair loop and rerun every mechanical
+gate; advisory findings are retained without blocking. `--quality-policy=`, `--no-quality`, and
+`--quality-unbounded` override defaults for one run. Unbounded mode is explicit and warned because
+it removes repair limits, not Yoke's watchdog, isolation, verification, or commit safety.
+
 State lives **outside the model context** — the PRD file plus git — so each iteration is fresh.
 Use `yoke change add` at any time. Its ignored append-only inbox is consumed at the next story
 boundary. A separate coverage pass must confirm that every requested outcome maps to behavioral
@@ -393,6 +441,8 @@ Every iteration emits token-free, harness-side feedback (Node console + local fi
     implementing · iteration 20 · 19/45 (42%) · updated 30s ago
     ~1h44m remaining (Ø 4m/story)
   ```
+- **Parallel + quality detail** — active workers include provider, candidate ID, worktree,
+  lifecycle, phase, quality round, and repair budget; the integrator is shown separately.
 - **`.yoke/loop.log`** — an append-only timeline of every phase transition.
 - **`--json`** — machine mode for supervisors: every status write is *also* emitted as one
   NDJSON line on stdout (`{"type":"status","state":"running","phase":"verifying",…}` — the
@@ -561,10 +611,11 @@ stale takeover is serialized by `.yoke/loop.lock.takeover`. A second invocation 
 `Another loop is already running here (pid …). If that is wrong, run: yoke loop cleanup`. A lock
 whose holder process is dead is taken over automatically (with a warning).
 
-**`yoke loop cleanup [dir]`** removes what a crashed loop leaves behind: every worktree under
-`.yoke/worktrees/` (via `git worktree remove --force` + `prune` — user-created worktrees are
-never touched) and a **stale** lock file. A live lock is reported and left alone. Exits `0`
-when everything cleaned, `1` if any removal failed. If a machine/process crash leaves the cleanup
+**`yoke loop cleanup [dir]`** reaps only runner process trees recorded by this project and removes
+a stale lock. Yoke-created worktrees are **retained by default** and listed in the output; pass
+`--remove-worktrees` to remove `.yoke/worktrees/*` with `git worktree remove --force` + `prune`.
+User-created worktrees are never touched. A live lock is reported and left alone. Exits `0` when
+cleanup succeeds, `1` if any requested removal fails. If a machine/process crash leaves the cleanup
 recovery lease itself behind, an operator can run
 `yoke loop cleanup . --discard-stale-recovery`; Yoke refuses while its recorded PID is alive, and
 the force flag must not be run concurrently.
@@ -725,6 +776,7 @@ src/
   change/         # append-only change inbox · planning · independent coverage review
   retrofit/       # detect · plan · apply · planners (claude/codex/gemini) · tools
   loop/           # prd · gates · runner · verify · git/worktree · loop · run-command · lock · cleanup
+  quality/        # reference collection · blind critic · bounded repair · candidate comparison
   new/            # yoke new — greenfield bootstrap
   prd/            # yoke prd draft|check — idea → stories + lint gate
   review/         # yoke review — cross-model diff gate
@@ -736,14 +788,14 @@ docs/superpowers/ # the spec and every component's implementation plan
 
 ## 🗺️ Roadmap
 
-Yoke 1.1's completed release work moved to the changelog. Remaining, explicitly scoped work
-is tracked in [`TODOS.md`](TODOS.md), including provider subprocess wiring for the tested
-parallel dispatcher, broader benchmark samples, native output schemas, and release provenance.
+Completed release work lives in the changelog. Remaining, explicitly scoped work is tracked in
+[`TODOS.md`](TODOS.md), including broader benchmark samples, native output schemas, and signed
+release provenance.
 
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (657 tests)
+npm test          # vitest (928 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```
