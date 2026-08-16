@@ -24,6 +24,7 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/proof/',
   '.yoke/references/',
   '.yoke/changes/',
+  '.yoke/artifacts/',
 ]
 
 const HEADER = '# Yoke runtime artifacts (managed by yoke retrofit)'

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { AgentSchema, PermissionProfileSchema } from '../agents/contracts.js'
 import type { PermissionProfile } from '../agents/types.js'
 import { ProjectQualityDefaultsSchema } from '../quality/types.js'
+import { DEFAULT_OUTPUT_POLICY, type OutputPolicy } from '../output/types.js'
 
 export type Agent = z.infer<typeof AgentSchema>
 export type CodeGraph = 'graphify' | 'serena'
@@ -15,6 +16,20 @@ const CodeGraphSchema = z.enum(['graphify', 'serena'])
 
 const SmokeFlowSchema = z.object({ name: z.string().min(1), path: z.string().min(1), landmark: z.string().optional() })
 const SmokeSchema = z.object({ baseUrl: z.string().min(1), flows: z.array(SmokeFlowSchema).min(1) })
+const OutputPolicySchema = z.object({
+  previewBytes: z.number().int().positive().optional(),
+  artifactThresholdBytes: z.number().int().positive().optional(),
+}).superRefine((value, context) => {
+  const previewBytes = value.previewBytes ?? DEFAULT_OUTPUT_POLICY.previewBytes
+  const artifactThresholdBytes = value.artifactThresholdBytes ?? DEFAULT_OUTPUT_POLICY.artifactThresholdBytes
+  if (artifactThresholdBytes < previewBytes) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['artifactThresholdBytes'],
+      message: 'artifactThresholdBytes must be greater than or equal to previewBytes',
+    })
+  }
+})
 const RoutingWorkerSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
   agent: AgentSchema,
@@ -77,6 +92,7 @@ export const YokeConfigSchema = z.object({
   codeGraph: CodeGraphSchema.optional(),
   smoke: SmokeSchema.optional(),
   quality: ProjectQualityDefaultsSchema.optional(),
+  output: OutputPolicySchema.optional(),
   // Opt-in: upgrade yoke at loop START when a newer version is cached (never mid-run).
   update: z.object({ auto: z.boolean() }).optional(),
 })
@@ -112,11 +128,19 @@ export interface YokeConfig {
   codeGraph?: CodeGraph
   smoke?: SmokeConfig
   quality?: import('../quality/types.js').ProjectQualityDefaults
+  output?: Partial<OutputPolicy>
   update?: { auto: boolean }
 }
 
 export function defaultConfig(canonVersion: string): YokeConfig {
   return { canonVersion, agents: [], loop: { enabled: false }, verify: { requireCriteria: true } }
+}
+
+export function resolveOutputPolicy(config: YokeConfig): OutputPolicy {
+  return {
+    previewBytes: config.output?.previewBytes ?? DEFAULT_OUTPUT_POLICY.previewBytes,
+    artifactThresholdBytes: config.output?.artifactThresholdBytes ?? DEFAULT_OUTPUT_POLICY.artifactThresholdBytes,
+  }
 }
 
 export function configPath(targetDir: string): string {

@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand, YokeConfigSchema } from '../../src/retrofit/config.js'
+import { loadConfig, saveConfig, defaultConfig, resolveOutputPolicy, resolveVerifyCommand, YokeConfigSchema } from '../../src/retrofit/config.js'
+import { DEFAULT_OUTPUT_POLICY } from '../../src/output/types.js'
 import { writeFileSync } from 'node:fs'
 
 let dir: string
@@ -73,6 +74,30 @@ describe('yoke config', () => {
   it('accepts verify without retries', () => {
     const parsed = YokeConfigSchema.parse({ canonVersion: '0.1.0', agents: [], loop: { enabled: false }, verify: { command: 'npm test' } })
     expect(parsed.verify?.retries).toBeUndefined()
+  })
+
+  it('uses backward-compatible output defaults when output config is absent', () => {
+    expect(resolveOutputPolicy(defaultConfig('1.4.0'))).toEqual(DEFAULT_OUTPUT_POLICY)
+  })
+
+  it('accepts and resolves partial output budget overrides', () => {
+    const cfg = YokeConfigSchema.parse({
+      ...defaultConfig('1.4.0'),
+      output: { previewBytes: 4096, artifactThresholdBytes: 16384 },
+    })
+    expect(resolveOutputPolicy(cfg)).toEqual({ previewBytes: 4096, artifactThresholdBytes: 16384 })
+  })
+
+  it('rejects non-positive output budgets', () => {
+    expect(() => YokeConfigSchema.parse({ ...defaultConfig('1'), output: { previewBytes: 0 } })).toThrow()
+    expect(() => YokeConfigSchema.parse({ ...defaultConfig('1'), output: { artifactThresholdBytes: -1 } })).toThrow()
+  })
+
+  it('rejects an artifact threshold below the resolved preview budget', () => {
+    expect(() => YokeConfigSchema.parse({
+      ...defaultConfig('1'),
+      output: { previewBytes: 4096, artifactThresholdBytes: 2048 },
+    })).toThrow(/artifactThresholdBytes/)
   })
 
   it('round-trips an explicit runner permission profile', () => {

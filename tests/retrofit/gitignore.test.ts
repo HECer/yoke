@@ -14,6 +14,11 @@ describe('ensureGitignore', () => {
     ensureGitignore(dir)
     expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toContain('.yoke/changes/')
   })
+  it('ignores local full-output artifacts', () => {
+    expect(YOKE_IGNORE_LINES).toContain('.yoke/artifacts/')
+    ensureGitignore(dir)
+    expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toContain('.yoke/artifacts/')
+  })
   it('creates .gitignore with the managed block when absent', () => {
     ensureGitignore(dir)
     const text = readFileSync(gi(), 'utf8')

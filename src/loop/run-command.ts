@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
-import { loadConfig, saveConfig, defaultConfig, resolveVerifyCommand, type DecisionPolicy } from '../retrofit/config.js'
+import { loadConfig, saveConfig, defaultConfig, resolveOutputPolicy, resolveVerifyCommand, type DecisionPolicy } from '../retrofit/config.js'
 import { loadPrd, progress } from './prd.js'
 import { runLoop } from './loop.js'
 import { commitPaths, realGitOps } from './git.js'
@@ -188,6 +188,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       return 2
     }
   }
+  const outputPolicy = resolveOutputPolicy(config)
   let verify = opts.verify
   if (!verify) {
     const command = resolveVerifyCommand(targetDir, config)
@@ -195,16 +196,16 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       console.error('No verify command configured. Set verify.command in .yoke/config.yaml (e.g. "npm test") so the loop can confirm tests pass before marking work done.')
       return 2
     }
-    verify = retryingVerifier(commandVerifier(command), config.verify?.retries ?? 1)
+    verify = retryingVerifier(commandVerifier(command, { phase: 'verify', policy: outputPolicy }), config.verify?.retries ?? 1)
   }
   // Optional performance budget gate: same contract as verify (exit 0 = within
   // budget), same flake tolerance (benchmarks are noisy).
   let perf = opts.perf
   if (!perf && config.perf?.command) {
-    perf = retryingVerifier(commandVerifier(config.perf.command), config.perf.retries ?? 1)
+    perf = retryingVerifier(commandVerifier(config.perf.command, { phase: 'perf', policy: outputPolicy }), config.perf.retries ?? 1)
   }
   const completion = config.completion?.command
-    ? retryingVerifier(commandVerifier(config.completion.command), config.completion.retries ?? 1)
+    ? retryingVerifier(commandVerifier(config.completion.command, { phase: 'completion', policy: outputPolicy }), config.completion.retries ?? 1)
     : undefined
   // Opt-in self-update, loop START only — this run keeps executing the version
   // it started with; a fetched upgrade applies from the next invocation.
@@ -455,7 +456,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       git: opts.git,
       identity: commitIdentity,
       verify,
-      verifyCriterion: (dir, _story, criterion) => commandsVerifier(criterion.verify)(dir),
+      verifyCriterion: (dir, _story, criterion) => commandsVerifier(criterion.verify, { phase: 'criterion', policy: outputPolicy })(dir),
       requireCriterionEvidence: config.verify?.requireCriteria ?? false,
       perf,
       audit,
@@ -475,7 +476,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       git,
       commitIdentity,
       verify,
-      verifyCriterion: (dir, _story, criterion) => commandsVerifier(criterion.verify)(dir),
+      verifyCriterion: (dir, _story, criterion) => commandsVerifier(criterion.verify, { phase: 'criterion', policy: outputPolicy })(dir),
       requireCriterionEvidence: config.verify?.requireCriteria ?? false,
       completion,
       intake,
