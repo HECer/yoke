@@ -1,14 +1,15 @@
 # Changelog
 
-## Unreleased
+## 1.5.0 — 2026-08-16
 
 ### Added
-- Failed verify, executable-criterion, performance, and completion gates now produce deterministic byte-bounded previews and preserve large complete stdout/stderr in content-addressed `.yoke/artifacts/` files with SHA-256 references.
+- Failed verify, executable-criterion, performance, configured custom-audit, and completion gates now produce deterministic byte-bounded previews and preserve large complete stdout/stderr in content-addressed `.yoke/artifacts/` files with SHA-256 references.
 - Projects can tune `output.previewBytes` and `output.artifactThresholdBytes`; existing projects use backward-compatible 2 KiB/8 KiB defaults.
 - A deterministic local benchmark verifies signal retention, preview bounds, compression measurement, and artifact digest round-trips without making provider-token claims.
 
 ### Security
-- Output artifact paths sanitize story identifiers, stay below an ignored project-local root, and use user-only file modes where supported. Raw artifacts are never injected automatically and documentation warns that project commands may emit secrets or personal data.
+- Output artifact paths sanitize story identifiers, stay below a project-local root, use user-only file modes where supported, and are excluded from Yoke's clean-tree and story-commit operations even in upgraded projects. Raw artifacts are never injected automatically and documentation warns that project commands may emit secrets or personal data.
+- Gate command capture is capped at 16 MiB per stdout/stderr stream. Quota overflow fails closed and labels retained evidence as truncated instead of risking unbounded memory or claiming partial output is complete.
 
 ## 1.4.0 — 2026-08-15
 

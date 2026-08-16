@@ -6,7 +6,17 @@ import { commandVerifier, commandsVerifier, retryingVerifier, type Verifier, typ
 
 let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-verify-')) })
-afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+afterEach(async () => {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+      return
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EPERM' || attempt === 9) throw error
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+  }
+})
 
 describe('commandVerifier', () => {
   it('passes when the command exits 0', () => {
@@ -74,14 +84,54 @@ describe('commandVerifier', () => {
     expect(existsSync(join(dir, '.yoke', 'artifacts'))).toBe(false)
   })
 
+  it('does not misclassify successful output larger than the default child-process buffer', () => {
+    writeFileSync(join(dir, 'large-success.js'), "process.stdout.write('x'.repeat(2_000_000))")
+
+    const result = commandVerifier('node large-success.js')(dir)
+
+    expect(result).toEqual({ passed: true, summary: 'verify passed: node large-success.js' })
+    expect(existsSync(join(dir, '.yoke', 'artifacts'))).toBe(false)
+  })
+
+  it('preserves complete failure output larger than the default child-process buffer', () => {
+    writeFileSync(join(dir, 'large-failure.js'), [
+      "process.stdout.write('x'.repeat(2_000_000))",
+      "console.error('FINAL_FAILURE_MARKER')",
+      'process.exit(1)',
+    ].join(';'))
+
+    const result = commandVerifier('node large-failure.js', {
+      phase: 'verify',
+      policy: { previewBytes: 256, artifactThresholdBytes: 1_024 },
+    })(dir)
+
+    expect(result.passed).toBe(false)
+    const relativePath = result.summary.match(/\[full output: ([^|]+) \|/)?.[1].trim()
+    expect(relativePath).toBeTruthy()
+    const raw = readFileSync(join(dir, ...relativePath!.split('/')), 'utf8')
+    expect(raw).toContain('FINAL_FAILURE_MARKER')
+    expect(Buffer.byteLength(raw)).toBeGreaterThan(2_000_000)
+  })
+
+  it('fails closed and labels output that exceeds the bounded capture quota', () => {
+    writeFileSync(join(dir, 'capture-overflow.js'), "process.stdout.write('x'.repeat(20_000_000))")
+
+    const result = commandVerifier('node capture-overflow.js', {
+      phase: 'verify',
+      policy: { previewBytes: 256, artifactThresholdBytes: 1_024 },
+    })(dir)
+
+    expect(result.passed).toBe(false)
+    expect(result.summary).toContain('capture limit exceeded')
+    expect(result.summary).toContain('[truncated output:')
+    expect(result.summary).not.toContain('[full output:')
+  })
+
   it('labels timeouts while retaining their bounded failure result', async () => {
     writeFileSync(join(dir, 'hang.js'), 'setTimeout(() => process.exit(0), 80)')
     const result = commandVerifier('node hang.js', { phase: 'verify', timeoutMs: 30 })(dir)
     expect(result.passed).toBe(false)
     expect(result.summary).toMatch(/timed out/i)
-    // On Windows execSync terminates the command shell first; let its short-lived
-    // child exit before the temp directory is removed.
-    await new Promise(resolve => setTimeout(resolve, 120))
   })
 
   it('retains the preview when artifact persistence fails', () => {

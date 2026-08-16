@@ -2,8 +2,8 @@
 
 # 🐂 Yoke
 
-<!-- yoke:version:start -->1.4.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->953<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.5.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->971<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->29<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-953%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-971%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -26,6 +26,11 @@
 </div>
 
 > **TL;DR** — `yoke setup .` asks six questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. Add `--parallel=N` for dependency-aware workers, or declare a reference and add `--quality` for a bounded critic/repair gauntlet. If any blocking gate is red, nothing is committed. Proof lives in `.yoke/proof/<story>/`.
+
+Yoke 1.5 keeps failed gate output compact without throwing evidence away: deterministic previews
+retain actionable failures and final summaries, while large complete stdout/stderr remains available
+in private, content-addressed local artifacts. Existing projects keep their serial behavior and use
+safe 2 KiB preview / 8 KiB artifact defaults unless configured otherwise.
 
 Yoke 1.4 adds opt-in parallel workers and a bounded, reference-driven quality gauntlet without
 changing existing serial loop defaults. See [the 1.4 migration guide](docs/MIGRATING-TO-1.4.md)
@@ -76,7 +81,7 @@ $ ls reading-app/.yoke/proof/STORY-2/
 home.png  list.png                            # photographic evidence, labelled per story
 ```
 
-Every claim in that transcript is enforced by code paths with tests behind them — 928 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
+Every claim in that transcript is enforced by code paths with tests behind them — 971 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
 
 ## 🚀 Quickstart
 
@@ -594,7 +599,7 @@ be fast" is a vibe the loop cannot enforce. Yoke makes it mechanical, at two lev
 
 ### Artifact-backed gate output: compact context, complete local evidence
 
-Failed verify, executable-criterion, performance, and completion commands can emit thousands of
+Failed verify, executable-criterion, performance, configured custom-audit, and completion commands can emit thousands of
 low-signal lines. Yoke keeps the model-visible failure summary deterministic and bounded while
 preserving large raw stdout/stderr below `.yoke/artifacts/`:
 
@@ -618,7 +623,12 @@ Successful gate output is discarded as before. This affects only commands execut
 gates. It does **not** intercept tool output generated internally by Claude Code, Codex, or Gemini,
 so benchmark ratios for this feature are not provider-token or billing claims.
 
-`.yoke/artifacts/` is local, gitignored runtime state. Raw command output is intentionally stored
+Command capture is capped at 16 MiB per stdout/stderr stream. Exceeding that quota fails the gate
+closed and stores the captured prefix with a `[truncated output: ...]` marker; Yoke never labels
+partial evidence as full output.
+
+Yoke treats `.yoke/artifacts/` as local, non-committable runtime state and excludes it from its
+clean-tree and story-commit operations; `yoke retrofit` also adds it to `.gitignore`. Raw command output is intentionally stored
 without redaction so it remains valid evidence and may therefore contain credentials, personal
 data, or other sensitive text emitted by project commands. Inspect artifacts before sharing them.
 
@@ -825,7 +835,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (953 tests)
+npm test          # vitest (971 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import type { OutputArtifact, OutputPhase } from './types.js'
 
@@ -25,6 +25,13 @@ export function writeOutputArtifact(
   const label = safeLabel(options.storyId)
   const relativeDir = join('.yoke', 'artifacts', label)
   const projectRoot = realpathSync(targetDir)
+  const yokeRoot = join(targetDir, '.yoke')
+  if (existsSync(yokeRoot)) {
+    if (lstatSync(yokeRoot).isSymbolicLink()) throw new Error('artifact root parent must not be a symlink')
+    assertContained(projectRoot, realpathSync(yokeRoot))
+  } else {
+    mkdirSync(yokeRoot, { mode: 0o700 })
+  }
   const artifactRoot = join(targetDir, '.yoke', 'artifacts')
   mkdirSync(artifactRoot, { recursive: true, mode: 0o700 })
   if (lstatSync(artifactRoot).isSymbolicLink()) throw new Error('artifact root must not be a symlink')
@@ -38,12 +45,14 @@ export function writeOutputArtifact(
   let filename = `${options.phase}-${sha256.slice(0, digestLength)}.log`
   let file = join(artifactDir, filename)
   while (existsSync(file) && !lstatSync(file).isSymbolicLink() && createHash('sha256').update(readFileSync(file)).digest('hex') !== sha256) {
+    if (digestLength === sha256.length) throw new Error('artifact digest path contains mismatched content')
     digestLength = Math.min(sha256.length, digestLength + 8)
     filename = `${options.phase}-${sha256.slice(0, digestLength)}.log`
     file = join(artifactDir, filename)
   }
   if (existsSync(file) && lstatSync(file).isSymbolicLink()) throw new Error('artifact file must not be a symlink')
   if (!existsSync(file)) writeFileSync(file, raw, { encoding: 'utf8', mode: 0o600 })
+  else chmodSync(file, 0o600)
 
   const relativePath = `${relativeDir.replace(/\\/gu, '/')}/${filename}`
   const bytes = Buffer.byteLength(raw)

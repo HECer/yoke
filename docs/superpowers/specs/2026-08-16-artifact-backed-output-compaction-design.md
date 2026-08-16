@@ -1,8 +1,8 @@
 # Artifact-backed output compaction design
 
 **Date:** 2026-08-16  
-**Status:** implemented and verified on `dev/output-compaction`
-**Target:** Yoke 1.5
+**Status:** implemented, hardened, and verified on `main`
+**Target:** Yoke 1.5.0
 
 ## Problem
 
@@ -73,7 +73,9 @@ The compactor operates line-by-line without parsing project-specific formats:
 6. Remove duplicate preview lines while preserving their first selected order.
 7. Enforce the preview byte budget at UTF-8 boundaries and append a deterministic omission line containing original line and byte counts.
 
-The raw artifact always contains the exact captured stdout and stderr with explicit stream headings. Preview cleanup must never modify the artifact.
+The raw artifact contains the exact captured stdout and stderr with explicit stream headings.
+Preview cleanup must never modify the artifact. Capture is bounded at 16 MiB per stream; if that
+quota is exceeded, the command fails closed and the retained prefix is explicitly marked truncated.
 
 ## Artifact identity and layout
 
@@ -102,6 +104,7 @@ Agents can retrieve it with their normal file-reading tools when the preview is 
 1. A Yoke gate executes a configured command with stdout and stderr captured.
 2. On exit zero, Yoke discards captured bytes and returns the existing compact success summary.
 3. On timeout or non-zero exit, Yoke combines both streams with labels.
+   Capture quota overflow follows the same failure path but marks the retained prefix as truncated.
 4. The pure compactor creates the bounded preview.
 5. If the combined raw output crosses `artifactThresholdBytes`, Yoke writes the content-addressed artifact.
 6. `VerifyResult.summary` carries the command, timeout state, preview, and optional artifact marker.
@@ -115,13 +118,15 @@ Agents can retrieve it with their normal file-reading tools when the preview is 
 - stdout and stderr are both retained even when one is empty.
 - Retried identical failures reuse the same artifact; a changed failure gets a different digest.
 - Artifact paths are built from fixed directories and sanitized labels. User-controlled story IDs never become raw path segments.
+- stdout and stderr capture is capped at 16 MiB per stream. Overflow fails closed, retains only the
+  bounded prefix, and uses a `truncated output` marker rather than a `full output` marker.
 
 ## Security and privacy
 
 - `.yoke/artifacts/` is runtime state and must be gitignored by retrofit/setup.
 - Artifacts never leave the local project through Yoke.
 - No artifact content is injected automatically into prompts; only the bounded preview and reference are transported.
-- The full digest lets reviewers verify that retrieved evidence matches the captured failure.
+- The full digest lets reviewers verify that retrieved evidence matches the retained artifact bytes.
 - Raw logs may contain credentials or personal data emitted by project commands. The README must warn users to inspect artifacts before sharing them.
 - Absence of provenance metadata or detectable text markers must never be treated as evidence of human authorship.
 
@@ -131,7 +136,7 @@ Implementation follows red-green-refactor cycles:
 
 - Pure compactor tests cover error prioritization, warning/context selection, duplicate removal, ANSI cleanup, UTF-8 byte bounds, tail summaries, empty input, and deterministic output.
 - Artifact tests cover content fidelity, SHA-256 identity, stable paths, story sanitization, directory creation, and project-relative markers.
-- Verifier integration tests prove that small failures remain inline, large failures create retrievable artifacts, mixed stdout/stderr is retained, successful commands create no artifacts, timeouts remain labelled, and artifact-write failures preserve the gate result.
+- Verifier integration tests prove that small failures remain inline, large failures create retrievable artifacts, mixed stdout/stderr is retained, successful commands create no artifacts, timeouts remain labelled, capture overflow fails closed as truncated, and artifact-write failures preserve the gate result.
 - Configuration tests cover defaults, valid overrides, and the threshold invariant.
 - Retrofit tests require `.yoke/artifacts/` in the managed ignore set.
 - Existing loop, parallel-worker, quality, and retry suites must stay green.
@@ -158,7 +163,7 @@ The benchmark is for the Yoke-visible gate summary only. Release notes must not 
 ## Acceptance criteria
 
 1. A failed gate whose combined stdout/stderr is at most 8 KiB returns a deterministic preview and writes no artifact under default configuration.
-2. A failed gate larger than 8 KiB writes the complete combined output below `.yoke/artifacts/` and returns a preview of at most 2 KiB plus a relative path, byte count, and full SHA-256 digest.
+2. A failed gate larger than 8 KiB but within the 16 MiB-per-stream capture quota writes the complete combined output below `.yoke/artifacts/` and returns a preview of at most 2 KiB plus a relative path, byte count, and full SHA-256 digest. Quota overflow fails closed and labels the bounded retained prefix as truncated.
 3. The preview retains an early error and a final runner summary for the benchmark fixture.
 4. Successful gates retain current summaries and write no artifacts.
 5. Artifact failures do not change a gate's pass/fail result and cannot remove its inline preview.

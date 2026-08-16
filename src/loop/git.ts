@@ -2,15 +2,18 @@ import { execFileSync } from 'node:child_process'
 import type { GitOps } from './gates.js'
 import { sanitizeCommitMessage, type CommitIdentity } from './identity.js'
 
+const OUTPUT_ARTIFACT_EXCLUDE = ':(exclude).yoke/artifacts/**'
+
 export const realGitOps: GitOps = {
   isClean(dir: string): boolean {
-    const out = execFileSync('git', ['status', '--porcelain'], { cwd: dir }).toString()
+    const out = execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', '.', OUTPUT_ARTIFACT_EXCLUDE], { cwd: dir }).toString()
     return out.trim() === ''
   },
   commitAll(dir: string, message: string, identity?: CommitIdentity): void {
-    execFileSync('git', ['add', '-A'], { cwd: dir, stdio: 'pipe' })
-    const status = execFileSync('git', ['status', '--porcelain'], { cwd: dir }).toString().trim()
-    if (status === '') {
+    execFileSync('git', ['reset', '--quiet', '--', '.yoke/artifacts'], { cwd: dir, stdio: 'pipe' })
+    execFileSync('git', ['add', '-A', '--', '.', OUTPUT_ARTIFACT_EXCLUDE], { cwd: dir, stdio: 'pipe' })
+    const staged = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: dir }).toString().trim()
+    if (staged === '') {
       throw new Error('nothing to commit after agent run')
     }
     const identityArgs = identity

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
@@ -34,6 +34,41 @@ describe('realGitOps', () => {
     expect(realGitOps.isClean(dir)).toBe(true)
     const log = execFileSync('git', ['log', '--oneline', '-1'], { cwd: dir }).toString()
     expect(log).toContain('yoke: test commit')
+  })
+
+  it('treats local output artifacts as runtime state in upgraded projects', () => {
+    mkdirSync(join(dir, '.yoke', 'artifacts', 'S1'), { recursive: true })
+    writeFileSync(join(dir, '.yoke', 'artifacts', 'S1', 'verify-secret.log'), 'secret output')
+
+    expect(realGitOps.isClean(dir)).toBe(true)
+  })
+
+  it('never stages output artifacts in story commits', () => {
+    mkdirSync(join(dir, '.yoke', 'artifacts', 'S1'), { recursive: true })
+    writeFileSync(join(dir, '.yoke', 'artifacts', 'S1', 'verify-secret.log'), 'secret output')
+    writeFileSync(join(dir, 'b.txt'), 'safe change')
+
+    realGitOps.commitAll(dir, 'yoke: safe commit')
+
+    const committed = execFileSync('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: dir }).toString()
+    expect(committed).toContain('b.txt')
+    expect(committed).not.toContain('.yoke/artifacts')
+    expect(realGitOps.isClean(dir)).toBe(true)
+  })
+
+  it('unstages pre-staged output artifacts before a story commit', () => {
+    mkdirSync(join(dir, '.yoke', 'artifacts', 'S1'), { recursive: true })
+    const artifact = join('.yoke', 'artifacts', 'S1', 'verify-secret.log')
+    writeFileSync(join(dir, artifact), 'secret output')
+    git('add', '-f', '--', artifact)
+    writeFileSync(join(dir, 'b.txt'), 'safe change')
+
+    realGitOps.commitAll(dir, 'yoke: safe staged commit')
+
+    const committed = execFileSync('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: dir }).toString()
+    expect(committed).toContain('b.txt')
+    expect(committed).not.toContain('.yoke/artifacts')
+    expect(execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: dir }).toString()).not.toContain('.yoke/artifacts')
   })
 
   it('enforces the supplied author and committer and strips AI co-author trailers by default', () => {

@@ -53,6 +53,7 @@ export function updateReadme(readme, metadata) {
   }
   next = next.replace(/tests-\d+%20passing-brightgreen\.svg/g, `tests-${metadata.testCount}%20passing-brightgreen.svg`)
   next = next.replace(/vitest \(\d+ tests\)/g, `vitest (${metadata.testCount} tests)`)
+  next = next.replace(/(tests behind (?:them|the gate) — )\d+( of them\b)/gi, `$1${metadata.testCount}$2`)
   return next
 }
 

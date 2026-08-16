@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { collectMetadata, updateReadme } from '../../scripts/release-metadata.mjs'
@@ -37,6 +37,7 @@ describe('release metadata', () => {
       '<!-- yoke:agents:start -->old<!-- yoke:agents:end -->',
       '![Tests](https://img.shields.io/badge/tests-12%20passing-brightgreen.svg)',
       'npm test          # vitest (12 tests)',
+      'Tests behind the gate — 12 of them.',
       'keep me',
     ].join('\n')
 
@@ -50,7 +51,15 @@ describe('release metadata', () => {
       '<!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->',
       '![Tests](https://img.shields.io/badge/tests-500%20passing-brightgreen.svg)',
       'npm test          # vitest (500 tests)',
+      'Tests behind the gate — 500 of them.',
       'keep me',
     ].join('\n'))
+  })
+
+  it('ships the documented output compaction benchmark', () => {
+    const root = process.cwd()
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { files: string[] }
+    expect(pkg.files).toContain('bench/output-compaction.mjs')
+    expect(existsSync(join(root, 'bench', 'output-compaction.mjs'))).toBe(true)
   })
 })

@@ -35,21 +35,36 @@ function errorMessage(error: unknown): string {
     .slice(0, 240)
 }
 
-// Runs a shell command in the target dir; passed = exit 0. execSync goes through the
-// shell, so `npm test` resolves npm.cmd on Windows. Output is captured (not streamed).
+const COMMAND_CAPTURE_BYTES = 16 * 1024 * 1024
+
+// Runs a shell command in the target dir; passed = exit 0. The explicit capture quota
+// avoids Node's 1 MiB default without allowing noisy commands to consume unbounded memory.
 export function commandVerifier(command: string, options: CommandVerifierOptions = {}): Verifier {
   return (targetDir: string): VerifyResult => {
     const phase = options.phase ?? 'verify'
     try {
-      execSync(command, { cwd: targetDir, stdio: 'pipe', timeout: options.timeoutMs ?? 600_000 })
+      execSync(command, {
+        cwd: targetDir,
+        stdio: 'pipe',
+        timeout: options.timeoutMs ?? 600_000,
+        maxBuffer: COMMAND_CAPTURE_BYTES,
+      })
       return { passed: true, summary: `${phase} passed: ${command}` }
     } catch (e) {
       const err = e as { stdout?: Buffer | string; stderr?: Buffer | string; signal?: string; code?: string }
-      const raw = labelledOutput(outputText(err.stdout), outputText(err.stderr))
+      const captureExceeded = err.code === 'ENOBUFS'
+      const captured = labelledOutput(outputText(err.stdout), outputText(err.stderr))
+      const captureNotice = `[output truncated: exceeded ${COMMAND_CAPTURE_BYTES}-byte per-stream capture limit]`
+      const raw = captureExceeded
+        ? `${captured}${captured ? '\n' : ''}=== capture ===\n${captureNotice}`
+        : captured
       const policy = options.policy ?? DEFAULT_OUTPUT_POLICY
       const compacted = compactCommandOutput(raw, { previewBytes: policy.previewBytes })
-      const timedOut = err.signal === 'SIGTERM' || err.code === 'ETIMEDOUT'
-      const parts = [`${phase} failed: ${command}${timedOut ? ' (timed out)' : ''}`]
+      const timedOut = !captureExceeded && (err.signal === 'SIGTERM' || err.code === 'ETIMEDOUT')
+      const qualifier = captureExceeded
+        ? ' (capture limit exceeded)'
+        : timedOut ? ' (timed out)' : ''
+      const parts = [`${phase} failed: ${command}${qualifier}`]
       if (compacted.preview) parts.push(compacted.preview)
       if (compacted.originalBytes > policy.artifactThresholdBytes) {
         try {
@@ -57,7 +72,9 @@ export function commandVerifier(command: string, options: CommandVerifierOptions
             phase,
             storyId: process.env.YOKE_STORY,
           })
-          parts.push(artifact.marker)
+          parts.push(captureExceeded
+            ? artifact.marker.replace('[full output:', '[truncated output:')
+            : artifact.marker)
         } catch (error) {
           parts.push(`[artifact unavailable: ${errorMessage(error)}]`)
         }
