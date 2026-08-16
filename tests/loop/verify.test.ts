@@ -95,8 +95,8 @@ describe('commandVerifier', () => {
 
   it('preserves complete failure output larger than the default child-process buffer', () => {
     writeFileSync(join(dir, 'large-failure.js'), [
-      "process.stdout.write('x'.repeat(2_000_000))",
-      "console.error('FINAL_FAILURE_MARKER')",
+      "require('node:fs').writeFileSync(1, 'x'.repeat(2_000_000))",
+      "require('node:fs').writeFileSync(2, 'FINAL_FAILURE_MARKER\\n')",
       'process.exit(1)',
     ].join(';'))
 
