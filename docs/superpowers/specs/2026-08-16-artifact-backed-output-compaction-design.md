@@ -1,7 +1,7 @@
 # Artifact-backed output compaction design
 
 **Date:** 2026-08-16  
-**Status:** approved in conversation, pending written-spec review  
+**Status:** implemented and verified on `dev/output-compaction`
 **Target:** Yoke 1.5
 
 ## Problem
@@ -165,3 +165,12 @@ The benchmark is for the Yoke-visible gate summary only. Release notes must not 
 6. `.yoke/artifacts/` is managed runtime state and is gitignored.
 7. Configuration is validated and remains backward-compatible when `output` is absent.
 8. The full test suite, lint, build, documentation check, package dry-run, audit, and benchmark verification complete successfully before release readiness is claimed.
+
+## Implementation outcome
+
+The implementation covers verify, executable-criterion, performance, completion, and configured
+custom-audit commands. Yoke's structured built-in audit findings remain bounded by their existing
+finding schema. The deterministic `gate-output-v1` fixture measured 26,699 raw bytes versus 470
+bytes for the preview plus artifact reference (56.81×) while retaining its early compiler error,
+final test summary, and SHA-256 round-trip. This is fixture-specific Yoke gate evidence, not a
+provider-token or billing claim.

@@ -3,7 +3,7 @@
 # 🐂 Yoke
 
 <!-- yoke:version:start -->1.4.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->928<!-- yoke:tests:end -->
+<!-- yoke:tests:start -->953<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->29<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-928%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-953%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -592,6 +592,36 @@ be fast" is a vibe the loop cannot enforce. Yoke makes it mechanical, at two lev
   method: profile first, optimize leaves not boundaries, commit benchmarks as tests, version
   the *why* of every optimization in `context/DECISIONS.md`.
 
+### Artifact-backed gate output: compact context, complete local evidence
+
+Failed verify, executable-criterion, performance, and completion commands can emit thousands of
+low-signal lines. Yoke keeps the model-visible failure summary deterministic and bounded while
+preserving large raw stdout/stderr below `.yoke/artifacts/`:
+
+```yaml
+output:
+  previewBytes: 2048             # default: maximum compact preview bytes
+  artifactThresholdBytes: 8192   # default: persist raw output only above this size
+```
+
+The preview prioritizes errors, warnings, adjacent context, and final test summaries. Above the
+artifact threshold it also includes a project-relative path, byte count, and full SHA-256 digest,
+for example:
+
+```text
+[full output: .yoke/artifacts/STORY-4/verify-0123abcd4567.log | 42810 bytes | sha256:0123...]
+```
+
+An agent can read that ordinary file when the preview is insufficient; nothing is injected into
+later stories automatically. Repeated identical failures reuse the same content-addressed path.
+Successful gate output is discarded as before. This affects only commands executed by Yoke's own
+gates. It does **not** intercept tool output generated internally by Claude Code, Codex, or Gemini,
+so benchmark ratios for this feature are not provider-token or billing claims.
+
+`.yoke/artifacts/` is local, gitignored runtime state. Raw command output is intentionally stored
+without redaction so it remains valid evidence and may therefore contain credentials, personal
+data, or other sensitive text emitted by project commands. Inspect artifacts before sharing them.
+
 The loop trusts **verify**, not the agent's exit code: a story whose tests are green is
 committed even if the agent process exited non-zero (a common Windows `.cmd`-wrapper ghost).
 A failing verify is retried up to `verify.retries` times (default 1) so a transient flake
@@ -599,7 +629,7 @@ self-heals while a real failure still blocks. Structured acceptance criteria are
 individually; an unrelated green suite cannot satisfy a criterion without its proof command.
 
 `.yoke/loop-status.json`, `.yoke/loop.log`, `.yoke/loop.lock`, its takeover/recovery leases, lock/decision temp files, `.yoke/story-durations.json`,
-`.yoke/ambiguity.md`, and the critical-decision request/answering files are runtime artifacts;
+`.yoke/ambiguity.md`, `.yoke/artifacts/`, and the critical-decision request/answering files are runtime artifacts;
 `yoke retrofit` gitignores them (along with
 `.yoke/worktrees/`, `.yoke/backup/`, `.yoke/proof/`, and `.yoke/changes/`) so they never trip the clean-tree gate.
 
@@ -795,7 +825,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (928 tests)
+npm test          # vitest (953 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

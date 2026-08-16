@@ -22,4 +22,20 @@ describe('audit command', () => {
     expect(result.code).toBe(1)
     expect(result.findings[0]).toMatchObject({ ruleId: 'secret.github-token', severity: 'critical', file: 'a.ts', line: 1 })
   })
+  it('retains a bounded custom-command failure supplied by the loop gate runner', () => {
+    const result = runAudit('.', {
+      files: () => [],
+      changed: () => [],
+      command: 'security-check',
+      commandRunner: () => ({
+        passed: false,
+        summary: 'audit failed: security-check\nERROR vulnerable package\n[full output: .yoke/artifacts/session/audit-deadbeef.log]',
+      }),
+    })
+    expect(result.code).toBe(1)
+    expect(result.findings[0]).toMatchObject({
+      ruleId: 'audit.custom-command',
+      message: expect.stringContaining('audit-deadbeef.log'),
+    })
+  })
 })

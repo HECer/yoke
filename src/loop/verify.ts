@@ -39,21 +39,22 @@ function errorMessage(error: unknown): string {
 // shell, so `npm test` resolves npm.cmd on Windows. Output is captured (not streamed).
 export function commandVerifier(command: string, options: CommandVerifierOptions = {}): Verifier {
   return (targetDir: string): VerifyResult => {
+    const phase = options.phase ?? 'verify'
     try {
       execSync(command, { cwd: targetDir, stdio: 'pipe', timeout: options.timeoutMs ?? 600_000 })
-      return { passed: true, summary: `verify passed: ${command}` }
+      return { passed: true, summary: `${phase} passed: ${command}` }
     } catch (e) {
       const err = e as { stdout?: Buffer | string; stderr?: Buffer | string; signal?: string; code?: string }
       const raw = labelledOutput(outputText(err.stdout), outputText(err.stderr))
       const policy = options.policy ?? DEFAULT_OUTPUT_POLICY
       const compacted = compactCommandOutput(raw, { previewBytes: policy.previewBytes })
       const timedOut = err.signal === 'SIGTERM' || err.code === 'ETIMEDOUT'
-      const parts = [`verify failed: ${command}${timedOut ? ' (timed out)' : ''}`]
+      const parts = [`${phase} failed: ${command}${timedOut ? ' (timed out)' : ''}`]
       if (compacted.preview) parts.push(compacted.preview)
       if (compacted.originalBytes > policy.artifactThresholdBytes) {
         try {
           const artifact = (options.artifactWriter ?? writeOutputArtifact)(targetDir, raw, {
-            phase: options.phase ?? 'verify',
+            phase,
             storyId: process.env.YOKE_STORY,
           })
           parts.push(artifact.marker)

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Failed verify, executable-criterion, performance, and completion gates now produce deterministic byte-bounded previews and preserve large complete stdout/stderr in content-addressed `.yoke/artifacts/` files with SHA-256 references.
+- Projects can tune `output.previewBytes` and `output.artifactThresholdBytes`; existing projects use backward-compatible 2 KiB/8 KiB defaults.
+- A deterministic local benchmark verifies signal retention, preview bounds, compression measurement, and artifact digest round-trips without making provider-token claims.
+
+### Security
+- Output artifact paths sanitize story identifiers, stay below an ignored project-local root, and use user-only file modes where supported. Raw artifacts are never injected automatically and documentation warns that project commands may emit secrets or personal data.
+
 ## 1.4.0 — 2026-08-15
 
 ### Added

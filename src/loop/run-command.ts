@@ -226,8 +226,12 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   let audit = opts.audit
   if (!audit && config.audit?.enabled) {
     audit = (dir) => {
-      const result = runAudit(dir, { command: config.audit?.command, suppressions: config.audit?.suppressions })
-      return { passed: result.code === 0, summary: result.error ?? (result.findings.map(f => `${f.ruleId} ${f.file}${f.line ? `:${f.line}` : ''}`).join(', ') || 'audit passed') }
+      const result = runAudit(dir, {
+        command: config.audit?.command,
+        suppressions: config.audit?.suppressions,
+        commandRunner: (command, commandDir) => commandVerifier(command, { phase: 'audit', policy: outputPolicy })(commandDir),
+      })
+      return { passed: result.code === 0, summary: result.error ?? (result.findings.map(f => `${f.ruleId} ${f.file}${f.line ? `:${f.line}` : ''}: ${f.message}`).join('\n') || 'audit passed') }
     }
   }
   if (commitIdentity) {

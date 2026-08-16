@@ -14,6 +14,7 @@ export interface AuditOptions {
   changed?: () => string[]
   read?: (file: string) => string
   dependency?: (files: string[]) => AuditFinding[]
+  commandRunner?: (command: string, targetDir: string) => { readonly passed: boolean; readonly summary: string }
 }
 
 const lines = (value: string) => value.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
@@ -33,8 +34,17 @@ export function runAudit(targetDir: string, opts: AuditOptions = {}): AuditResul
     }
     findings.push(...scanSensitiveChanges(changed))
     if (opts.command) {
-      try { execSync(opts.command, { cwd: targetDir, stdio: 'pipe' }) }
-      catch { findings.push({ ruleId: 'audit.custom-command', severity: 'high', message: `Audit command failed: ${opts.command}`, file: '.yoke/config.yaml' }) }
+      let commandResult: { readonly passed: boolean; readonly summary: string }
+      if (opts.commandRunner) commandResult = opts.commandRunner(opts.command, targetDir)
+      else {
+        try {
+          execSync(opts.command, { cwd: targetDir, stdio: 'pipe' })
+          commandResult = { passed: true, summary: `audit passed: ${opts.command}` }
+        } catch {
+          commandResult = { passed: false, summary: `Audit command failed: ${opts.command}` }
+        }
+      }
+      if (!commandResult.passed) findings.push({ ruleId: 'audit.custom-command', severity: 'high', message: commandResult.summary, file: '.yoke/config.yaml' })
     } else {
       const dependency = opts.dependency ?? ((repoFiles: string[]) => {
         const command = dependencyAuditCommand(repoFiles)
