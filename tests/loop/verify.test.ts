@@ -7,12 +7,13 @@ import { commandVerifier, commandsVerifier, retryingVerifier, type Verifier, typ
 let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-verify-')) })
 afterEach(async () => {
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 20; attempt++) {
     try {
       rmSync(dir, { recursive: true, force: true })
       return
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EPERM' || attempt === 9) throw error
+      const code = (error as NodeJS.ErrnoException).code
+      if ((code !== 'EPERM' && code !== 'EBUSY') || attempt === 19) throw error
       await new Promise(resolve => setTimeout(resolve, 50))
     }
   }
