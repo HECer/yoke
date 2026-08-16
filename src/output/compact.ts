@@ -91,7 +91,12 @@ export function compactCommandOutput(raw: string, options: { readonly previewByt
       used += separator + bytes
       continue
     }
-    if (selected.length === 0 && contentBudget > 0) selected.push(utf8Prefix(line, contentBudget))
+    if (selected.length === 0 && contentBudget > 0) {
+      const truncated = utf8Prefix(line, contentBudget)
+      selected.push(truncated)
+      used = Buffer.byteLength(truncated)
+      break
+    }
   }
   const content = selected.filter(Boolean).join('\n')
   const preview = content

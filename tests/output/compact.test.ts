@@ -51,6 +51,15 @@ describe('compactCommandOutput', () => {
     expect(result.preview).not.toContain('�')
   })
 
+  it('keeps the byte budget after truncating an oversized first signal', () => {
+    const raw = [
+      `fatal: ${'x'.repeat(500)}`,
+      ...Array.from({ length: 30 }, (_, index) => `error E${String(index).padStart(4, '0')}: short`),
+    ].join('\n')
+    const result = compactCommandOutput(raw, { previewBytes: 128 })
+    expect(Buffer.byteLength(result.preview)).toBeLessThanOrEqual(128)
+  })
+
   it('returns empty deterministic metadata for empty input', () => {
     expect(compactCommandOutput('', { previewBytes: 64 })).toEqual({
       preview: '',

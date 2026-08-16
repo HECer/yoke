@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -41,6 +41,19 @@ describe('writeOutputArtifact', () => {
   it('falls back to a stable session label for an empty story id', () => {
     expect(writeOutputArtifact(dir, 'x', { phase: 'completion', storyId: '' }).relativePath)
       .toMatch(/^\.yoke\/artifacts\/session\/completion-/)
+  })
+
+  it('refuses an artifact root symlink that leaves the project', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'yoke-output-outside-'))
+    const link = join(dir, '.yoke', 'artifacts')
+    mkdirSync(join(dir, '.yoke'), { recursive: true })
+    symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir')
+    try {
+      expect(() => writeOutputArtifact(dir, 'do not redirect', { phase: 'verify' })).toThrow(/artifact root|escaped/i)
+    } finally {
+      unlinkSync(link)
+      rmSync(outside, { recursive: true, force: true })
+    }
   })
 
   it('creates artifact files with user-only mode on non-Windows systems', () => {

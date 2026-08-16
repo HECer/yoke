@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import type { OutputArtifact, OutputPhase } from './types.js'
 
@@ -24,18 +24,25 @@ export function writeOutputArtifact(
   const sha256 = createHash('sha256').update(raw).digest('hex')
   const label = safeLabel(options.storyId)
   const relativeDir = join('.yoke', 'artifacts', label)
-  const artifactDir = join(targetDir, relativeDir)
-  assertContained(join(targetDir, '.yoke', 'artifacts'), artifactDir)
+  const projectRoot = realpathSync(targetDir)
+  const artifactRoot = join(targetDir, '.yoke', 'artifacts')
+  mkdirSync(artifactRoot, { recursive: true, mode: 0o700 })
+  if (lstatSync(artifactRoot).isSymbolicLink()) throw new Error('artifact root must not be a symlink')
+  const resolvedArtifactRoot = realpathSync(artifactRoot)
+  assertContained(projectRoot, resolvedArtifactRoot)
+  const artifactDir = join(artifactRoot, label)
   mkdirSync(artifactDir, { recursive: true, mode: 0o700 })
+  assertContained(resolvedArtifactRoot, realpathSync(artifactDir))
 
   let digestLength = 12
   let filename = `${options.phase}-${sha256.slice(0, digestLength)}.log`
   let file = join(artifactDir, filename)
-  while (existsSync(file) && createHash('sha256').update(readFileSync(file)).digest('hex') !== sha256) {
+  while (existsSync(file) && !lstatSync(file).isSymbolicLink() && createHash('sha256').update(readFileSync(file)).digest('hex') !== sha256) {
     digestLength = Math.min(sha256.length, digestLength + 8)
     filename = `${options.phase}-${sha256.slice(0, digestLength)}.log`
     file = join(artifactDir, filename)
   }
+  if (existsSync(file) && lstatSync(file).isSymbolicLink()) throw new Error('artifact file must not be a symlink')
   if (!existsSync(file)) writeFileSync(file, raw, { encoding: 'utf8', mode: 0o600 })
 
   const relativePath = `${relativeDir.replace(/\\/gu, '/')}/${filename}`
