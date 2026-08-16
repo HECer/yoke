@@ -41,6 +41,7 @@ node bench/run-large.mjs --seed=G:\NN-Developed\Yoke-Testground\yoke-codex-study
 node bench/run-large.mjs --seed=G:\NN-Developed\Yoke-Testground\yoke-codex-study-seed-2026-08-02 --routing=off --label=codex-only-pair1-off --run-root=G:\NN-Developed\Yoke-Testground
 node bench/analyze-routing-study.mjs
 node bench/run-matrix.mjs --label=release-1.0
+node bench/output-compaction.mjs  # deterministic local gate-output benchmark; no provider call
 ```
 
 Each run copies the fixture to `bench/.runs/<fixture>-<runner>-<routing>-<stamp>` (or the
@@ -49,6 +50,14 @@ drives `yoke loop run --json --max=6 --timeout=10`, and writes a result JSON to
 `bench/results/`. Runs are billed against your own accounts for the agent CLIs involved.
 The matrix is sequential to avoid cross-provider load distortion. Missing CLIs and authentication
 failures are stored as honest `unavailable`/`auth-failed` rows and never presented as quality measurements.
+
+### Gate-output compaction benchmark
+
+`output-compaction.mjs` exercises only Yoke's deterministic failure-preview and artifact path.
+It emits a fixed noisy gate failure, verifies that the early compiler error and final test summary
+remain visible, and checks the stored SHA-256 digest. Its byte/token approximation is not a provider
+bill and says nothing about tool output generated inside Claude Code, Codex, or Gemini. It makes no
+comparison to Aphrodite's corpus or published ratios.
 
 `run-large.mjs` accepts an external full-repository seed, starts each arm with a separate empty
 routing registry, junctions this checkout's dependencies, and replays the seed's original
