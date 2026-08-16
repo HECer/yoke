@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { commandVerifier, commandsVerifier, retryingVerifier, type Verifier, type VerifyResult } from '../../src/loop/verify.js'
@@ -27,6 +27,73 @@ describe('commandVerifier', () => {
     const r = commandVerifier('node boom.js')(dir)
     expect(r.passed).toBe(false)
     expect(r.summary).toContain('BOOM_MARKER')
+  })
+
+  it('keeps a small mixed-stream failure inline without writing an artifact', () => {
+    writeFileSync(join(dir, 'small.js'), "console.log('EARLY_ERROR: broken'); console.error('Tests: 1 failed, 2 passed'); process.exit(1)")
+    const result = commandVerifier('node small.js', {
+      phase: 'verify',
+      policy: { previewBytes: 512, artifactThresholdBytes: 8_192 },
+    })(dir)
+
+    expect(result.summary).toContain('EARLY_ERROR')
+    expect(result.summary).toContain('Tests: 1 failed, 2 passed')
+    expect(existsSync(join(dir, '.yoke', 'artifacts'))).toBe(false)
+  })
+
+  it('stores a large mixed-stream failure and returns a bounded reference', () => {
+    writeFileSync(join(dir, 'large.js'), [
+      "console.log('EARLY_ERROR: actionable')",
+      "for (let i = 0; i < 100; i++) console.log('repeated progress ' + i)",
+      "console.error('Tests: 1 failed, 99 passed')",
+      'process.exit(1)',
+    ].join(';'))
+    const result = commandVerifier('node large.js', {
+      phase: 'verify',
+      policy: { previewBytes: 256, artifactThresholdBytes: 512 },
+    })(dir)
+
+    expect(result.summary).toContain('EARLY_ERROR')
+    expect(result.summary).toContain('Tests: 1 failed, 99 passed')
+    const relativePath = result.summary.match(/\[full output: ([^|]+) \|/)?.[1].trim()
+    expect(relativePath).toBeTruthy()
+    const raw = readFileSync(join(dir, ...relativePath!.split('/')), 'utf8')
+    expect(raw).toContain('=== stdout ===')
+    expect(raw).toContain('EARLY_ERROR: actionable')
+    expect(raw).toContain('=== stderr ===')
+    expect(raw).toContain('Tests: 1 failed, 99 passed')
+  })
+
+  it('does not persist successful command output', () => {
+    writeFileSync(join(dir, 'success.js'), "console.log('x'.repeat(2000))")
+    const result = commandVerifier('node success.js', {
+      phase: 'verify',
+      policy: { previewBytes: 128, artifactThresholdBytes: 256 },
+    })(dir)
+    expect(result).toEqual({ passed: true, summary: 'verify passed: node success.js' })
+    expect(existsSync(join(dir, '.yoke', 'artifacts'))).toBe(false)
+  })
+
+  it('labels timeouts while retaining their bounded failure result', async () => {
+    writeFileSync(join(dir, 'hang.js'), 'setTimeout(() => process.exit(0), 80)')
+    const result = commandVerifier('node hang.js', { phase: 'verify', timeoutMs: 30 })(dir)
+    expect(result.passed).toBe(false)
+    expect(result.summary).toMatch(/timed out/i)
+    // On Windows execSync terminates the command shell first; let its short-lived
+    // child exit before the temp directory is removed.
+    await new Promise(resolve => setTimeout(resolve, 120))
+  })
+
+  it('retains the preview when artifact persistence fails', () => {
+    writeFileSync(join(dir, 'writer-failure.js'), "console.error('FATAL: keep me' + 'x'.repeat(1000)); process.exit(1)")
+    const result = commandVerifier('node writer-failure.js', {
+      phase: 'verify',
+      policy: { previewBytes: 128, artifactThresholdBytes: 64 },
+      artifactWriter: () => { throw new Error('disk unavailable') },
+    })(dir)
+    expect(result.passed).toBe(false)
+    expect(result.summary).toContain('FATAL: keep me')
+    expect(result.summary).toContain('artifact unavailable: disk unavailable')
   })
 })
 

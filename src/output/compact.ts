@@ -2,7 +2,7 @@ import type { CompactedOutput } from './types.js'
 
 const ANSI = /\x1B\[[0-?]*[ -/]*[@-~]/gu
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001A\u001C-\u001F\u007F]/gu
-const ERROR_SIGNAL = /(?:\berror\b|\bfailed?\b|\bfailure\b|\bfatal\b|\bpanic\b|\bexception\b|\btraceback\b|\bE\d{4}\b|\bTS\d{4}\b|(?:^|\s)[✗✘×](?:\s|$))/iu
+const ERROR_SIGNAL = /(?:(?:^|[^A-Za-z0-9])error(?:[^A-Za-z0-9]|$)|\bfailed?\b|\bfailure\b|\bfatal\b|\bpanic\b|\bexception\b|\btraceback\b|\bE\d{4}\b|\bTS\d{4}\b|(?:^|\s)[✗✘×](?:\s|$))/iu
 const WARNING_SIGNAL = /(?:\bwarn(?:ing)?\b|\bdeprecat(?:ed|ion)\b)/iu
 
 function cleanLine(line: string): string {
