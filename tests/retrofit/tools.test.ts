@@ -15,6 +15,11 @@ describe('tools', () => {
     expect(Object.keys(servers)).toEqual(expect.arrayContaining(['serena', 'playwright']))
     expect(servers).not.toHaveProperty('graphify')
     expect(servers.serena.command).toBeTypeOf('string')
+    expect(servers.serena.args).toEqual([
+      'start-mcp-server',
+      '--open-web-dashboard',
+      'false',
+    ])
   })
 
   it('rtkInstruction mentions prefixing commands with rtk', () => {

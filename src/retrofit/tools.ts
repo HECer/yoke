@@ -10,7 +10,10 @@ export interface McpServerConfig {
 // e.g. `uvx --from git+https://github.com/oraios/serena serena-mcp-server`).
 const CODE_GRAPH_SERVERS: Record<CodeGraph, McpServerConfig> = {
   graphify: { command: 'graphify', args: ['serve'] },
-  serena: { command: 'serena', args: ['start-mcp-server'] },
+  serena: {
+    command: 'serena',
+    args: ['start-mcp-server', '--open-web-dashboard', 'false'],
+  },
 }
 
 export function mcpServers(codeGraph: CodeGraph = 'graphify'): Record<string, McpServerConfig> {

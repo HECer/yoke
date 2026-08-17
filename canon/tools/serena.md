@@ -5,3 +5,7 @@ MIT, MCP-first. The alternative to graphify, selected via `yoke retrofit --code-
 Wired as an MCP server for all three agents. Best for large, strongly-typed codebases (TypeScript, Python, Go) doing systematic refactoring, where missing a caller is costly.
 
 Caveat: needs one language server per language (can be fiddly on Windows for exotic languages) and requires `uv`. The launch command is a best-effort template — adjust to your install, e.g. `uvx --from git+https://github.com/oraios/serena serena-mcp-server`.
+
+Yoke disables Serena's automatic web-dashboard launch in generated MCP configurations. The
+dashboard server remains available for manual inspection, but selecting Serena no longer opens a
+browser window on every MCP startup.
