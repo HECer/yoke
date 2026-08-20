@@ -2,41 +2,41 @@ name: yoke-canon
 version: 1.5.1
 agents: [claude, codex, gemini]
 skills:
-  - { id: tdd, path: skills/tdd, kind: methodology }
-  - { id: yoke-retrofit, path: skills/yoke-retrofit, kind: methodology }
-  - { id: yoke-workflow, path: skills/yoke-workflow, kind: methodology }
-  - { id: minimal-code, path: skills/minimal-code, kind: methodology }
-  - { id: maintaining-context, path: skills/maintaining-context, kind: methodology }
+  - { id: tdd, path: skills/tdd, kind: methodology, invocation: auto }
+  - { id: yoke-retrofit, path: skills/yoke-retrofit, kind: methodology, invocation: auto }
+  - { id: yoke-workflow, path: skills/yoke-workflow, kind: methodology, invocation: auto }
+  - { id: minimal-code, path: skills/minimal-code, kind: methodology, invocation: auto }
+  - { id: maintaining-context, path: skills/maintaining-context, kind: methodology, invocation: auto }
   # superpowers skills (kind: methodology)
-  - { id: brainstorming, path: skills/brainstorming, kind: methodology }
-  - { id: writing-plans, path: skills/writing-plans, kind: methodology }
-  - { id: executing-plans, path: skills/executing-plans, kind: methodology }
-  - { id: subagent-driven-development, path: skills/subagent-driven-development, kind: methodology }
-  - { id: systematic-debugging, path: skills/systematic-debugging, kind: methodology }
-  - { id: verification-before-completion, path: skills/verification-before-completion, kind: methodology }
-  - { id: using-git-worktrees, path: skills/using-git-worktrees, kind: methodology }
-  - { id: requesting-code-review, path: skills/requesting-code-review, kind: methodology }
-  - { id: receiving-code-review, path: skills/receiving-code-review, kind: methodology }
-  - { id: dispatching-parallel-agents, path: skills/dispatching-parallel-agents, kind: methodology }
-  - { id: finishing-a-development-branch, path: skills/finishing-a-development-branch, kind: methodology }
-  - { id: writing-skills, path: skills/writing-skills, kind: methodology }
+  - { id: brainstorming, path: skills/brainstorming, kind: methodology, invocation: auto }
+  - { id: writing-plans, path: skills/writing-plans, kind: methodology, invocation: auto }
+  - { id: executing-plans, path: skills/executing-plans, kind: methodology, invocation: auto }
+  - { id: subagent-driven-development, path: skills/subagent-driven-development, kind: methodology, invocation: auto }
+  - { id: systematic-debugging, path: skills/systematic-debugging, kind: methodology, invocation: auto }
+  - { id: verification-before-completion, path: skills/verification-before-completion, kind: methodology, invocation: auto }
+  - { id: using-git-worktrees, path: skills/using-git-worktrees, kind: methodology, invocation: auto }
+  - { id: requesting-code-review, path: skills/requesting-code-review, kind: methodology, invocation: auto }
+  - { id: receiving-code-review, path: skills/receiving-code-review, kind: methodology, invocation: auto }
+  - { id: dispatching-parallel-agents, path: skills/dispatching-parallel-agents, kind: methodology, invocation: auto }
+  - { id: finishing-a-development-branch, path: skills/finishing-a-development-branch, kind: methodology, invocation: auto }
+  - { id: writing-skills, path: skills/writing-skills, kind: methodology, invocation: auto }
   # gstack skills (kind: role)
-  - { id: review, path: skills/review, kind: role }
-  - { id: ship, path: skills/ship, kind: role }
-  - { id: health, path: skills/health, kind: role }
-  - { id: retro, path: skills/retro, kind: role }
-  - { id: document-release, path: skills/document-release, kind: role }
-  - { id: plan-ceo-review, path: skills/plan-ceo-review, kind: role }
-  - { id: plan-eng-review, path: skills/plan-eng-review, kind: role }
+  - { id: review, path: skills/review, kind: role, invocation: auto }
+  - { id: ship, path: skills/ship, kind: role, invocation: auto }
+  - { id: health, path: skills/health, kind: role, invocation: auto }
+  - { id: retro, path: skills/retro, kind: role, invocation: auto }
+  - { id: document-release, path: skills/document-release, kind: role, invocation: auto }
+  - { id: plan-ceo-review, path: skills/plan-ceo-review, kind: role, invocation: auto }
+  - { id: plan-eng-review, path: skills/plan-eng-review, kind: role, invocation: auto }
   # authored workflow skill (kind: methodology)
-  - { id: workflow, path: skills/workflow, kind: methodology }
+  - { id: workflow, path: skills/workflow, kind: methodology, invocation: auto }
   # visual & design verification (kind: methodology)
-  - { id: unslop-ui, path: skills/unslop-ui, kind: methodology }
-  - { id: visual-verification, path: skills/visual-verification, kind: methodology }
+  - { id: unslop-ui, path: skills/unslop-ui, kind: methodology, invocation: auto }
+  - { id: visual-verification, path: skills/visual-verification, kind: methodology, invocation: auto }
   # zero-to-100 bootstrap (kind: methodology)
-  - { id: authoring-prd, path: skills/authoring-prd, kind: methodology }
+  - { id: authoring-prd, path: skills/authoring-prd, kind: methodology, invocation: auto }
   # measured efficiency (kind: methodology)
-  - { id: performance, path: skills/performance, kind: methodology }
+  - { id: performance, path: skills/performance, kind: methodology, invocation: auto }
 policy:
   - { path: policy/gates.md }
   - { path: policy/roles.md }

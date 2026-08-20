@@ -3,11 +3,13 @@ import { parse } from 'yaml'
 import { readFileSync } from 'node:fs'
 
 export const AgentSchema = z.enum(['claude', 'codex', 'gemini'])
+export const InvocationSchema = z.enum(['auto', 'manual'])
 
 export const SkillEntrySchema = z.object({
   id: z.string().min(1),
   path: z.string().min(1),
   kind: z.enum(['methodology', 'role']),
+  invocation: InvocationSchema.default('auto'),
 })
 
 export const ToolEntrySchema = z.object({

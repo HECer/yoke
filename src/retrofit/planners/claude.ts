@@ -7,6 +7,7 @@ import { mcpServers, rtkInstruction } from '../tools.js'
 import { hasWsl } from '../wsl.js'
 import { detectGstack } from '../gstack.js'
 import { PRESERVE_SCAFFOLD } from '../preserve.js'
+import { skillPackageActions } from '../skill-actions.js'
 
 const GSTACK_COMPOSE = `## Composed tools (gstack detected)
 
@@ -37,12 +38,7 @@ export function planClaude(
   const actions: Action[] = []
 
   for (const skill of manifest.skills) {
-    actions.push({
-      kind: 'write',
-      target: `.claude/skills/${skill.id}/SKILL.md`,
-      content: readFileSync(join(canonDir, skill.path, 'SKILL.md'), 'utf8'),
-      reason: `skill: ${skill.id}`,
-    })
+    actions.push(...skillPackageActions(canonDir, skill, 'claude'))
   }
 
   actions.push({

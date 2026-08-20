@@ -7,10 +7,11 @@ import type { Agent, CodeGraph } from './config.js'
 export interface Action {
   kind: 'write'
   target: string
-  content: string
+  content: string | Uint8Array
   reason: string
   merge?: boolean
   ifAbsent?: boolean
+  executable?: boolean
 }
 
 export function planClaudeRetrofit(canonDir: string, targetDir: string): Action[] {

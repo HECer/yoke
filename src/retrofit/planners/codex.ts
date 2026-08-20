@@ -4,6 +4,7 @@ import { loadManifest } from '../../canon/manifest.js'
 import type { Action } from '../plan.js'
 import type { CodeGraph } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
+import { skillPackageActions } from '../skill-actions.js'
 
 function tomlMcp(codeGraph: CodeGraph): string {
   const servers = mcpServers(codeGraph)
@@ -20,12 +21,7 @@ function tomlMcp(codeGraph: CodeGraph): string {
 export function planCodex(canonDir: string, _targetDir: string, codeGraph: CodeGraph = 'graphify'): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const baseline = readFileSync(join(canonDir, 'AGENTS.md'), 'utf8')
-  const actions: Action[] = manifest.skills.map(skill => ({
-    kind: 'write' as const,
-    target: `.agents/skills/${skill.id}/SKILL.md`,
-    content: readFileSync(join(canonDir, skill.path, 'SKILL.md'), 'utf8'),
-    reason: `skill: ${skill.id}`,
-  }))
+  const actions: Action[] = manifest.skills.flatMap(skill => skillPackageActions(canonDir, skill, 'codex'))
 
   const roles = [
     ['implementer', 'Implementation specialist for one scoped story.', 'workspace-write', 'Implement only the assigned scope. Use tests first, run verification, and do not review or commit your own work.'],

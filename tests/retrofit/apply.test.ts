@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { applyActions } from '../../src/retrofit/apply.js'
@@ -30,6 +30,41 @@ describe('applyActions', () => {
     const res = applyActions(actions, target, { backupDir: backupDir() })
     expect(res.every(r => r.status === 'unchanged')).toBe(true)
     expect(existsSync(backupDir())).toBe(false)
+  })
+
+  it('writes binary content without UTF-8 conversion and is idempotent', () => {
+    const action: Action = {
+      kind: 'write', target: '.agents/skills/example/assets/sample.bin',
+      content: new Uint8Array([0, 255, 4]), reason: 'skill resource',
+    }
+
+    const first = applyActions([action], target, { backupDir: backupDir() })
+    const second = applyActions([action], target, { backupDir: backupDir() })
+
+    expect(first[0]?.status).toBe('created')
+    expect(second[0]?.status).toBe('unchanged')
+    expect([...readFileSync(join(target, action.target))]).toEqual([0, 255, 4])
+  })
+
+  it.runIf(process.platform !== 'win32')('applies executable intent to package resources', () => {
+    const action: Action = {
+      kind: 'write', target: '.agents/skills/example/scripts/check.sh',
+      content: '#!/bin/sh\n', executable: true, reason: 'skill resource',
+    }
+
+    applyActions([action], target, { backupDir: backupDir() })
+
+    expect(statSync(join(target, action.target)).mode & 0o111).not.toBe(0)
+  })
+
+  it('rejects merge semantics for binary content', () => {
+    writeFileSync(join(target, 'settings.json'), '{}')
+    const action: Action = {
+      kind: 'write', target: 'settings.json', content: new Uint8Array([1]),
+      merge: true, reason: 'invalid merge',
+    }
+
+    expect(() => applyActions([action], target, { backupDir: backupDir() })).toThrow(/binary content cannot be merged/u)
   })
 
   it('backs up an existing file before overwriting with different content', () => {

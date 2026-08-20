@@ -6,6 +6,7 @@ import type { Action } from '../plan.js'
 import type { CodeGraph } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
 import { PRESERVE_SCAFFOLD } from '../preserve.js'
+import { skillPackageActions } from '../skill-actions.js'
 
 function tomlString(s: string): string {
   return '"""\n' + s.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"') + '\n"""'
@@ -17,10 +18,18 @@ export function planGemini(canonDir: string, _targetDir: string, codeGraph: Code
 
   // GEMINI.md: baseline + rtk instruction (Gemini has no rewrite hook).
   const baseline = readFileSync(join(canonDir, 'AGENTS.md'), 'utf8')
+  const autoSkillIndex = manifest.skills
+    .filter(skill => skill.invocation === 'auto')
+    .map(skill => {
+      const source = readFileSync(join(canonDir, skill.path, 'SKILL.md'), 'utf8')
+      const description = String(parseFrontmatter(source)?.description ?? skill.id).replace(/\s+/gu, ' ').trim()
+      return `- \`/${skill.id}\` — ${description}`
+    })
+    .join('\n')
   actions.push({
     kind: 'write',
     target: 'GEMINI.md',
-    content: `${baseline}\n${rtkInstruction()}\n\n${PRESERVE_SCAFFOLD}\n`,
+    content: `${baseline}\n${rtkInstruction()}\n\n## Yoke automatic skills\n\nUse the matching command when its capability is relevant:\n\n${autoSkillIndex}\n\n${PRESERVE_SCAFFOLD}\n`,
     reason: 'baseline + rtk instruction (no hook on Gemini)',
   })
 
@@ -39,6 +48,7 @@ export function planGemini(canonDir: string, _targetDir: string, codeGraph: Code
       content: `description = "${description.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"\nprompt = ${tomlString(prompt)}\n`,
       reason: `gemini command: ${skill.id}`,
     })
+    actions.push(...skillPackageActions(canonDir, skill, 'gemini'))
   }
 
   // settings.json: MCP servers + read AGENTS.md as context.

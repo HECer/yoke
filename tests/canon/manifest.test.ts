@@ -32,7 +32,37 @@ tools:
     const m = loadManifest(file)
     expect(m.name).toBe('yoke-canon')
     expect(m.agents).toEqual(['claude', 'codex', 'gemini'])
-    expect(m.skills[0]).toMatchObject({ id: 'tdd', kind: 'methodology' })
+    expect(m.skills[0]).toMatchObject({ id: 'tdd', kind: 'methodology', invocation: 'auto' })
+  })
+
+  it('parses an explicit manual invocation policy', () => {
+    const file = withManifest(`
+name: x
+version: 0.1.0
+agents: [claude]
+skills:
+  - { id: release, path: skills/release, kind: role, invocation: manual }
+policy: []
+loop: { spec: a, prdSchema: b }
+tools: []
+`)
+
+    expect(loadManifest(file).skills[0]?.invocation).toBe('manual')
+  })
+
+  it('rejects an unknown invocation policy', () => {
+    const file = withManifest(`
+name: x
+version: 0.1.0
+agents: [claude]
+skills:
+  - { id: release, path: skills/release, kind: role, invocation: sometimes }
+policy: []
+loop: { spec: a, prdSchema: b }
+tools: []
+`)
+
+    expect(() => loadManifest(file)).toThrow()
   })
 
   it('rejects an unknown agent', () => {

@@ -7,19 +7,23 @@ import { planClaude } from '../../src/retrofit/planners/claude.js'
 let canon: string
 beforeEach(() => {
   canon = mkdtempSync(join(tmpdir(), 'yoke-canon-'))
-  const w = (rel: string, c: string) => { mkdirSync(join(canon, rel, '..'), { recursive: true }); writeFileSync(join(canon, rel), c) }
+  const w = (rel: string, c: string | Uint8Array) => { mkdirSync(join(canon, rel, '..'), { recursive: true }); writeFileSync(join(canon, rel), c) }
   w('manifest.yaml', `
 name: yoke-canon
 version: 0.1.0
 agents: [claude]
 skills:
-  - { id: tdd, path: skills/tdd, kind: methodology }
+  - { id: tdd, path: skills/tdd, kind: methodology, invocation: auto }
+  - { id: release, path: skills/release, kind: role, invocation: manual }
 policy: []
 loop: { spec: loop/loop-spec.md, prdSchema: loop/prd.schema.md }
 tools: []
 `)
   w('AGENTS.md', '# Baseline\n')
   w('skills/tdd/SKILL.md', '---\nname: tdd\ndescription: d\n---\nbody')
+  w('skills/tdd/references/guide.md', '# Guide\n')
+  w('skills/tdd/assets/sample.bin', new Uint8Array([0, 255, 4]))
+  w('skills/release/SKILL.md', '---\nname: release\ndescription: Release\n---\nbody')
 })
 afterEach(() => { rmSync(canon, { recursive: true, force: true }) })
 
@@ -30,6 +34,26 @@ describe('planClaude', () => {
     expect(targets).toContain('AGENTS.md')
     expect(targets).toContain('CLAUDE.md')
     expect(targets).toContain('.mcp.json')
+  })
+
+  it('copies complete skill packages including binary resources', () => {
+    const actions = planClaude(canon, '/t')
+
+    expect(actions.map(action => action.target)).toEqual(expect.arrayContaining([
+      '.claude/skills/tdd/references/guide.md',
+      '.claude/skills/tdd/assets/sample.bin',
+    ]))
+    const binary = actions.find(action => action.target.endsWith('assets/sample.bin'))
+    expect([...Buffer.from(binary!.content)]).toEqual([0, 255, 4])
+  })
+
+  it('disables model invocation only in the generated manual skill frontmatter', () => {
+    const actions = planClaude(canon, '/t')
+    const automatic = String(actions.find(action => action.target === '.claude/skills/tdd/SKILL.md')!.content)
+    const manual = String(actions.find(action => action.target === '.claude/skills/release/SKILL.md')!.content)
+
+    expect(automatic).not.toContain('disable-model-invocation')
+    expect(manual).toMatch(/^---\n[\s\S]*disable-model-invocation: true[\s\S]*\n---/u)
   })
 
   it('the .mcp.json content references graphify and playwright', () => {

@@ -121,4 +121,32 @@ tools:
 `)
     expect(validateCanon(dir).some(i => i.message.includes('duplicate skill id'))).toBe(true)
   })
+
+  it('flags a missing relative Markdown resource', () => {
+    seedValidCanon()
+    write('skills/tdd/SKILL.md', '---\nname: tdd\ndescription: d\n---\nSee [evaluation](eval.md).')
+
+    expect(validateCanon(dir)).toContainEqual(expect.objectContaining({
+      level: 'error',
+      message: expect.stringContaining('missing package reference: eval.md'),
+    }))
+  })
+
+  it('accepts existing relative resources and ignores external links and anchors', () => {
+    seedValidCanon()
+    write('skills/tdd/SKILL.md', '---\nname: tdd\ndescription: d\n---\nSee [evaluation](eval.md), [source](https://example.com), and [section](#section).')
+    write('skills/tdd/eval.md', '# Evaluation')
+
+    expect(validateCanon(dir).filter(issue => issue.level === 'error')).toEqual([])
+  })
+
+  it('flags a Codex invocation policy that conflicts with the manifest', () => {
+    seedValidCanon()
+    write('skills/tdd/agents/openai.yaml', 'policy:\n  allow_implicit_invocation: false\n')
+
+    expect(validateCanon(dir)).toContainEqual(expect.objectContaining({
+      level: 'error',
+      message: expect.stringContaining('invocation policy conflicts with manifest'),
+    }))
+  })
 })

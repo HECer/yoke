@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadManifest, type Manifest } from './manifest.js'
 import { parseFrontmatter } from './frontmatter.js'
+import { codexInvocationPolicyIssue, enumerateSkillPackage, findSkillPackageReferenceIssues } from './skill-package.js'
 
 export interface Issue {
   level: 'error' | 'warn'
@@ -34,6 +35,18 @@ export function validateCanon(canonDir: string): Issue[] {
     const skillMd = join(dir, 'SKILL.md')
     if (!existsSync(skillMd)) {
       issues.push({ level: 'error', message: `skill ${s.id}: SKILL.md missing` })
+      continue
+    }
+    try {
+      const files = enumerateSkillPackage(canonDir, s)
+      for (const reference of findSkillPackageReferenceIssues(files)) {
+        const problem = reference.reason === 'escape' ? 'package reference escapes skill root' : 'missing package reference'
+        issues.push({ level: 'error', message: `skill ${s.id}: ${problem}: ${reference.reference} (from ${reference.source})` })
+      }
+      const invocationIssue = codexInvocationPolicyIssue(files, s)
+      if (invocationIssue) issues.push({ level: 'error', message: invocationIssue })
+    } catch (error) {
+      issues.push({ level: 'error', message: error instanceof Error ? error.message : String(error) })
       continue
     }
     const fm = parseFrontmatter(readFileSync(skillMd, 'utf8'))

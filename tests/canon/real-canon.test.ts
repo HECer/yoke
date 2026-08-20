@@ -41,4 +41,12 @@ describe('real canon', () => {
     expect(manifest.skills.some(s => s.id === 'unslop-ui')).toBe(true)
     expect(manifest.skills.some(s => s.id === 'visual-verification')).toBe(true)
   })
+
+  it('declares an invocation policy for every skill', () => {
+    const source = readFileSync(join(repoRoot, 'canon', 'manifest.yaml'), 'utf8')
+    const manifest = loadManifest(join(repoRoot, 'canon', 'manifest.yaml'))
+
+    expect(manifest.skills.every(skill => skill.invocation === 'auto' || skill.invocation === 'manual')).toBe(true)
+    expect(source.match(/invocation:/gu)).toHaveLength(manifest.skills.length)
+  })
 })

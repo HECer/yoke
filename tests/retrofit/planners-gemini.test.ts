@@ -8,19 +8,23 @@ import { planGemini } from '../../src/retrofit/planners/gemini.js'
 let canon: string
 beforeEach(() => {
   canon = mkdtempSync(join(tmpdir(), 'yoke-canon-'))
-  const w = (rel: string, c: string) => { mkdirSync(join(canon, rel, '..'), { recursive: true }); writeFileSync(join(canon, rel), c) }
+  const w = (rel: string, c: string | Uint8Array) => { mkdirSync(join(canon, rel, '..'), { recursive: true }); writeFileSync(join(canon, rel), c) }
   w('manifest.yaml', `
 name: yoke-canon
 version: 0.1.0
 agents: [gemini]
 skills:
-  - { id: tdd, path: skills/tdd, kind: methodology }
+  - { id: tdd, path: skills/tdd, kind: methodology, invocation: auto }
+  - { id: release, path: skills/release, kind: role, invocation: manual }
 policy: []
 loop: { spec: loop/loop-spec.md, prdSchema: loop/prd.schema.md }
 tools: []
 `)
   w('AGENTS.md', '# Baseline\n')
   w('skills/tdd/SKILL.md', '---\nname: tdd\ndescription: Test-driven development\n---\nbody')
+  w('skills/tdd/references/guide.md', '# Guide\n')
+  w('skills/tdd/assets/sample.bin', new Uint8Array([0, 255, 4]))
+  w('skills/release/SKILL.md', '---\nname: release\ndescription: Release\n---\nmanual body')
 })
 afterEach(() => { rmSync(canon, { recursive: true, force: true }) })
 
@@ -30,6 +34,25 @@ describe('planGemini', () => {
     expect(targets).toContain('GEMINI.md')
     expect(targets).toContain('.gemini/commands/tdd.toml')
     expect(targets).toContain('.gemini/settings.json')
+  })
+
+  it('copies complete skill packages next to generated Gemini commands', () => {
+    const actions = planGemini(canon, '/t')
+
+    expect(actions.map(action => action.target)).toEqual(expect.arrayContaining([
+      '.gemini/skills/tdd/SKILL.md',
+      '.gemini/skills/tdd/references/guide.md',
+      '.gemini/skills/tdd/assets/sample.bin',
+      '.gemini/skills/release/SKILL.md',
+    ]))
+  })
+
+  it('advertises only automatic skills in the compact context index', () => {
+    const geminiMd = String(planGemini(canon, '/t').find(action => action.target === 'GEMINI.md')!.content)
+
+    expect(geminiMd).toContain('/tdd')
+    expect(geminiMd).not.toContain('/release')
+    expect(planGemini(canon, '/t').map(action => action.target)).toContain('.gemini/commands/release.toml')
   })
 
   it('GEMINI.md template ships an empty preserve block scaffold', () => {
