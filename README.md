@@ -2,9 +2,9 @@
 
 # 🐂 Yoke
 
-<!-- yoke:version:start -->1.5.1<!-- yoke:version:end -->
-<!-- yoke:tests:start -->971<!-- yoke:tests:end -->
-<!-- yoke:skills:start -->29<!-- yoke:skills:end -->
+<!-- yoke:version:start -->1.6.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->1014<!-- yoke:tests:end -->
+<!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
 ### One harness, three agents — and zero trust in "done."
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-971%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1014%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -81,7 +81,7 @@ $ ls reading-app/.yoke/proof/STORY-2/
 home.png  list.png                            # photographic evidence, labelled per story
 ```
 
-Every claim in that transcript is enforced by code paths with tests behind them — 971 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
+Every claim in that transcript is enforced by code paths with tests behind them — 1014 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
 
 ## 🚀 Quickstart
 
@@ -164,7 +164,7 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke prd draft [dir] --idea= [--runner=] [--force]` | Idea → 5–12 stories with testable acceptance criteria | `0` · `1` invalid/guarded · `2` agent unavailable |
 | `yoke prd check [dir]` | PRD lint gate (schema, dependencies, cycles, duplicate ids, acceptance) | `0` valid · `1` violations |
 | `yoke change add\|status [dir] [--idea=]` | Queue a change at any time; the loop turns it into append-only stories at the next safe boundary | `0` · `1` invalid inbox/request |
-| `yoke context init\|status [dir]` | Durable context layer (`PROJECT/DECISIONS/KNOWLEDGE.md`) | `0` |
+| `yoke context init\|status [dir]` | Durable context layer (`PROJECT/DECISIONS/KNOWLEDGE/GLOSSARY.md`, optional `CONTEXT-MAP.md`) | `0` |
 | `yoke loop on\|off\|status\|decision\|answer\|resume\|run\|cleanup [dir]` | Autonomous loop; `run` supports `--parallel=N`, bounded reference-driven `--quality`, and blind `--candidates=N` selection; `--max=N` creates an intentional batch cap; `cleanup` retains worktrees unless `--remove-worktrees` is explicit | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
 | `yoke review [dir] [--reviewer=] [--base=] [--focus=] [--json] [--allow-self-review]` | An independent model writes a schema-valid verdict | `0` approved · `1` findings/invalid verdict · `2` no independent reviewer |
 | `yoke audit [dir] [--json]` | Dependency, high-confidence secret, and sensitive-change audit | `0` green · `1` blocking findings · `2` not runnable |
@@ -216,9 +216,9 @@ Three layers — **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) 
 
 | Agent | Artifacts |
 |---|---|
-| **Claude** | `.claude/skills/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json` (code-graph + Playwright), and an rtk `PreToolUse` hook when WSL is available |
-| **Codex** | `.agents/skills/`, `AGENTS.md`, `RTK.md`, `.codex/config.toml`, native hooks, reusable `.codex/agents/*.toml`, and package plugin metadata |
-| **Gemini** | `GEMINI.md`, `.gemini/commands/*.toml` (one per skill, full body), `.gemini/settings.json` (MCP + `AGENTS.md` context) |
+| **Claude** | Complete skill packages under `.claude/skills/` (including referenced resources), `AGENTS.md`, `CLAUDE.md`, `.mcp.json` (code-graph + Playwright), and an rtk `PreToolUse` hook when WSL is available |
+| **Codex** | Complete skill packages under `.agents/skills/`, per-skill implicit-invocation policy, `AGENTS.md`, `RTK.md`, `.codex/config.toml`, native hooks, reusable `.codex/agents/*.toml`, and package plugin metadata |
+| **Gemini** | Complete skill packages under `.gemini/skills/`, an auto-invocation index, `GEMINI.md`, `.gemini/commands/*.toml`, and `.gemini/settings.json` (MCP + `AGENTS.md` context) |
 
 > **rtk integration:** Claude receives its PreToolUse hook; Codex receives a native hook adapter around `rtk hook check`; Gemini retains instruction-mode fallback where its CLI has no equivalent command-rewrite lifecycle.
 
@@ -231,11 +231,16 @@ Three layers — **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) 
 > instructions (tech stack, workflow, `@`-includes) inside it. Works in any yoke-written file;
 > content *outside* the markers is still replaced (and backed up under `.yoke/backup/`).
 
-## 🧰 What's in the canon — 29 skills
+## 🧰 What's in the canon — 34 skills
 
 `yoke retrofit` installs all of these into each agent natively. Provenance is credited in [`canon/skills/ATTRIBUTION.md`](canon/skills/ATTRIBUTION.md).
 
 To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.md` carries a **skill routing & precedence** block (methodology before role; one canonical entrypoint per concern — e.g. pre-merge code review is always `review`), emitted into all three agents.
+
+Each manifest entry also declares `invocation: auto|manual`. Retrofit translates that intent into
+the provider's native controls: Claude disables model invocation for manual skills, Codex writes
+`agents/openai.yaml`, and Gemini lists only automatic skills in its generated index. Validation
+rejects conflicting package metadata and broken local Markdown links before anything is installed.
 
 **Process / methodology** — *superpowers-derived discipline (13)*
 
@@ -267,7 +272,7 @@ To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.
 | `retro` | Engineering retrospective from commit history |
 | `document-release` | Post-ship documentation sync (README / CHANGELOG / …) |
 
-**Yoke-native** — *authored or adapted for this harness (9)*
+**Yoke-native** — *authored or adapted for this harness (14)*
 
 | Skill | What it does |
 |---|---|
@@ -280,6 +285,11 @@ To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.
 | `workflow` | The default order of operations, from idea to deploy |
 | `unslop-ui` | Detect & remove AI-slop design tells (purple gradients, neon glow, emoji-icons…) |
 | `visual-verification` | Widen verify to design-scan + the built-in `yoke flow-smoke` gate (screenshot proofs; video on failure) |
+| `no-ai-slop` | Detect and edit generic AI prose while preserving the author's voice; includes its evaluation rubric |
+| `domain-modeling` | Model boundaries, invariants, vocabulary, context maps, and decision records before implementation |
+| `codebase-design` | Explore architecture, deepen a chosen design, and compare two viable approaches when tradeoffs matter |
+| `resolving-merge-conflicts` | Resolve conflicts by reconstructing intent, then verify the integrated result |
+| `writing-for-agents` | Write compact agent instructions with explicit triggers, constraints, resources, and checks |
 
 ## 🌱 Zero to 100: `yoke new` + `yoke prd`
 
@@ -328,7 +338,9 @@ flowchart LR
     C -- yes --> D[agent implements<br/>one story]
     D --> E{suite + criterion<br/>proof green?}
     E -- no --> X
-    E -- yes --> F{reviewer<br/>approves?}
+    E -- yes --> V{UI design<br/>within budget?}
+    V -- no --> X
+    V -- yes --> F{reviewer<br/>approves?}
     F -- no --> X
     F -- yes --> G[commit + mark passes:true<br/>+ proof in .yoke/proof/]
     G --> I
@@ -693,8 +705,14 @@ Unit tests don't catch a blank page, an unwired route, or generic AI-slop design
 - **`unslop-ui` + `visual-verification` skills** — the design rubric, plus how to compose a verify
   pipeline (`types → units → design-scan → flow-smoke`).
 
-Because the loop trusts **verify as the source of truth**, widening `verify.command` to include the
-scanner and the flow-smoke makes visual quality a real gate — not an afterthought.
+Retrofit adds `design: { mode: auto, max: 4 }` when it detects UI dependencies, UI source files,
+or configured smoke flows. In `auto` mode the loop runs the design scan after functional verify and
+before performance/audit; `on` forces it for any project and `off` disables it. Existing explicit
+settings are preserved. `flow-smoke` remains an explicit project verify step because Yoke cannot
+infer how to start each application's server.
+
+`unslop-ui` is the visual-design skill. `no-ai-slop` is separate: it reviews prose for generic AI
+patterns and edits only confirmed problems while preserving meaning and voice.
 
 *Tell set informed by the MIT-licensed [vibecoded-design-tells](https://github.com/JCarterJohnson/vibecoded-design-tells) research.*
 
@@ -739,8 +757,11 @@ Yoke keeps durable, cross-session context so a fresh-context agent is never blin
 - `PROJECT.md` — the north star (goal, constraints, non-goals, success criteria).
 - `DECISIONS.md` — an append-only ledger. The loop adds an entry per completed story; you and agents add the *why*.
 - `KNOWLEDGE.md` — reusable gotchas and conventions.
+- `GLOSSARY.md` — the project's canonical terms, meanings, and aliases.
+- `CONTEXT-MAP.md` — optional bounded-context relationships for projects that need domain mapping.
 
-`yoke retrofit` scaffolds these files (non-destructively — your edits are never overwritten).
+`yoke retrofit` scaffolds the four core files non-destructively; your edits are never overwritten.
+It reports `CONTEXT-MAP.md` when the optional file already exists.
 The loop reads them into every agent + reviewer prompt and logs decisions back on each story's
 commit. Decision history is explicitly delimited as untrusted reference data, so stored text is
 never treated as fresh instructions. Manage the files directly with `yoke context init` and `yoke context status`. The
@@ -835,7 +856,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (971 tests)
+npm test          # vitest (1014 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

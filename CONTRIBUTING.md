@@ -43,11 +43,13 @@ Yoke was built test-first, and contributions should follow the same rhythm:
 
 ### Adding a skill to the canon
 
-1. Create `canon/skills/<id>/SKILL.md` with valid frontmatter (`name`, `description`).
-2. Add it to `canon/manifest.yaml` under `skills:`.
-3. Run `npm run yoke -- validate canon` — it must stay valid.
+1. Create `canon/skills/<id>/SKILL.md` with valid frontmatter (`name`, `description`). Put referenced templates, examples, scripts, and evaluation files in the same package directory.
+2. Add it to `canon/manifest.yaml` under `skills:` and choose `invocation: auto|manual` explicitly.
+3. Keep local Markdown links inside the package and ensure every target exists. Do not add provider-specific invocation metadata that conflicts with the manifest.
+4. Run `npm run yoke -- validate canon` — it must stay valid.
 
-The existing planners propagate any canon skill to all three agents automatically, so no per-agent code change is needed.
+The existing planners propagate the complete package to all three agents and translate invocation
+policy into each provider's native format, so no per-agent code change is needed.
 
 ### Adding a tool / MCP server
 

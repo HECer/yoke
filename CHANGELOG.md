@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 1.6.0 — 2026-08-20
+
+### Added
+- The canon now includes `no-ai-slop`, `domain-modeling`, `codebase-design`, `resolving-merge-conflicts`, and `writing-for-agents`, with their supporting templates and evaluation material. Source adaptations are credited in `canon/skills/ATTRIBUTION.md`.
+- UI projects receive an automatic design-quality gate with configurable `design.mode` (`off`, `auto`, or `on`) and score budget. Detection uses package dependencies, UI source files, and configured smoke flows.
+- Durable context now includes a project glossary and can expose an optional bounded-context map.
+
+### Changed
+- Retrofit installs complete skill packages for Claude, Codex, and Gemini instead of copying only `SKILL.md`. Local resources, binary files, and executable bits are preserved where supported.
+- Every canon skill declares `invocation: auto|manual`; retrofit maps that policy to Claude frontmatter, Codex `agents/openai.yaml`, and Gemini's generated automatic-skill index.
+- Canon validation rejects missing local Markdown resources, unsafe package entries, symlinks, and provider metadata that conflicts with the manifest.
+
+### Fixed
+- Windows provider cleanup now treats a successful `taskkill` as a request and confirms that the recorded PID has stopped before deleting its ownership record.
+
 ## 1.5.1 — 2026-08-17
 
 ### Fixed

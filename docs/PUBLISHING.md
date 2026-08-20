@@ -1,6 +1,6 @@
 # Publishing channels — status & playbook
 
-Where Yoke is published, and how each channel gets updated. (Reviewed 2026-08-15.)
+Where Yoke is published, and how each channel gets updated. (Reviewed 2026-08-20.)
 
 ## Live
 
@@ -33,7 +33,7 @@ release object is created. Use this idempotent check after the version commit re
 
 ```bash
 set -euo pipefail
-VERSION=1.5.0
+VERSION=1.6.0
 TARGET=$(git rev-parse HEAD)
 git fetch --tags origin
 
