@@ -171,6 +171,19 @@ seam, adapter, depth, locality, and caller value. It will guide design toward:
 The skill informs planning, TDD, architecture review, and code review. It does not mandate a
 refactor unrelated to the current task.
 
+### `writing-for-agents`
+
+This `auto` reference skill will make instructions easier for coding agents to execute without
+weakening their technical content. It will favor explicit triggers, observable outcomes, concrete
+paths and commands, bounded context, and examples that test the intended behavior. It will also
+separate durable rules from task-specific guidance and remove duplicated or contradictory
+instructions.
+
+The skill applies to agent-facing Markdown such as `AGENTS.md`, skills, role prompts, and workflow
+documentation. It complements `no-ai-slop`: `writing-for-agents` checks executability and context
+economy, while `no-ai-slop` checks prose habits and preserves the author's voice. Neither skill may
+silently discard a safety rule, acceptance criterion, or precise domain term.
+
 ### `resolving-merge-conflicts`
 
 This `auto` skill triggers only during an in-progress merge or rebase conflict. It will inspect the
@@ -301,7 +314,7 @@ Canon manifest + complete skill directory
 
 ### Capability tests
 
-- the manifest registers all four new skills;
+- the manifest registers all five new skills;
 - each skill has valid frontmatter and resolvable references;
 - context initialization creates or safely introduces the glossary structure;
 - existing context files remain unchanged unless their content requires an update;
@@ -367,7 +380,8 @@ must report that state plainly rather than claiming the release is complete.
 1. Existing one-file skills install exactly as before.
 2. `no-ai-slop/SKILL.md` and `no-ai-slop/eval.md` install for Claude, Codex, and Gemini.
 3. Every Canon skill has an explicit invocation policy and provider outputs reflect it.
-4. New context and design skills are available without replacing current workflow skills.
+4. New context, design, merge-resolution, and agent-writing skills are available without replacing
+   current workflow skills.
 5. Detected UI projects configured by 1.6.0 run the design gate automatically; other projects do
    not change behavior.
 6. The reproduced Windows provider-process failures pass repeatedly and the full suite is green.
