@@ -50,6 +50,34 @@ was copied.
 
 ---
 
+## no-ai-slop
+
+**Source:** https://github.com/petergyang/no-ai-slop
+
+**Copyright:** Copyright (c) 2026 Peter Yang
+
+**Skills adapted:** no-ai-slop and its evaluation checklist
+
+Yoke preserves the upstream Edit and Detect modes, voice-preserving workflow, named-pattern
+approach, and no-authorship-guess boundary. The adaptation adds Yoke's precise-domain-term rule,
+portable package wording, and a shorter evaluation checklist.
+
+---
+
+## mattpocock/skills
+
+**Source:** https://github.com/mattpocock/skills
+
+**Copyright:** Copyright (c) 2026 Matt Pocock
+
+**Skills adapted:** domain-modeling, codebase-design, resolving-merge-conflicts,
+writing-for-agents, and their supporting references
+
+The adaptations use `.yoke/context/` as Yoke's durable context location, preserve Yoke's existing
+authorization and verification rules, and remove provider-specific metadata from Canon source.
+
+---
+
 ## MIT License
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

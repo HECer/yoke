@@ -25,6 +25,7 @@ tools: []
   w('context/PROJECT.md', '# Project\n')
   w('context/DECISIONS.md', '# Decisions\n')
   w('context/KNOWLEDGE.md', '# Knowledge\n')
+  w('context/GLOSSARY.md', '# Glossary\n')
 })
 afterEach(() => { rmSync(canon, { recursive: true, force: true }) })
 
@@ -59,6 +60,7 @@ describe('planRetrofit', () => {
     const ctxTargets = actions.filter(a => a.target.startsWith('.yoke/context/')).map(a => a.target)
     expect(ctxTargets.sort()).toEqual([
       '.yoke/context/DECISIONS.md',
+      '.yoke/context/GLOSSARY.md',
       '.yoke/context/KNOWLEDGE.md',
       '.yoke/context/PROJECT.md',
     ])

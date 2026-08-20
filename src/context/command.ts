@@ -15,7 +15,7 @@ export function runContextInit(targetDir: string): number {
 
 export function runContextStatus(targetDir: string): number {
   const dir = contextDir(targetDir)
-  const files = ['PROJECT.md', 'DECISIONS.md', 'KNOWLEDGE.md']
+  const files = ['PROJECT.md', 'DECISIONS.md', 'KNOWLEDGE.md', 'GLOSSARY.md']
   if (!files.some(f => existsSync(join(dir, f)))) {
     console.log('Context not initialised (no .yoke/context). Run: yoke context init')
     return 0
@@ -24,6 +24,8 @@ export function runContextStatus(targetDir: string): number {
     const p = join(dir, f)
     console.log(existsSync(p) ? `  ${f.padEnd(13)} ${statSync(p).size} bytes` : `  ${f.padEnd(13)} (missing)`)
   }
+  const contextMap = join(dir, 'CONTEXT-MAP.md')
+  if (existsSync(contextMap)) console.log(`  ${'CONTEXT-MAP.md'.padEnd(13)} ${statSync(contextMap).size} bytes (optional)`)
   const decisions = join(dir, 'DECISIONS.md')
   if (existsSync(decisions)) {
     const last = readFileSync(decisions, 'utf8').split('\n').filter(l => l.startsWith('## ')).pop()

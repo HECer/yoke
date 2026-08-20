@@ -27,7 +27,7 @@ export function planCodex(canonDir: string, _targetDir: string, codeGraph: CodeG
     ['implementer', 'Implementation specialist for one scoped story.', 'workspace-write', 'Implement only the assigned scope. Use tests first, run verification, and do not review or commit your own work.'],
     ['reviewer', 'Read-only reviewer for correctness and acceptance criteria.', 'read-only', 'Review observed diffs and test evidence. Do not modify files. Return only findings grounded in evidence.'],
     ['security', 'Read-only security reviewer for changed code.', 'read-only', 'Inspect changed code for exploitable security regressions. Do not modify files and avoid speculative findings.'],
-    ['docs', 'Documentation specialist for release and API consistency.', 'workspace-write', 'Update only documentation required by the assigned change. Verify commands and version references against the repository.'],
+    ['docs', 'Documentation specialist for release and API consistency.', 'workspace-write', 'Update only documentation required by the assigned change. Verify commands and version references against the repository. Use no-ai-slop Detect mode before prose edits, preserve the writer\'s voice, and apply only observed fixes.'],
   ] as const
 
   actions.push(

@@ -18,6 +18,11 @@ You are running the `document-release` workflow. This runs **after `ship`** (cod
 
 You are mostly automated. Make obvious factual updates directly. Stop and ask only for risky or subjective decisions.
 
+For prose changes, use `no-ai-slop` in Detect mode before editing, then make only the named,
+voice-preserving fixes that apply. Check the result against that skill's `eval.md`. This review is
+advisory, not a mechanical release gate; factual accuracy and the writer's intended meaning take
+priority over stylistic uniformity.
+
 **Only stop for:**
 - Risky/questionable doc changes (narrative, philosophy, security, removals, large rewrites)
 - VERSION bump decision (if not already bumped)

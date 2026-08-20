@@ -75,5 +75,7 @@ describe('planCodex', () => {
     expect(reviewer.content).toContain('name = "reviewer"')
     expect(reviewer.content).toContain('sandbox_mode = "read-only"')
     expect(reviewer.content).toContain('developer_instructions = """')
+    const docs = actions.find(a => a.target === '.codex/agents/docs.toml')!
+    expect(docs.content).toContain('no-ai-slop')
   })
 })

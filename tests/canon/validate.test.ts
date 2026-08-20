@@ -33,6 +33,7 @@ tools:
   write('context/PROJECT.md', 'project')
   write('context/DECISIONS.md', 'decisions')
   write('context/KNOWLEDGE.md', 'knowledge')
+  write('context/GLOSSARY.md', 'glossary')
 }
 
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-canon-')) })
@@ -120,6 +121,13 @@ tools:
   - { id: rtk, path: tools/rtk.md }
 `)
     expect(validateCanon(dir).some(i => i.message.includes('duplicate skill id'))).toBe(true)
+  })
+
+  it('requires the glossary context template', () => {
+    seedValidCanon()
+    rmSync(join(dir, 'context/GLOSSARY.md'))
+
+    expect(validateCanon(dir).some(i => i.level === 'error' && i.message.includes('context/GLOSSARY.md'))).toBe(true)
   })
 
   it('flags a missing relative Markdown resource', () => {

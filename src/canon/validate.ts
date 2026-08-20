@@ -74,7 +74,7 @@ export function validateCanon(canonDir: string): Issue[] {
     }
   }
 
-  for (const name of ['PROJECT.md', 'DECISIONS.md', 'KNOWLEDGE.md']) {
+  for (const name of ['PROJECT.md', 'DECISIONS.md', 'KNOWLEDGE.md', 'GLOSSARY.md']) {
     if (!existsSync(join(canonDir, 'context', name))) {
       issues.push({ level: 'error', message: `context template not found: context/${name}` })
     }

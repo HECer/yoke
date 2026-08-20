@@ -37,6 +37,12 @@ skills:
   - { id: authoring-prd, path: skills/authoring-prd, kind: methodology, invocation: auto }
   # measured efficiency (kind: methodology)
   - { id: performance, path: skills/performance, kind: methodology, invocation: auto }
+  # prose, domain, and codebase capabilities
+  - { id: no-ai-slop, path: skills/no-ai-slop, kind: methodology, invocation: auto }
+  - { id: domain-modeling, path: skills/domain-modeling, kind: methodology, invocation: auto }
+  - { id: codebase-design, path: skills/codebase-design, kind: methodology, invocation: auto }
+  - { id: resolving-merge-conflicts, path: skills/resolving-merge-conflicts, kind: methodology, invocation: auto }
+  - { id: writing-for-agents, path: skills/writing-for-agents, kind: methodology, invocation: auto }
 policy:
   - { path: policy/gates.md }
   - { path: policy/roles.md }

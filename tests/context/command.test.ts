@@ -9,12 +9,13 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-ctxcmd-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('runContextInit', () => {
-  it('scaffolds the three files and is idempotent + non-destructive', () => {
+  it('scaffolds the four required files and is idempotent + non-destructive', () => {
     expect(runContextInit(dir)).toBe(0)
     const project = join(dir, '.yoke', 'context', 'PROJECT.md')
     writeFileSync(project, 'USER EDIT')
     expect(runContextInit(dir)).toBe(0)
     expect(readFileSync(project, 'utf8')).toBe('USER EDIT')
+    expect(readFileSync(join(dir, '.yoke', 'context', 'GLOSSARY.md'), 'utf8')).toContain('Glossary')
   })
 })
 
@@ -27,6 +28,20 @@ describe('runContextStatus', () => {
     log.mockClear()
     runContextStatus(dir)
     expect(log.mock.calls.flat().join('\n')).toContain('PROJECT.md')
+    expect(log.mock.calls.flat().join('\n')).toContain('GLOSSARY.md')
+    log.mockRestore()
+  })
+
+  it('reports an optional context map only when present', () => {
+    runContextInit(dir)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    runContextStatus(dir)
+    expect(log.mock.calls.flat().join('\n')).not.toContain('CONTEXT-MAP.md')
+
+    writeFileSync(join(dir, '.yoke', 'context', 'CONTEXT-MAP.md'), '# Context Map\n')
+    log.mockClear()
+    runContextStatus(dir)
+    expect(log.mock.calls.flat().join('\n')).toContain('CONTEXT-MAP.md')
     log.mockRestore()
   })
 

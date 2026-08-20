@@ -56,6 +56,10 @@ describe('yoke retrofit (integration, Claude)', () => {
     expect(existsSync(join(target, '.claude/skills/tdd/SKILL.md'))).toBe(true)
     expect(existsSync(join(target, '.codex/config.toml'))).toBe(true)
     expect(existsSync(join(target, '.gemini/settings.json'))).toBe(true)
+    for (const root of ['.claude/skills', '.agents/skills', '.gemini/skills']) {
+      expect(existsSync(join(target, root, 'no-ai-slop', 'SKILL.md'))).toBe(true)
+      expect(existsSync(join(target, root, 'no-ai-slop', 'eval.md'))).toBe(true)
+    }
     const cfg = loadConfig(target)!
     expect(cfg.agents).toEqual(expect.arrayContaining(['claude', 'codex', 'gemini']))
   })
