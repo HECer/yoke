@@ -1,9 +1,11 @@
 import type { AppliedAction } from './apply.js'
 import type { Agent } from './config.js'
+import type { UiDetection } from './ui-detect.js'
 
 export interface ReportMeta {
   loopEnabled: boolean
   detectedAgents: Agent[]
+  ui?: UiDetection
 }
 
 export function formatReport(applied: AppliedAction[], meta: ReportMeta): string {
@@ -16,6 +18,11 @@ export function formatReport(applied: AppliedAction[], meta: ReportMeta): string
   }
   lines.push('')
   lines.push(`Detected agents: ${meta.detectedAgents.length ? meta.detectedAgents.join(', ') : 'none'}`)
+  if (meta.ui) {
+    lines.push(meta.ui.detected
+      ? `UI project: detected (${meta.ui.signals.join('; ')})`
+      : 'UI project: not detected')
+  }
   lines.push(`Summary: ${count('created')} created, ${count('overwritten')} overwritten, ${count('merged')} merged, ${count('unchanged')} unchanged`)
   lines.push(`Loop: ${meta.loopEnabled ? 'enabled' : 'disabled'}`)
   return lines.join('\n')

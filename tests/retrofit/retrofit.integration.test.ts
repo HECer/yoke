@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runRetrofit } from '../../src/cli.js'
-import { loadConfig, saveConfig } from '../../src/retrofit/config.js'
+import { defaultConfig, loadConfig, saveConfig } from '../../src/retrofit/config.js'
 
 
 let target: string
@@ -103,5 +103,22 @@ describe('yoke retrofit (integration, Claude)', () => {
     expect(loadConfig(target)?.agents).toEqual(['codex'])
     expect(existsSync(join(target, '.agents/skills/yoke-retrofit/SKILL.md'))).toBe(true)
     expect(existsSync(join(target, '.claude/skills/yoke-retrofit/SKILL.md'))).toBe(false)
+  })
+
+  it('enables the automatic design gate only for a detected UI project', () => {
+    writeFileSync(join(target, 'package.json'), JSON.stringify({ dependencies: { react: '^19.0.0' } }))
+
+    runRetrofit(target, { loop: false, agents: ['codex'] })
+
+    expect(loadConfig(target)?.design).toEqual({ mode: 'auto', max: 4 })
+  })
+
+  it('preserves an existing design choice during UI retrofit', () => {
+    writeFileSync(join(target, 'package.json'), JSON.stringify({ dependencies: { react: '^19.0.0' } }))
+    saveConfig(target, { ...defaultConfig('1.5.1'), agents: ['codex'], design: { mode: 'off', max: 9 } })
+
+    runRetrofit(target, { loop: false, agents: ['codex'] })
+
+    expect(loadConfig(target)?.design).toEqual({ mode: 'off', max: 9 })
   })
 })

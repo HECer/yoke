@@ -28,6 +28,7 @@ export interface LoopOptions {
   runner: AgentRunner
   git: GitOps
   verify: Verifier
+  design?: Verifier
   verifyCriterion?: (targetDir: string, story: Story, criterion: AcceptanceCriterion) => ReturnType<Verifier>
   requireCriterionEvidence?: boolean
   /** Optional integrated-system gate, run whenever no open stories remain. */
@@ -86,6 +87,11 @@ function runQualityReview(
     reporter.phase('verifying')
     const verify = runGate(opts.verify, executionDir, story.id)
     if (!verify.passed) return { kind: 'failed' as const, stage: 'verify' as const, summary: verify.summary }
+    if (opts.design) {
+      reporter.phase('design')
+      const design = runGate(opts.design, executionDir, story.id)
+      if (!design.passed) return { kind: 'failed' as const, stage: 'design' as const, summary: design.summary }
+    }
     if (opts.perf) {
       reporter.phase('perf')
       const perf = runGate(opts.perf, executionDir, story.id)
@@ -370,6 +376,16 @@ export function runLoop(opts: LoopOptions): LoopResult {
           reporter.blocked(reason)
           return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
         }
+        if (opts.design) {
+          reporter.phase('design')
+          const designVerdict = runGate(opts.design, wt, story.id)
+          if (!designVerdict.passed) {
+            result.routing?.recordOutcome(false)
+            const reason = blockReason(`story ${story.id} failed its design gate: ${designVerdict.summary}`, opts.targetDir, opts.git)
+            reporter.blocked(reason)
+            return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+          }
+        }
         if (opts.perf) {
           reporter.phase('perf')
           const perfVerdict = runGate(opts.perf, wt, story.id)
@@ -479,6 +495,16 @@ export function runLoop(opts: LoopOptions): LoopResult {
         iterations,
         reason,
         finalProgress: progress(stories),
+      }
+    }
+    if (opts.design) {
+      reporter.phase('design')
+      const designVerdict = runGate(opts.design, opts.targetDir, story.id)
+      if (!designVerdict.passed) {
+        result.routing?.recordOutcome(false)
+        const reason = blockReason(`story ${story.id} failed its design gate: ${designVerdict.summary}`, opts.targetDir, opts.git)
+        reporter.blocked(reason)
+        return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
       }
     }
     if (opts.perf) {

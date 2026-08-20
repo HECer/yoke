@@ -174,6 +174,28 @@ describe('yoke loop CLI', () => {
     expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(true)
   })
 
+  it('blocks the story when the configured design gate fails', () => {
+    saveConfig(dir, { ...cfg(), design: { mode: 'on', max: 1 } })
+    mkdirSync(join(dir, 'src'), { recursive: true })
+    writeFileSync(join(dir, 'src', 'App.tsx'), 'export const App = () => <h1 className="bg-clip-text text-transparent">Hello</h1>')
+
+    const code = runLoopCommand(dir, { maxIterations: 1, runner: passRunner, git: stubGit, verify: verifyOk })
+
+    expect(code).toBe(1)
+    expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(false)
+  })
+
+  it('keeps the automatic design gate off when no UI evidence exists', () => {
+    saveConfig(dir, { ...cfg(), design: { mode: 'auto', max: 1 } })
+    mkdirSync(join(dir, 'src'), { recursive: true })
+    writeFileSync(join(dir, 'src', 'worker.ts'), 'export const color = "#7c3aed"')
+
+    const code = runLoopCommand(dir, { maxIterations: 1, runner: passRunner, git: stubGit, verify: verifyOk })
+
+    expect(code).toBe(0)
+    expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].passes).toBe(true)
+  })
+
   it('passes a live change intake seam through to every safe loop boundary', () => {
     saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
     let calls = 0

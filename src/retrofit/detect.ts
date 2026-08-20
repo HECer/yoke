@@ -1,11 +1,13 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Agent } from './config.js'
+import { detectUiProject, type UiDetection } from './ui-detect.js'
 
 export interface Detection {
   agents: Agent[]
   hasAgentsMd: boolean
   hasYokeConfig: boolean
+  ui: UiDetection
 }
 
 export function detectProject(targetDir: string): Detection {
@@ -18,5 +20,6 @@ export function detectProject(targetDir: string): Detection {
     agents,
     hasAgentsMd: has('AGENTS.md'),
     hasYokeConfig: has('.yoke', 'config.yaml'),
+    ui: detectUiProject(targetDir),
   }
 }

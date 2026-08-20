@@ -50,6 +50,7 @@ export type DispatcherGates = {
   readonly verifyCriterion?: (path: string, story: Story, criterion: AcceptanceCriterion) => VerifyResult
   readonly requireCriterionEvidence?: boolean
   readonly verify: (path: string, story: Story) => VerifyResult
+  readonly design?: (path: string, story: Story) => VerifyResult
   readonly perf?: (path: string, story: Story) => VerifyResult
   readonly audit?: (path: string, story: Story) => VerifyResult
   readonly qualityReview?: (path: string, story: Story, worker: DispatcherWorkerInput) => DispatcherGate
@@ -128,7 +129,7 @@ async function gateResult(gates: DispatcherGates, path: string, worker: Dispatch
     const result = gates.verifyCriterion?.(path, story, criterion)
     if (!result?.passed) return { passed: false, summary: result?.summary ?? 'criterion verification failed' }
   }
-  for (const gate of [gates.verify, gates.perf, gates.audit]) {
+  for (const gate of [gates.verify, gates.design, gates.perf, gates.audit]) {
     if (!gate) continue
     const result = gate(path, story)
     if (!result.passed) return result

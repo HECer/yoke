@@ -24,6 +24,8 @@ import { runChangeApply } from '../change/inbox.js'
 import { createQualityCommandHooks, type QualityCommandRuntime } from '../quality/command.js'
 import { resolveQualityPolicy, type QualityPolicy, type QualityRunOverrides } from '../quality/types.js'
 import { runParallelLoopCommand } from './parallel-command.js'
+import { detectUiProject } from '../retrofit/ui-detect.js'
+import { designVerifier } from '../scan/gate.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -119,6 +121,8 @@ export interface RunLoopCommandOptions {
   decisionPolicy?: DecisionPolicy
   /** Test seam for the performance budget gate (production builds it from config.perf). */
   perf?: Verifier
+  /** Test seam for the design gate (production builds it from config.design). */
+  design?: Verifier
   permissions?: PermissionProfile
   allowSelfReview?: boolean
   commitIdentity?: CommitIdentity
@@ -197,6 +201,12 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       return 2
     }
     verify = retryingVerifier(commandVerifier(command, { phase: 'verify', policy: outputPolicy }), config.verify?.retries ?? 1)
+  }
+  let design = opts.design
+  if (!design && config.design) {
+    const enabled = config.design.mode === 'on'
+      || (config.design.mode === 'auto' && detectUiProject(targetDir).detected)
+    if (enabled) design = designVerifier(config.design.max, { policy: outputPolicy })
   }
   // Optional performance budget gate: same contract as verify (exit 0 = within
   // budget), same flake tolerance (benchmarks are noisy).
@@ -462,6 +472,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       verify,
       verifyCriterion: (dir, _story, criterion) => commandsVerifier(criterion.verify, { phase: 'criterion', policy: outputPolicy })(dir),
       requireCriterionEvidence: config.verify?.requireCriteria ?? false,
+      design,
       perf,
       audit,
       review,
@@ -484,6 +495,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       requireCriterionEvidence: config.verify?.requireCriteria ?? false,
       completion,
       intake,
+      design,
       perf,
       audit,
       maxIterations,

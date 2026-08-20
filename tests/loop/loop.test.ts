@@ -266,7 +266,7 @@ describe('runLoop', () => {
     expect(loadPrd(prd())[0].passes).toBe(false)
   })
 
-  it('runs criterion proof before the suite, performance, audit, and review gates', () => {
+  it('runs criterion proof before the suite, design, performance, audit, and review gates', () => {
     writeFileSync(prd(), `
 - id: S1
   title: Paid access
@@ -282,6 +282,7 @@ describe('runLoop', () => {
       verifyCriterion: () => { events.push('criterion'); return { passed: true, summary: 'green' } },
       requireCriterionEvidence: true,
       verify: () => { events.push('suite'); return { passed: true, summary: 'green' } },
+      design: () => { events.push('design'); return { passed: true, summary: 'green' } },
       perf: () => { events.push('perf'); return { passed: true, summary: 'green' } },
       audit: () => { events.push('audit'); return { passed: true, summary: 'green' } },
       review: () => { events.push('review'); return { success: true, summary: 'approved' } },
@@ -289,7 +290,7 @@ describe('runLoop', () => {
     })
 
     expect(res.status).toBe('complete')
-    expect(events).toEqual(['criterion', 'criterion', 'suite', 'perf', 'audit', 'review'])
+    expect(events).toEqual(['criterion', 'criterion', 'suite', 'design', 'perf', 'audit', 'review'])
   })
 
   it('blocks a strict story when any acceptance criterion lacks executable evidence', () => {

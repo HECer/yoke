@@ -1,4 +1,4 @@
-export type OutputPhase = 'criterion' | 'verify' | 'perf' | 'audit' | 'completion'
+export type OutputPhase = 'criterion' | 'verify' | 'design' | 'perf' | 'audit' | 'completion'
 
 export interface OutputPolicy {
   readonly previewBytes: number

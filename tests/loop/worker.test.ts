@@ -47,6 +47,10 @@ describe('runStoryWorker', () => {
         events.push('verify')
         return { passed: true, summary: 'verify passed' }
       },
+      design: () => {
+        events.push('design')
+        return { passed: true, summary: 'design passed' }
+      },
       perf: () => {
         events.push('perf')
         return { passed: true, summary: 'perf passed' }
@@ -87,6 +91,7 @@ describe('runStoryWorker', () => {
           { id: 'criterion-two', passed: true },
         ],
         verify: { passed: true },
+        design: { passed: true },
         perf: { passed: true },
         audit: { passed: true },
         quality: { kind: 'approved' },
@@ -98,6 +103,8 @@ describe('runStoryWorker', () => {
       'criterion',
       'phase:verifying',
       'verify',
+      'phase:design',
+      'design',
       'phase:perf',
       'perf',
       'phase:audit',

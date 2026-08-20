@@ -171,6 +171,24 @@ describe('yoke config', () => {
     expect(loadConfig(dir)?.smoke).toBeUndefined()
   })
 
+  it('round-trips optional design gate modes and budgets', () => {
+    for (const mode of ['off', 'auto', 'on'] as const) {
+      const cfg = { ...defaultConfig('1.6.0'), design: { mode, max: 7 } }
+      saveConfig(dir, cfg)
+      expect(loadConfig(dir)?.design).toEqual({ mode, max: 7 })
+    }
+  })
+
+  it('keeps design behavior absent for legacy configuration', () => {
+    expect(defaultConfig('1.6.0').design).toBeUndefined()
+    expect(YokeConfigSchema.parse(defaultConfig('1.6.0')).design).toBeUndefined()
+  })
+
+  it('rejects unknown design modes and non-positive budgets', () => {
+    expect(() => YokeConfigSchema.parse({ ...defaultConfig('1'), design: { mode: 'sometimes', max: 4 } })).toThrow()
+    expect(() => YokeConfigSchema.parse({ ...defaultConfig('1'), design: { mode: 'auto', max: 0 } })).toThrow()
+  })
+
   it('round-trips an optional perf gate command', () => {
     const cfg = { canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true }, perf: { command: 'node bench.mjs' } }
     saveConfig(dir, cfg)

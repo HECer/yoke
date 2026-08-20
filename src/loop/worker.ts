@@ -22,12 +22,13 @@ type WorkerBaseResult = Omit<Extract<StoryWorkerResult, { readonly kind: 'candid
 
 type MechanicalGateResult =
   | { readonly kind: 'passed' }
-  | { readonly kind: 'failed'; readonly stage: 'criterion' | 'verify' | 'perf' | 'audit'; readonly summary: string }
+  | { readonly kind: 'failed'; readonly stage: 'criterion' | 'verify' | 'design' | 'perf' | 'audit'; readonly summary: string }
   | { readonly kind: 'cancelled'; readonly summary: string }
 
 type MutableWorkerEvidence = {
   criteria: WorkerCriterionEvidence[]
   verify?: WorkerGateEvidence
+  design?: WorkerGateEvidence
   perf?: WorkerGateEvidence
   audit?: WorkerGateEvidence
   quality?: QualityRepairLoopResult
@@ -95,6 +96,16 @@ function runMechanicalGates(input: StoryWorkerInput, context: AgentContext, evid
   if (!verify.passed) return { kind: 'failed', stage: 'verify', summary: verify.summary }
   const afterVerifyCancellation = cancellationReason(input.cancellation)
   if (afterVerifyCancellation) return { kind: 'cancelled', summary: afterVerifyCancellation }
+
+  if (input.design) {
+    input.reporter?.phase('design')
+    const design = runGate(input.design, context.targetDir, context.story.id)
+    evidence.design = design
+    input.callbacks?.onGate?.('design', design)
+    if (!design.passed) return { kind: 'failed', stage: 'design', summary: design.summary }
+    const afterDesignCancellation = cancellationReason(input.cancellation)
+    if (afterDesignCancellation) return { kind: 'cancelled', summary: afterDesignCancellation }
+  }
 
   if (input.perf) {
     input.reporter?.phase('perf')

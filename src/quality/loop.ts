@@ -21,7 +21,7 @@ export type RepairResult =
 export type GateRerunResult =
   | { readonly kind: 'passed' }
   | { readonly kind: 'cancelled'; readonly summary: string }
-  | { readonly kind: 'failed'; readonly stage: 'criterion' | 'verify' | 'perf' | 'audit'; readonly summary: string }
+  | { readonly kind: 'failed'; readonly stage: 'criterion' | 'verify' | 'design' | 'perf' | 'audit'; readonly summary: string }
 
 type FailedGateRerun = Extract<GateRerunResult, { kind: 'failed' }>
 

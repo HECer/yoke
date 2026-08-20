@@ -42,4 +42,16 @@ describe('formatReport', () => {
     )
     expect(out).toContain('1 merged')
   })
+
+  it('reports explained UI detection when present', () => {
+    const out = formatReport(applied, {
+      loopEnabled: false,
+      detectedAgents: [],
+      ui: { detected: true, signals: ['dependency: react', 'source: src/App.tsx'] },
+    })
+
+    expect(out).toContain('UI project: detected')
+    expect(out).toContain('dependency: react')
+    expect(out).toContain('source: src/App.tsx')
+  })
 })

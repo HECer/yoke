@@ -119,6 +119,10 @@ describe('dispatcher', () => {
           events.push(`verify:${item.id}`)
           return { passed: true, summary: 'green' }
         },
+        design: (_path, item) => {
+          events.push(`design:${item.id}`)
+          return { passed: true, summary: 'green' }
+        },
         perf: (_path, item) => {
           events.push(`perf:${item.id}`)
           return { passed: true, summary: 'green' }
@@ -136,8 +140,8 @@ describe('dispatcher', () => {
 
     expect(result.integrated).toEqual(['A', 'B'])
     expect(events).toEqual([
-      'rebase:A', 'criterion:A:first', 'criterion:A:second', 'verify:A', 'perf:A', 'audit:A', 'quality-review:A', 'commit:A', 'integrate:A:target-A',
-      'rebase:B', 'criterion:B:first', 'criterion:B:second', 'verify:B', 'perf:B', 'audit:B', 'quality-review:B', 'commit:B', 'integrate:B:target-B',
+      'rebase:A', 'criterion:A:first', 'criterion:A:second', 'verify:A', 'design:A', 'perf:A', 'audit:A', 'quality-review:A', 'commit:A', 'integrate:A:target-A',
+      'rebase:B', 'criterion:B:first', 'criterion:B:second', 'verify:B', 'design:B', 'perf:B', 'audit:B', 'quality-review:B', 'commit:B', 'integrate:B:target-B',
     ])
   })
 

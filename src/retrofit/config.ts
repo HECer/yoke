@@ -89,6 +89,10 @@ export const YokeConfigSchema = z.object({
   // Optional performance budget gate: a benchmark command that must exit 0 for a
   // story to land (runs after verify). Benchmarks are noisy → retried like verify.
   perf: z.object({ command: z.string().min(1), retries: z.number().int().nonnegative().optional() }).optional(),
+  design: z.object({
+    mode: z.enum(['off', 'auto', 'on']),
+    max: z.number().int().positive().default(4),
+  }).optional(),
   codeGraph: CodeGraphSchema.optional(),
   smoke: SmokeSchema.optional(),
   quality: ProjectQualityDefaultsSchema.optional(),
@@ -125,6 +129,7 @@ export interface YokeConfig {
   verify?: { command?: string; retries?: number; requireCriteria?: boolean }
   completion?: { command: string; retries?: number }
   perf?: { command: string; retries?: number }
+  design?: { mode: 'off' | 'auto' | 'on'; max: number }
   codeGraph?: CodeGraph
   smoke?: SmokeConfig
   quality?: import('../quality/types.js').ProjectQualityDefaults

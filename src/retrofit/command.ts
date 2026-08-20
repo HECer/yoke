@@ -37,9 +37,12 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: A
     agents: mergedAgents,
     loop: { ...existing?.loop, enabled: opts.loop },
     codeGraph,
+    ...(existing?.design
+      ? { design: existing.design }
+      : detection.ui.detected ? { design: { mode: 'auto' as const, max: 4 } } : {}),
   }
   saveConfig(targetDir, config)
 
-  console.log(formatReport(applied, { loopEnabled: config.loop.enabled, detectedAgents: detection.agents }))
+  console.log(formatReport(applied, { loopEnabled: config.loop.enabled, detectedAgents: detection.agents, ui: detection.ui }))
   return 0
 }

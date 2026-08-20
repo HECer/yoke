@@ -14,6 +14,7 @@ describe('detectProject', () => {
     expect(d.agents).toEqual([])
     expect(d.hasAgentsMd).toBe(false)
     expect(d.hasYokeConfig).toBe(false)
+    expect(d.ui).toEqual({ detected: false, signals: [] })
   })
 
   it('detects claude via .claude/ and a CLAUDE.md', () => {
@@ -37,5 +38,11 @@ describe('detectProject', () => {
     const d = detectProject(dir)
     expect(d.hasAgentsMd).toBe(true)
     expect(d.hasYokeConfig).toBe(true)
+  })
+
+  it('includes explained UI detection', () => {
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { vue: '^3.0.0' } }))
+
+    expect(detectProject(dir).ui).toEqual({ detected: true, signals: ['dependency: vue'] })
   })
 })

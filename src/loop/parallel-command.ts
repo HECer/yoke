@@ -32,6 +32,7 @@ export type ParallelCommandInput = {
   readonly git?: GitOps
   readonly identity?: CommitIdentity
   readonly verify: Verifier
+  readonly design?: Verifier
   readonly verifyCriterion: (path: string, story: Story, criterion: AcceptanceCriterion) => ReturnType<Verifier>
   readonly requireCriterionEvidence: boolean
   readonly perf?: Verifier
@@ -77,6 +78,7 @@ export async function runParallelLoopCommand(input: ParallelCommandInput): Promi
     onProgress: status => input.reporter.parallel?.(status),
     gates: {
       verify: input.verify,
+      design: input.design,
       verifyCriterion: input.verifyCriterion,
       requireCriterionEvidence: input.requireCriterionEvidence,
       perf: input.perf,
@@ -93,6 +95,7 @@ export async function runParallelLoopCommand(input: ParallelCommandInput): Promi
         provider: workerInput.provider,
         runner,
         verify: input.verify,
+        design: input.design,
         verifyCriterion: input.verifyCriterion,
         requireCriterionEvidence: input.requireCriterionEvidence,
         perf: input.perf,
@@ -179,6 +182,7 @@ function candidateDefinitions(input: ParallelCommandInput, worker: DispatcherWor
         provider: worker.provider,
         runner,
         verify: input.verify,
+        design: input.design,
         verifyCriterion: input.verifyCriterion,
         requireCriterionEvidence: input.requireCriterionEvidence,
         perf: input.perf,

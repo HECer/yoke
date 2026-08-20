@@ -37,6 +37,7 @@ export type WorkerGateEvidence = {
 export type StoryWorkerEvidence = {
   readonly criteria: readonly WorkerCriterionEvidence[]
   readonly verify?: WorkerGateEvidence
+  readonly design?: WorkerGateEvidence
   readonly perf?: WorkerGateEvidence
   readonly audit?: WorkerGateEvidence
   readonly quality?: QualityRepairLoopResult
@@ -64,14 +65,14 @@ export type StoryWorkerCandidate = WorkerBaseResult & {
 
 export type StoryWorkerResult =
   | StoryWorkerCandidate
-  | (WorkerBaseResult & { readonly kind: 'mechanical-failure'; readonly stage: 'implementation' | 'criterion' | 'verify' | 'perf' | 'audit' | 'quality' })
+  | (WorkerBaseResult & { readonly kind: 'mechanical-failure'; readonly stage: 'implementation' | 'criterion' | 'verify' | 'design' | 'perf' | 'audit' | 'quality' })
   | (WorkerBaseResult & { readonly kind: 'quality-failure'; readonly reason: 'inconsistent' | 'infrastructure' })
   | (WorkerBaseResult & { readonly kind: 'review-failure'; readonly reason: 'malformed' | 'infrastructure' })
   | (WorkerBaseResult & { readonly kind: 'cancelled' })
   | (WorkerBaseResult & { readonly kind: 'paused'; readonly reason?: 'decision' })
 
 export type StoryWorkerCallbacks = {
-  readonly onGate?: (stage: 'criterion' | 'verify' | 'perf' | 'audit', result: VerifyResult) => void
+  readonly onGate?: (stage: 'criterion' | 'verify' | 'design' | 'perf' | 'audit', result: VerifyResult) => void
   readonly onResult?: (result: StoryWorkerResult) => void
 }
 
@@ -84,6 +85,7 @@ export type StoryWorkerInput = {
   readonly verifyCriterion?: (targetDir: string, story: Story, criterion: AcceptanceCriterion) => VerifyResult
   readonly requireCriterionEvidence?: boolean
   readonly verify: Verifier
+  readonly design?: Verifier
   readonly perf?: Verifier
   readonly audit?: Verifier
   readonly qualityStage?: (context: AgentContext, round: number, attempt?: 'worker' | 'integration') => QualityStage
