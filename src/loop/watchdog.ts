@@ -61,6 +61,14 @@ function waitForCleanupRetry(): void {
   spawnSync(process.execPath, ['-e', 'Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)'], { stdio: 'ignore' })
 }
 
+function confirmProcessStopped(pid: number, isProcessAlive: ProcessAlive): boolean {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!isProcessAlive(pid)) return true
+    waitForCleanupRetry()
+  }
+  return false
+}
+
 export function killProcessForCleanup(
   pid: number,
   platform: NodeJS.Platform = process.platform,
@@ -70,17 +78,16 @@ export function killProcessForCleanup(
     try { process.kill(target, 0); return true } catch { return false }
   },
 ): boolean {
-  if (platform === 'win32') return runTaskkill('taskkill', ['/PID', String(pid), '/T', '/F']) === 0
+  if (platform === 'win32') {
+    if (runTaskkill('taskkill', ['/PID', String(pid), '/T', '/F']) !== 0) return false
+    return confirmProcessStopped(pid, isProcessAlive)
+  }
   try {
     sendSignal(pid, 'SIGKILL')
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'ESRCH'
   }
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (!isProcessAlive(pid)) return true
-    waitForCleanupRetry()
-  }
-  return false
+  return confirmProcessStopped(pid, isProcessAlive)
 }
 
 export function killProcessTreeForCleanup(
@@ -88,8 +95,14 @@ export function killProcessTreeForCleanup(
   platform: NodeJS.Platform = process.platform,
   runTaskkill: TaskkillRunner = (command, args) => spawnSync(command, args, { stdio: 'ignore' }).status,
   sendSignal: ProcessSignaler = (target, signal) => { process.kill(target, signal) },
+  isProcessAlive: ProcessAlive = (target) => {
+    try { process.kill(target, 0); return true } catch { return false }
+  },
 ): boolean {
-  if (platform === 'win32') return runTaskkill('taskkill', ['/PID', String(pid), '/T', '/F']) === 0
+  if (platform === 'win32') {
+    if (runTaskkill('taskkill', ['/PID', String(pid), '/T', '/F']) !== 0) return false
+    return confirmProcessStopped(pid, isProcessAlive)
+  }
   try {
     // Provider processes run detached on POSIX, so their PID is also the
     // process-group leader. Signal the group to reap descendants as well.

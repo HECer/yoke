@@ -142,15 +142,25 @@ describe('killProcessTreeForCleanup', () => {
     expect(signals).toEqual([[4242, 'SIGKILL']])
   })
 
-  it('confirms Windows taskkill only after a zero exit status', () => {
+  it('confirms Windows taskkill only after the pid is no longer alive', () => {
     const calls: string[][] = []
+    const alive = [true, true, false]
+    let checks = 0
 
     expect(killProcessTreeForCleanup(4242, 'win32', (command, args) => {
       calls.push([command, ...args])
       return 0
+    }, undefined, () => {
+      checks += 1
+      return alive.shift() ?? false
     })).toBe(true)
 
     expect(calls).toEqual([['taskkill', '/PID', '4242', '/T', '/F']])
+    expect(checks).toBe(3)
+  })
+
+  it('does not confirm a successful Windows taskkill request while the pid remains alive', () => {
+    expect(killProcessTreeForCleanup(4242, 'win32', () => 0, undefined, () => true)).toBe(false)
   })
 
   it('rejects a nonzero Windows taskkill exit status', () => {
