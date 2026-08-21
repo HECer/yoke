@@ -6,7 +6,7 @@ Where Yoke is published, and how each channel gets updated. (Reviewed 2026-08-20
 
 | Channel | How | Update path |
 |---|---|---|
-| **npm** — [`@hecer/yoke`](https://www.npmjs.com/package/@hecer/yoke) | `npm publish` (2FA) | every release |
+| **npm** — [`@hecer/yoke`](https://www.npmjs.com/package/@hecer/yoke) | GitHub OIDC trusted publishing | every release |
 | **GitHub** — [HECer/yoke](https://github.com/HECer/yoke) | push + tag + GitHub Release | every release |
 | **Claude Code plugin (self-marketplace)** | `.claude-plugin/plugin.json` + `marketplace.json` in this repo; users: `/plugin marketplace add HECer/yoke` → `/plugin install yoke@yoke` | bump `version` in `plugin.json` |
 | **Gemini CLI extension** | `gemini-extension.json` + `GEMINI-EXTENSION.md` at repo root; users: `gemini extensions install https://github.com/HECer/yoke` | bump `version` in the manifest |
@@ -61,6 +61,29 @@ gh release view "v$VERSION" >/dev/null 2>&1 || \
 
 Verify both surfaces before publishing npm: `gh release view "v$VERSION"` and
 `npm view @hecer/yoke version`.
+
+## npm trusted publishing
+
+The `publish-npm.yml` workflow publishes a stable package automatically when a GitHub Release is
+published. It checks out that exact tag, requires the tag to match the version in `package.json`,
+reruns `prepublishOnly` through `npm publish`, and skips a version that already exists. GitHub OIDC
+provides a short-lived publishing identity; no `NPM_TOKEN` repository secret is used. npm adds
+provenance automatically for this public repository.
+
+One package-owner setup step is required on npmjs.com under the `@hecer/yoke` package settings:
+
+- Publisher: GitHub Actions
+- Organization or user: `HECer`
+- Repository: `yoke`
+- Workflow filename: `publish-npm.yml`
+- Environment: leave empty
+- Allowed action: `npm publish`
+
+After the trusted publisher exists, the next GitHub Release publishes automatically. To publish an
+already-created release such as `v1.6.1`, run the **Publish npm** workflow manually and provide that
+existing tag. The workflow refuses tags without a published GitHub Release and refuses tag/version
+mismatches. After the first successful OIDC publish, disable traditional token publishing and revoke
+obsolete automation tokens in npm package settings.
 
 ## Submitted / pending
 
