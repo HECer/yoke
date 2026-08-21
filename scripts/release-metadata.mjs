@@ -57,24 +57,25 @@ export function updateReadme(readme, metadata) {
   return next
 }
 
-function listedTestSummary(root) {
+export function discoverTestCount(root, execute = execFileSync) {
   const vitest = join(root, 'node_modules', 'vitest', 'vitest.mjs')
-  const output = execFileSync(process.execPath, [vitest, 'list', '--json'], {
+  const output = execute(process.execPath, [vitest, 'list', '--json'], {
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: 16 * 1024 * 1024,
+    env: { ...process.env, YOKE_INCLUDE_PLATFORM_TESTS: '1' },
   })
   const tests = JSON.parse(output)
   if (!Array.isArray(tests)) throw new Error('Vitest list did not return a test array')
-  return `Tests ${tests.length} passed`
+  return tests.length
 }
 
 function main() {
   const root = dirname(dirname(fileURLToPath(import.meta.url)))
   const readmePath = join(root, 'README.md')
   const before = readFileSync(readmePath, 'utf8')
-  const after = updateReadme(before, collectMetadata(root, listedTestSummary(root)))
+  const after = updateReadme(before, collectMetadata(root, `Tests ${discoverTestCount(root)} passed`))
   if (process.argv.includes('--check')) {
     if (after !== before) {
       console.error('README release metadata is stale. Run: npm run docs:update')

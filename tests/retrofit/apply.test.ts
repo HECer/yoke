@@ -46,7 +46,7 @@ describe('applyActions', () => {
     expect([...readFileSync(join(target, action.target))]).toEqual([0, 255, 4])
   })
 
-  it.runIf(process.platform !== 'win32')('applies executable intent to package resources', () => {
+  it.runIf(process.platform !== 'win32' || process.env.YOKE_INCLUDE_PLATFORM_TESTS === '1')('applies executable intent to package resources', () => {
     const action: Action = {
       kind: 'write', target: '.agents/skills/example/scripts/check.sh',
       content: '#!/bin/sh\n', executable: true, reason: 'skill resource',

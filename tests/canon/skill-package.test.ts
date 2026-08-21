@@ -41,7 +41,7 @@ describe('enumerateSkillPackage', () => {
     expect([...files[1]!.content]).toEqual([0, 255, 4])
   })
 
-  it.runIf(process.platform !== 'win32')('records executable intent', () => {
+  it.runIf(process.platform !== 'win32' || process.env.YOKE_INCLUDE_PLATFORM_TESTS === '1')('records executable intent', () => {
     write('skills/example/SKILL.md', '---\nname: example\ndescription: Example\n---\n')
     write('skills/example/scripts/check.sh', '#!/bin/sh\n')
     chmodSync(join(canonDir, 'skills/example/scripts/check.sh'), 0o755)

@@ -33,7 +33,7 @@ release object is created. Use this idempotent check after the version commit re
 
 ```bash
 set -euo pipefail
-VERSION=1.6.0
+VERSION=1.6.1
 TARGET=$(git rev-parse HEAD)
 git fetch --tags origin
 

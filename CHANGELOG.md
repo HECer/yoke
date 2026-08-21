@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.6.1 — 2026-08-21
+
+### Fixed
+- Release metadata now counts platform-conditional tests consistently on Windows and Ubuntu, so `docs:check` no longer fails after an otherwise green cross-platform test matrix.
+- Provider cleanup now rechecks termination after the child closes, preventing stale ownership records when Windows reports process exit asynchronously.
+
 ## 1.6.0 — 2026-08-20
 
 ### Added
