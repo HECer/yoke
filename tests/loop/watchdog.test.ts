@@ -164,7 +164,11 @@ describe('killProcessTreeForCleanup', () => {
   })
 
   it('rejects a nonzero Windows taskkill exit status', () => {
-    expect(killProcessTreeForCleanup(4242, 'win32', () => 1)).toBe(false)
+    expect(killProcessTreeForCleanup(4242, 'win32', () => 1, undefined, () => true)).toBe(false)
+  })
+
+  it('confirms an already-stopped Windows process when taskkill reports it absent', () => {
+    expect(killProcessTreeForCleanup(4242, 'win32', () => 1, undefined, () => false)).toBe(true)
   })
 
   it('kills and confirms the dedicated POSIX process group', () => {

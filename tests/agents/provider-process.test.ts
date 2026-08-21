@@ -146,6 +146,27 @@ describe('startProviderProcess', () => {
     expect(existsSync(handle.recordPath)).toBe(false)
   })
 
+  it('reconfirms termination after close before retaining the scoped record', async () => {
+    const dir = tempProject()
+    const terminated: Array<readonly [number, boolean]> = []
+    const handle = startProviderProcess('codex', invocation('setInterval(() => {}, 1_000)', dir), {
+      idleTimeoutMs: 25,
+      terminationGraceMs: 1_000,
+      terminateProcessTree: (pid, force) => {
+        terminated.push([pid, force])
+        try { process.kill(pid, 'SIGKILL') } catch { /* already stopped */ }
+        return terminated.length > 1
+      },
+    })
+
+    await expect(handle.completion).resolves.toMatchObject({ kind: 'timed-out' })
+    expect(terminated).toEqual([
+      [handle.pid, false],
+      [handle.pid, true],
+    ])
+    expect(existsSync(handle.recordPath)).toBe(false)
+  })
+
   it('cancels an active process exactly once and records the cancellation reason', async () => {
     // Given: an active provider process.
     const dir = tempProject()

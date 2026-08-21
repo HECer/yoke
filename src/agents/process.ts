@@ -141,6 +141,9 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     telemetry: telemetry.finish(),
   })
   const finalize = (exitCode: number | null): void => {
+    if (termination && pid !== undefined && !terminationConfirmed) {
+      terminationConfirmed = terminateProcessTree(pid, true)
+    }
     const details = evidence()
     if (recordFailure) {
       finish({ ...details, kind: 'spawn-failed', error: recordFailure })
