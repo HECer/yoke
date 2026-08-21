@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- GitHub Releases can now publish `@hecer/yoke` through npm trusted publishing with short-lived OIDC credentials and automatic provenance, without a long-lived npm token.
+
 ## 1.6.1 — 2026-08-21
 
 ### Fixed

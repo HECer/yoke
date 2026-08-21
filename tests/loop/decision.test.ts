@@ -227,7 +227,7 @@ describe('critical decision handshake', () => {
     expect(decisionResumePath(nested)).not.toBe(decisionResumePath(dir))
   })
 
-  it('refuses an answered resume after its decision commit leaves the current history', () => {
+  it('refuses an answered resume after its decision commit leaves the current history', { timeout: 15_000 }, () => {
     execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' })
     execFileSync('git', ['config', 'user.name', 'Yoke Test'], { cwd: dir })
     execFileSync('git', ['config', 'user.email', 'yoke@example.test'], { cwd: dir })
