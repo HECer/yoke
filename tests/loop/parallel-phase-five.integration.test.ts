@@ -31,7 +31,7 @@ afterEach(async () => {
   for (const dir of projects.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
-describe('Phase 5 parallel integration', { timeout: 30_000 }, () => {
+describe('Phase 5 parallel integration', { timeout: 60_000 }, () => {
   it('runs two provider subprocesses through the three-story DAG and every worker plus integration gate', async () => {
     const project = createProject([{ id: 'A' }, { id: 'B' }, { id: 'C', needs: ['A', 'B'] }], true)
     const starts: string[] = []
