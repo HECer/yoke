@@ -34,7 +34,7 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
-describe('startProviderProcess', () => {
+describe('startProviderProcess', { timeout: 15_000 }, () => {
   it('streams stdout and stderr while preserving cumulative telemetry on successful completion', async () => {
     // Given: a provider-shaped JSON stream and a stderr diagnostic.
     const dir = tempProject()

@@ -141,6 +141,8 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     telemetry: telemetry.finish(),
   })
   const finalize = (exitCode: number | null): void => {
+    // Windows can emit close before taskkill's process-tree state is observable.
+    // Reconfirm here so successful termination does not leave a stale ownership record.
     if (termination && pid !== undefined && !terminationConfirmed) {
       terminationConfirmed = terminateProcessTree(pid, true)
     }

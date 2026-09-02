@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, appendFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, appendFileSync, statSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const LOG_CAP_BYTES = 256 * 1024
@@ -163,6 +163,10 @@ export function readStatus(dir: string): LoopStatus | null {
   } catch {
     return null
   }
+}
+
+export function clearStatus(dir: string): void {
+  rmSync(statusPath(dir), { force: true })
 }
 
 export interface StoryRef { id: string; title: string }

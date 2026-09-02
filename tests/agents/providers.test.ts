@@ -16,7 +16,9 @@ describe('provider invocations', () => {
   })
 
   it('uses Codex workspace sandbox unless unsafe is explicit', () => {
-    expect(buildProviderInvocation('codex', 'P', '/w', 'safe').args).toEqual(['exec', '--full-auto', '--json'])
+    expect(buildProviderInvocation('codex', 'P', '/w', 'safe').args).toEqual([
+      'exec', '--sandbox', 'workspace-write', '--approve-for-me', '--json',
+    ])
     expect(buildProviderInvocation('codex', 'P', '/w', 'read-only').args).toEqual(['exec', '--sandbox', 'read-only', '--json'])
     expect(buildProviderInvocation('codex', 'P', '/w', 'unsafe').args).toContain('--dangerously-bypass-approvals-and-sandbox')
   })
@@ -35,14 +37,14 @@ describe('provider invocations', () => {
     expect(buildProviderInvocation('claude', 'P', '/w', 'safe', { model: 'haiku', reasoningEffort: 'low' }).args)
       .toEqual(['-p', '--permission-mode', 'auto', '--output-format', 'stream-json', '--verbose', '--model', 'haiku', '--effort', 'low'])
     expect(buildProviderInvocation('codex', 'P', '/w', 'safe', { model: 'current-fast', reasoningEffort: 'medium' }).args)
-      .toEqual(['exec', '--full-auto', '--json', '--model', 'current-fast', '--config', 'model_reasoning_effort=medium'])
+      .toEqual(['exec', '--sandbox', 'workspace-write', '--approve-for-me', '--json', '--model', 'current-fast', '--config', 'model_reasoning_effort=medium'])
     expect(buildProviderInvocation('gemini', 'P', '/w', 'safe', { model: 'current-flash', reasoningEffort: 'high' }).args)
       .toEqual(['--approval-mode', 'auto_edit', '--sandbox', '--model', 'current-flash'])
   })
 
   it('can disable Codex native subagents when Yoke owns routing', () => {
     expect(buildProviderInvocation('codex', 'P', '/w', 'safe', { nativeMultiAgent: false }).args)
-      .toEqual(['exec', '--full-auto', '--json', '--disable', 'multi_agent'])
+      .toEqual(['exec', '--sandbox', 'workspace-write', '--approve-for-me', '--json', '--disable', 'multi_agent'])
   })
 
   it('supports isolated provider startup without personal plugins or MCP configuration', () => {

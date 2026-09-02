@@ -100,6 +100,8 @@ export function killProcessTreeForCleanup(
   },
 ): boolean {
   if (platform === 'win32') {
+    // taskkill reports a non-zero status when the process disappeared between
+    // observation and cleanup; that is already the desired terminal state.
     if (runTaskkill('taskkill', ['/PID', String(pid), '/T', '/F']) !== 0) return !isProcessAlive(pid)
     return confirmProcessStopped(pid, isProcessAlive)
   }

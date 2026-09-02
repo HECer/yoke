@@ -2,14 +2,21 @@
 
 ## Unreleased
 
+## 1.6.2 — 2026-09-02
+
 ### Added
 - GitHub Releases can now publish `@hecer/yoke` through npm trusted publishing with short-lived OIDC credentials and automatic provenance, without a long-lived npm token.
+
+### Fixed
+- Codex safe-mode invocations now use the supported `workspace-write` sandbox with `--approve-for-me`; the removed `--full-auto` flag no longer blocks current Codex CLI releases.
+- Windows provider cleanup rechecks termination after process close and accepts an already-absent process as successfully cleaned up, avoiding stale ownership records and unnecessary watchdog waits.
+- Successful stale-loop cleanup removes obsolete runtime status, so `yoke loop status` no longer reports a dead run as `RUNNING`.
 
 ## 1.6.1 — 2026-08-21
 
 ### Fixed
-- Release metadata now counts platform-conditional tests consistently on Windows and Ubuntu, so `docs:check` no longer fails after an otherwise green cross-platform test matrix.
-- Provider cleanup now rechecks termination after the child closes, preventing stale ownership records when Windows reports process exit asynchronously.
+- Release metadata counts platform-conditional tests consistently on Windows and Ubuntu.
+- Provider cleanup confirms termination after child close, preventing stale ownership records when Windows reports process exit asynchronously.
 
 ## 1.6.0 — 2026-08-20
 

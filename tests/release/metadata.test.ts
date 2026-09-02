@@ -2,14 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { collectMetadata, updateReadme } from '../../scripts/release-metadata.mjs'
-import * as releaseMetadata from '../../scripts/release-metadata.mjs'
+import { collectMetadata, discoverTestCount, updateReadme } from '../../scripts/release-metadata.mjs'
 
 describe('release metadata', () => {
   it('lists every platform test through a host-independent discovery environment', () => {
-    const discoverTestCount = (releaseMetadata as Record<string, unknown>).discoverTestCount
-    expect(discoverTestCount).toBeTypeOf('function')
-    if (typeof discoverTestCount !== 'function') return
     let receivedEnv: NodeJS.ProcessEnv | undefined
     const execute = (_command: string, _args: string[], options: { env?: NodeJS.ProcessEnv }) => {
       receivedEnv = options.env

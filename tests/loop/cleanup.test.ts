@@ -14,6 +14,15 @@ describe('runLoopCleanup', () => {
     expect(runLoopCleanup(dir, { git: () => { throw new Error('must not be called') } })).toBe(0)
   })
 
+  it('clears stale running status after successful cleanup', () => {
+    const status = join(dir, '.yoke', 'loop-status.json')
+    mkdirSync(join(dir, '.yoke'), { recursive: true })
+    writeFileSync(status, JSON.stringify({ state: 'running', updatedAt: '2020-01-01T00:00:00.000Z' }))
+
+    expect(runLoopCleanup(dir, { git: () => undefined })).toBe(0)
+    expect(existsSync(status)).toBe(false)
+  })
+
   it('removes every yoke worktree via git and prunes', () => {
     mkdirSync(join(dir, '.yoke', 'worktrees', 'STORY-1'), { recursive: true })
     mkdirSync(join(dir, '.yoke', 'worktrees', 'STORY-2'), { recursive: true })

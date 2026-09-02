@@ -136,7 +136,7 @@ describe('agentInvocation', () => {
   it('maps codex to `codex exec` with the prompt as input', () => {
     const inv = agentInvocation('codex', 'P', '/w')
     expect(inv.command).toBe('codex')
-    expect(inv.args).toEqual(['exec', '--full-auto', '--json'])
+    expect(inv.args).toEqual(['exec', '--sandbox', 'workspace-write', '--approve-for-me', '--json'])
     expect(inv.input).toBe('P')
     expect(inv.args).not.toContain('P')
   })
@@ -495,7 +495,7 @@ describe('makeRunner with tokenReport', () => {
     rmSync(d, { recursive: true, force: true })
     expect(captured).toBe(1)
     expect(invs).toHaveLength(1)
-    expect(invs[0].args).toEqual(['exec', '--full-auto', '--json'])
+    expect(invs[0].args).toEqual(['exec', '--sandbox', 'workspace-write', '--approve-for-me', '--json'])
     expect(res.success).toBe(true)
     expect(res.tokens).toEqual({ inputTokens: 4, outputTokens: 2, model: 'gpt-5' })
   })

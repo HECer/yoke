@@ -9,6 +9,7 @@ import {
 } from './lock.js'
 import { killProcessForCleanup, killProcessTreeForCleanup } from './watchdog.js'
 import { cleanupClaims } from './claims.js'
+import { clearStatus } from './reporter.js'
 
 export interface CleanupOptions {
   git?: (args: string[], cwd: string) => void
@@ -210,6 +211,7 @@ export function runLoopCleanup(targetDir: string, opts: CleanupOptions = {}): nu
       rmSync(lockFile, { force: true })
       console.log('Removed stale loop lock.')
     }
+    if (failed === 0) clearStatus(targetDir)
     console.log(removed === 0 && failed === 0 ? 'No destructive cleanup performed.' : `Removed ${removed} worktree(s)${failed > 0 ? `, ${failed} failed` : ''}.`)
     return failed === 0 ? 0 : 1
   } finally {

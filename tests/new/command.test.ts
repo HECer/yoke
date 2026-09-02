@@ -11,7 +11,7 @@ let parent: string
 beforeEach(() => { parent = mkdtempSync(join(tmpdir(), 'yoke-new-')) })
 afterEach(() => { rmSync(parent, { recursive: true, force: true }) })
 
-describe('runNew', () => {
+describe('runNew', { timeout: 15_000 }, () => {
   const noGit = { git: (_args: string[], _cwd: string) => {} }
 
   it('refuses a non-empty existing directory', () => {

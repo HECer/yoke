@@ -2,8 +2,8 @@
 
 # 🐂 Yoke
 
-<!-- yoke:version:start -->1.6.1<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1020<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.6.2<!-- yoke:version:end -->
+<!-- yoke:tests:start -->1021<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1020%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1021%20passing-brightgreen.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -81,7 +81,7 @@ $ ls reading-app/.yoke/proof/STORY-2/
 home.png  list.png                            # photographic evidence, labelled per story
 ```
 
-Every claim in that transcript is enforced by code paths with tests behind them — 1020 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
+Every claim in that transcript is enforced by code paths with tests behind them — 1021 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
 
 ## 🚀 Quickstart
 
@@ -856,7 +856,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1020 tests)
+npm test          # vitest (1021 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```
