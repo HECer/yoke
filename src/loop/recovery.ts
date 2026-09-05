@@ -10,11 +10,13 @@ const digest = (file: string) => createHash('sha256').update(readFileSync(file))
 /** Explicit recovery is valid only for the unchanged original target and PRD. */
 export function prepareIsolatedWorktree(directory: string, worktree: string, resume: boolean): void {
   const root = realpathSync(directory)
-  const wt = resolve(worktree)
+  // Resolve caller aliases (including Windows 8.3 temp paths) against the same
+  // canonical root before comparing them with Git's registered path spellings.
+  const wt = resolve(root, relative(resolve(directory), resolve(worktree)))
   const expectedParent = join(root, '.yoke', 'worktrees')
   if (dirname(wt) !== expectedParent) throw new Error('Recovery worktree path must be a direct project worktree')
   const git = (args: string[], cwd = root) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
-  const common = resolve(root, git(['rev-parse', '--git-common-dir']))
+  const common = realpathSync(resolve(root, git(['rev-parse', '--git-common-dir'])))
   const name = createHash('sha256').update(wt).digest('hex')
   const record = join(common, 'yoke-recovery', `${name}.json`)
   const base = git(['rev-parse', 'HEAD'])
@@ -27,9 +29,9 @@ export function prepareIsolatedWorktree(directory: string, worktree: string, res
     const actual = realpathSync(wt)
     const rel = relative(realpathSync(expectedParent), actual)
     if (isAbsolute(rel) || rel.startsWith('..') || rel.includes('/') || rel.includes('\\')) throw new Error('Recovery worktree path escaped')
-    const registered = git(['worktree', 'list', '--porcelain']).split(/\r?\n/).filter(line => line.startsWith('worktree ')).map(line => resolve(line.slice(9)))
+    const registered = git(['worktree', 'list', '--porcelain']).split(/\r?\n/).filter(line => line.startsWith('worktree ')).map(line => realpathSync(resolve(line.slice(9))))
     if (!registered.includes(actual)) throw new Error('Recovery directory is not a registered worktree')
-    if (resolve(actual, git(['rev-parse', '--git-common-dir'], actual)) !== common) throw new Error('Recovery belongs to a different repository')
+    if (realpathSync(resolve(actual, git(['rev-parse', '--git-common-dir'], actual))) !== common) throw new Error('Recovery belongs to a different repository')
     git(['merge-base', '--is-ancestor', base, 'HEAD'], actual)
     return
   }
