@@ -6,6 +6,7 @@ import { z } from 'zod'
 
 const Recovery = z.object({ version: z.literal(1), root: z.string(), worktree: z.string(), base: z.string(), prdHash: z.string() }).strict()
 const digest = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex')
+const pathIdentity = (path: string) => process.platform === 'win32' ? path.toLowerCase() : path
 
 /** Explicit recovery is valid only for the unchanged original target and PRD. */
 export function prepareIsolatedWorktree(directory: string, worktree: string, resume: boolean): void {
@@ -14,7 +15,7 @@ export function prepareIsolatedWorktree(directory: string, worktree: string, res
   // canonical root before comparing them with Git's registered path spellings.
   const wt = resolve(root, relative(resolve(directory), resolve(worktree)))
   const expectedParent = join(root, '.yoke', 'worktrees')
-  if (dirname(wt) !== expectedParent) throw new Error('Recovery worktree path must be a direct project worktree')
+  if (pathIdentity(dirname(wt)) !== pathIdentity(expectedParent)) throw new Error('Recovery worktree path must be a direct project worktree')
   const git = (args: string[], cwd = root) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
   const common = realpathSync(resolve(root, git(['rev-parse', '--git-common-dir'])))
   const name = createHash('sha256').update(wt).digest('hex')
@@ -25,13 +26,13 @@ export function prepareIsolatedWorktree(directory: string, worktree: string, res
     if (!resume) throw new Error(`Retained worktree: ${wt}. Use --resume-worktree to continue or explicit loop cleanup to discard.`)
     if (!existsSync(record)) throw new Error('No trusted worktree recovery record exists')
     const saved = Recovery.parse(JSON.parse(readFileSync(record, 'utf8')))
-    if (saved.root !== root || saved.worktree !== wt || saved.base !== base || saved.prdHash !== prdHash) throw new Error('Target or PRD changed; recovery is stale')
+    if (pathIdentity(saved.root) !== pathIdentity(root) || pathIdentity(saved.worktree) !== pathIdentity(wt) || saved.base !== base || saved.prdHash !== prdHash) throw new Error('Target or PRD changed; recovery is stale')
     const actual = realpathSync(wt)
     const rel = relative(realpathSync(expectedParent), actual)
     if (isAbsolute(rel) || rel.startsWith('..') || rel.includes('/') || rel.includes('\\')) throw new Error('Recovery worktree path escaped')
     const registered = git(['worktree', 'list', '--porcelain']).split(/\r?\n/).filter(line => line.startsWith('worktree ')).map(line => realpathSync(resolve(line.slice(9))))
-    if (!registered.includes(actual)) throw new Error('Recovery directory is not a registered worktree')
-    if (realpathSync(resolve(actual, git(['rev-parse', '--git-common-dir'], actual))) !== common) throw new Error('Recovery belongs to a different repository')
+    if (!registered.some(path => pathIdentity(path) === pathIdentity(actual))) throw new Error(`Recovery directory is not a registered worktree: ${actual}; registered: ${registered.join(', ')}`)
+    if (pathIdentity(realpathSync(resolve(actual, git(['rev-parse', '--git-common-dir'], actual)))) !== pathIdentity(common)) throw new Error('Recovery belongs to a different repository')
     git(['merge-base', '--is-ancestor', base, 'HEAD'], actual)
     return
   }
