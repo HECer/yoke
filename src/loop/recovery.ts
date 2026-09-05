@@ -1,12 +1,15 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync as filesystemRealpathSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve, isAbsolute } from 'node:path'
 import { z } from 'zod'
 
 const Recovery = z.object({ version: z.literal(1), root: z.string(), worktree: z.string(), base: z.string(), prdHash: z.string() }).strict()
 const digest = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex')
 const pathIdentity = (path: string) => process.platform === 'win32' ? path.toLowerCase() : path
+// Native handle-based resolution expands Windows 8.3 names. The JS realpath
+// implementation can retain RUNNER~1 while Git reports runneradmin.
+const realpathSync = filesystemRealpathSync.native
 
 /** Explicit recovery is valid only for the unchanged original target and PRD. */
 export function prepareIsolatedWorktree(directory: string, worktree: string, resume: boolean): void {
