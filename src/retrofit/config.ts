@@ -6,6 +6,7 @@ import { AgentSchema, PermissionProfileSchema } from '../agents/contracts.js'
 import type { PermissionProfile } from '../agents/types.js'
 import { ProjectQualityDefaultsSchema } from '../quality/types.js'
 import { DEFAULT_OUTPUT_POLICY, type OutputPolicy } from '../output/types.js'
+import { ToolActionSchema, type ToolAction } from '../execution/actions.js'
 
 export type Agent = z.infer<typeof AgentSchema>
 export type CodeGraph = 'graphify' | 'serena'
@@ -38,9 +39,17 @@ const RoutingWorkerSchema = z.object({
   costTier: z.enum(['low', 'medium', 'high']).default('medium'),
   capabilities: z.array(z.string().min(1)).default([]),
 })
+const RoutingRuleSchema = z.object({
+  area: z.string().min(1).optional(),
+  storyId: z.string().min(1).optional(),
+  worker: z.string().min(1),
+  escalateTo: z.string().min(1).optional(),
+}).strict().refine(rule => rule.area || rule.storyId, 'A routing rule needs area or storyId')
+export type RoutingRule = z.infer<typeof RoutingRuleSchema>
 
 export const YokeConfigSchema = z.object({
   canonVersion: z.string().min(1),
+  actions: z.array(ToolActionSchema).max(100).optional(),
   agents: z.array(AgentSchema),
   loop: z.object({
     enabled: z.boolean(),
@@ -66,6 +75,7 @@ export const YokeConfigSchema = z.object({
       reasoningEffort: z.string().min(1).optional(),
     }).optional(),
     workers: z.array(RoutingWorkerSchema).max(12).default([]),
+    rules: z.array(RoutingRuleSchema).max(100).optional(),
   }).optional(),
   commit: z.object({
     authorName: z.string().min(1).optional(),
@@ -113,6 +123,7 @@ export interface RoutingWorker {
 }
 
 export interface YokeConfig {
+  actions?: ToolAction[]
   canonVersion: string
   agents: Agent[]
   loop: { enabled: boolean; timeoutMinutes?: number; decisionPolicy?: DecisionPolicy; onAmbiguity?: 'resolve' | 'abort' }
@@ -123,6 +134,7 @@ export interface YokeConfig {
     maxCandidates: number
     orchestrator?: { model?: string; reasoningEffort?: string }
     workers: RoutingWorker[]
+    rules?: RoutingRule[]
   }
   commit?: { authorName?: string; authorEmail?: string; allowCoAuthors?: boolean }
   audit?: { enabled: boolean; command?: string; suppressionsVersion?: 1; suppressions?: Array<{ ruleId: string; file?: string; reason: string; expires?: string }> }

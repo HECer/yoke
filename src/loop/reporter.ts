@@ -1,5 +1,8 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, appendFileSync, statSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { appendEvent } from '../observability/events.js'
+import { estimateDurations, validDuration } from '../estimation/durations.js'
 
 export const LOG_CAP_BYTES = 256 * 1024
 
@@ -25,7 +28,7 @@ export type LoopPhase = 'implementing' | 'verifying' | 'design' | 'perf' | 'audi
 
 // Remaining-time estimate from observed story durations (current run first,
 // falling back to the persisted history of previous runs).
-export interface LoopEta { avgStoryMs: number; remainingStories: number; etaMs: number }
+export interface LoopEta { avgStoryMs: number; remainingStories: number; etaMs: number; lowerMs?: number; upperMs?: number; sampleCount?: number; confidence?: 'low' | 'medium' }
 export interface QualityStatus {
   currentRound: number
   usedRepairs: number
@@ -80,9 +83,10 @@ function durationsPath(dir: string): string {
 
 export function readDurations(dir: string): StoryDuration[] {
   try {
+    if (statSync(durationsPath(dir)).size > 64 * 1024) return []
     const arr: unknown = JSON.parse(readFileSync(durationsPath(dir), 'utf8'))
     if (!Array.isArray(arr)) return []
-    return arr.filter((d): d is StoryDuration => typeof (d as StoryDuration)?.ms === 'number' && (d as StoryDuration).ms > 0)
+    return arr.filter((d): d is StoryDuration => typeof (d as StoryDuration)?.storyId === 'string' && validDuration((d as StoryDuration)?.ms)).slice(-DURATION_HISTORY_CAP)
   } catch {
     return []
   }
@@ -99,6 +103,7 @@ function appendDuration(dir: string, d: StoryDuration): void {
 // Cumulative runner token usage across the run (claude stream-json runners only).
 // model is the last-seen model id from the stream (absent if the CLI never reported one).
 export interface ModelCallUsage {
+  usageAvailable?: boolean
   role: 'orchestrator' | 'worker' | 'parent'
   provider: string
   profile?: string
@@ -115,6 +120,8 @@ export interface ModelCallUsage {
 }
 
 export interface TokenUsage {
+  measurementComplete?: boolean
+  costMeasurementComplete?: boolean
   inputTokens: number
   cachedInputTokens?: number
   cacheWriteInputTokens?: number
@@ -139,6 +146,7 @@ export interface LoopStatus {
   startedAt: string
   updatedAt: string
   tokens?: TokenUsage
+  measurement?: { measuredCalls: number; unmeasuredAttempts: number; usageAvailable: boolean; costAvailable: 'unknown' | 'partial' | 'measured' }
   quality?: QualityStatus
   parallel?: ParallelStatus
 }
@@ -205,6 +213,36 @@ export function makeReporter(
   const emitConsole = (line: string) => { if (!opts.quiet) sink(line) }
   let current: LoopStatus | null = null
   let tokens: TokenUsage | undefined
+  const runId = randomUUID()
+  let measuredCalls = 0
+  let measuredCosts = 0
+  let unmeasuredAttempts = 0
+  type Attempt = { id: string; storyId: string; started: number; phase?: string; phaseStarted: number; usageAvailable: boolean; prediction?: { expectedMs: number; lowerMs: number; upperMs: number; sampleCount: number } }
+  const attempts = new Map<string, Attempt>()
+  const finishPhase = (attempt: Attempt, time: number) => {
+    if (attempt.phase) appendEvent(dir, { runId, timestamp: new Date(time).toISOString(), type: 'phase-ended', storyId: attempt.storyId, attemptId: attempt.id, phase: attempt.phase, durationMs: Math.max(0, time - attempt.phaseStarted) })
+  }
+  const finishAttempt = (key: string, outcome: string, time: number) => {
+    const attempt = attempts.get(key)
+    if (!attempt) return
+    if (!attempt.usageAvailable) unmeasuredAttempts++
+    finishPhase(attempt, time)
+    const durationMs = Math.max(0, time - attempt.started)
+    appendEvent(dir, { runId, timestamp: new Date(time).toISOString(), type: 'attempt-ended', storyId: attempt.storyId, attemptId: attempt.id, durationMs, outcome, data: { usageAvailable: attempt.usageAvailable,
+      ...(attempt.prediction ? { prediction: attempt.prediction, ...(outcome === 'completed' ? { errorMs: durationMs - attempt.prediction.expectedMs, withinObservedRange: durationMs >= attempt.prediction.lowerMs && durationMs <= attempt.prediction.upperMs } : {}) } : {}),
+    } })
+    attempts.delete(key)
+  }
+  const track = (key: string, storyId: string, phase: string | undefined, time: number) => {
+    const attempt = attempts.get(key)
+    if (!attempt) {
+      const estimate = estimateDurations(history, runDurations)
+      attempts.set(key, { id: randomUUID(), storyId, started: time, phase, phaseStarted: time, usageAvailable: false,
+        ...(estimate ? { prediction: { expectedMs: estimate.typicalMs, lowerMs: estimate.lowerMs, upperMs: estimate.upperMs, sampleCount: estimate.sampleCount } } : {}),
+      })
+    }
+    else if (attempt.phase !== phase) { finishPhase(attempt, time); attempt.phase = phase; attempt.phaseStarted = time }
+  }
   // ETA source: durations of stories completed in THIS run beat the persisted
   // history of earlier runs (current velocity over old experience).
   const history = readDurations(dir).map(h => h.ms)
@@ -213,17 +251,31 @@ export function makeReporter(
 
   const percentOf = (p: Progress): number => (p.total > 0 ? Math.round((p.passed / p.total) * 100) : 0)
   const etaFor = (p: Progress): LoopEta | undefined => {
-    const pool = runDurations.length > 0 ? runDurations : history
-    if (pool.length === 0) return undefined
-    const avg = pool.reduce((a, b) => a + b, 0) / pool.length
+    const estimate = estimateDurations(history, runDurations)
+    if (!estimate) return undefined
+    const avg = estimate.typicalMs
     const remainingStories = Math.max(0, p.total - p.passed)
-    return { avgStoryMs: Math.round(avg), remainingStories, etaMs: Math.round(avg * remainingStories) }
+    return { avgStoryMs: Math.round(avg), remainingStories, etaMs: Math.round(avg * remainingStories), lowerMs: Math.round(estimate.lowerMs * remainingStories), upperMs: Math.round(estimate.upperMs * remainingStories), sampleCount: estimate.sampleCount, confidence: estimate.confidence }
   }
 
   const persist = (status: LoopStatus, logLabel: string, consoleLine: string) => {
+    const time = Date.parse(status.updatedAt)
+    if (logLabel === 'story-done') finishAttempt('serial', 'completed', time)
+    else if (status.state !== 'running') for (const key of [...attempts.keys()]) finishAttempt(key, status.state, time)
+    else if (status.story && status.phase) track('serial', status.story, status.phase, time)
+    const workerKeys = new Set<string>()
+    for (const worker of [...(status.parallel?.workers ?? []), ...(status.parallel?.integrator ? [status.parallel.integrator] : [])]) {
+      const key = `parallel:${worker.story}:${worker.candidateId ?? ''}:${worker.worktree ?? ''}`
+      workerKeys.add(key)
+      if (worker.lifecycle === 'removed') finishAttempt(key, 'removed', time)
+      else track(key, worker.story, worker.phase ?? worker.lifecycle, time)
+    }
+    for (const key of [...attempts.keys()]) if (key.startsWith('parallel:') && !workerKeys.has(key)) finishAttempt(key, 'worker-ended', time)
     const withPercent = { ...status, percent: percentOf(status.progress) }
-    const next = tokens ? { ...withPercent, tokens: { ...tokens } } : withPercent
+    const measurement: NonNullable<LoopStatus['measurement']> = { measuredCalls, unmeasuredAttempts, usageAvailable: measuredCalls > 0, costAvailable: measuredCosts === 0 ? 'unknown' : measuredCosts === measuredCalls && unmeasuredAttempts === 0 && tokens?.measurementComplete !== false && tokens?.costMeasurementComplete !== false ? 'measured' : 'partial' }
+    const next = { ...withPercent, ...(tokens ? { tokens: { ...tokens } } : {}), measurement }
     current = next
+    appendEvent(dir, { runId, timestamp: status.updatedAt, type: 'status', ...(status.story ? { storyId: status.story } : {}), data: { ...next } })
     try {
       writeStatus(dir, next)
       appendLog(dir, `${next.updatedAt}  ${logLabel}  ${next.story ?? '-'}  ${next.reason ?? ''}`.trimEnd())
@@ -236,6 +288,7 @@ export function makeReporter(
   return {
     storyStart(story, iteration, progress) {
       const ts = now().toISOString()
+      finishAttempt('serial', 'superseded', Date.parse(ts))
       storyStartedAt = now().getTime()
       const eta = etaFor(progress)
       const hint = eta ? ` · ~${fmtDuration(eta.etaMs)} left (Ø ${fmtDuration(eta.avgStoryMs)}/story)` : ''
@@ -250,7 +303,7 @@ export function makeReporter(
       const t = now().getTime()
       const ms = storyStartedAt !== null ? Math.max(0, t - storyStartedAt) : undefined
       storyStartedAt = null
-      if (ms !== undefined) {
+      if (validDuration(ms)) {
         runDurations.push(ms)
         appendDuration(dir, { storyId: story.id, ms })
       }
@@ -354,12 +407,25 @@ export function makeReporter(
       persist({ ...base, parallel: withoutIntegrator, updatedAt: now().toISOString() }, 'parallel-integrator', '  · integration complete')
     },
     addTokens(usage) {
+      if (![usage.inputTokens, usage.outputTokens].every(value => Number.isFinite(value) && value >= 0)) return
+      usage = { ...usage }
+      for (const key of ['cachedInputTokens', 'cacheWriteInputTokens', 'reasoningOutputTokens', 'totalCostUsd'] as const) {
+        const value = usage[key]
+        if (value !== undefined && (!Number.isFinite(value) || value < 0)) delete usage[key]
+      }
+      measuredCalls++
+      if (usage.totalCostUsd !== undefined && Number.isFinite(usage.totalCostUsd) && usage.totalCostUsd >= 0) measuredCosts++
+      const attempt = attempts.get('serial')
+      if (attempt) attempt.usageAvailable = true
+      appendEvent(dir, { runId, timestamp: now().toISOString(), type: 'tokens', ...(attempt ? { storyId: attempt.storyId, attemptId: attempt.id } : {}), data: { usageAvailable: true, ...usage } })
       const model = usage.model ?? tokens?.model
       const cachedInputTokens = (tokens?.cachedInputTokens ?? 0) + (usage.cachedInputTokens ?? 0)
       const cacheWriteInputTokens = (tokens?.cacheWriteInputTokens ?? 0) + (usage.cacheWriteInputTokens ?? 0)
       const reasoningOutputTokens = (tokens?.reasoningOutputTokens ?? 0) + (usage.reasoningOutputTokens ?? 0)
       const totalCostUsd = (tokens?.totalCostUsd ?? 0) + (usage.totalCostUsd ?? 0)
       tokens = {
+        ...((tokens?.measurementComplete !== undefined || usage.measurementComplete !== undefined) ? { measurementComplete: tokens?.measurementComplete !== false && usage.measurementComplete !== false } : {}),
+        ...((tokens?.costMeasurementComplete !== undefined || usage.costMeasurementComplete !== undefined) ? { costMeasurementComplete: tokens?.costMeasurementComplete !== false && usage.costMeasurementComplete !== false } : {}),
         inputTokens: (tokens?.inputTokens ?? 0) + usage.inputTokens,
         ...((tokens?.cachedInputTokens !== undefined || usage.cachedInputTokens !== undefined) ? { cachedInputTokens } : {}),
         ...((tokens?.cacheWriteInputTokens !== undefined || usage.cacheWriteInputTokens !== undefined) ? { cacheWriteInputTokens } : {}),

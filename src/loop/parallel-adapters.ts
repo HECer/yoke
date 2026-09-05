@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import type { CandidateLifecycle, CandidateOwnership, CandidateWorktreeRequest } from './candidate-contracts.js'
 import type { CommitIdentity } from './identity.js'
 import { isProviderTreeAlive, reapProviderProcesses } from './cleanup.js'
-import { realGitOps } from './git.js'
+import { realGitOps, RUNTIME_EXCLUDES, RUNTIME_PATHS } from './git.js'
 import type { GitOps } from './gates.js'
 import type { DispatcherGit, DispatcherRebase, DispatcherWorktree, DispatcherWorktrees, DispatcherWorkerInput } from './dispatcher.js'
 import { isPidAlive } from './lock.js'
@@ -159,7 +159,8 @@ function rebaseCandidate(targetDir: string, input: DispatcherWorkerInput): Dispa
     }
     let candidateTree: string
     try {
-      execFileSync('git', ['add', '-A'], { cwd: input.worktree.path, stdio: 'pipe' })
+      execFileSync('git', ['reset', '--quiet', '--', ...RUNTIME_PATHS], { cwd: input.worktree.path, stdio: 'pipe' })
+      execFileSync('git', ['add', '-A', '--', '.', ...RUNTIME_EXCLUDES], { cwd: input.worktree.path, stdio: 'pipe' })
       const unstaged = spawnSync('git', ['diff', '--quiet', '--ignore-submodules=none'], { cwd: input.worktree.path, stdio: 'pipe' })
       if (unstaged.error || unstaged.status !== 0) return { kind: 'reopen', reason: 'candidate contains changes Git cannot snapshot' }
       candidateTree = gitText(input.worktree.path, ['write-tree'])

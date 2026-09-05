@@ -1,7 +1,19 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { buildProviderInvocation } from '../../src/agents/providers.js'
 
 describe('provider invocations', () => {
+  it('requests Gemini streaming output in every permission profile', () => {
+    for (const profile of ['safe', 'unsafe', 'read-only'] as const) {
+      expect(buildProviderInvocation('gemini', 'P', '/w', profile).args.join(' ')).toContain('--output-format stream-json')
+    }
+  })
+
+  it('rejects unsupported Gemini selections explicitly', () => {
+    expect(() => buildProviderInvocation('gemini', 'P', '/w', 'safe', { bare: true })).toThrow(/Gemini.*bare/)
+    expect(() => buildProviderInvocation('gemini', 'P', '/w', 'safe', { reasoningEffort: 'high' })).toThrow(/Gemini.*reasoning/)
+    expect(() => buildProviderInvocation('gemini', 'P', '/w', 'safe', { nativeMultiAgent: true })).toThrow(/Gemini.*nativeMultiAgent/)
+    expect(() => buildProviderInvocation('gemini', 'P', '/w', 'safe', { nativeMultiAgent: false })).toThrow(/Gemini.*nativeMultiAgent/)
+  })
   it('uses safe, structured Claude mode without bypass flags by default', () => {
     const inv = buildProviderInvocation('claude', 'P', '/w', 'safe')
     expect(inv.args).toEqual(['-p', '--permission-mode', 'auto', '--output-format', 'stream-json', '--verbose'])
@@ -25,10 +37,10 @@ describe('provider invocations', () => {
 
   it('uses Gemini sandbox and approval profiles', () => {
     expect(buildProviderInvocation('gemini', 'P', '/w', 'safe').args).toEqual([
-      '--approval-mode', 'auto_edit', '--sandbox',
+      '--approval-mode', 'auto_edit', '--sandbox', '--output-format', 'stream-json',
     ])
     expect(buildProviderInvocation('gemini', 'P', '/w', 'read-only').args).toEqual([
-      '--approval-mode', 'plan', '--sandbox',
+      '--approval-mode', 'plan', '--sandbox', '--output-format', 'stream-json',
     ])
     expect(buildProviderInvocation('gemini', 'P', '/w', 'unsafe').args).toContain('--yolo')
   })
@@ -38,8 +50,8 @@ describe('provider invocations', () => {
       .toEqual(['-p', '--permission-mode', 'auto', '--output-format', 'stream-json', '--verbose', '--model', 'haiku', '--effort', 'low'])
     expect(buildProviderInvocation('codex', 'P', '/w', 'safe', { model: 'current-fast', reasoningEffort: 'medium' }).args)
       .toEqual(['exec', '--sandbox', 'workspace-write', '--approve-for-me', '--json', '--model', 'current-fast', '--config', 'model_reasoning_effort=medium'])
-    expect(buildProviderInvocation('gemini', 'P', '/w', 'safe', { model: 'current-flash', reasoningEffort: 'high' }).args)
-      .toEqual(['--approval-mode', 'auto_edit', '--sandbox', '--model', 'current-flash'])
+    expect(buildProviderInvocation('gemini', 'P', '/w', 'safe', { model: 'current-flash' }).args)
+      .toEqual(['--approval-mode', 'auto_edit', '--sandbox', '--output-format', 'stream-json', '--model', 'current-flash'])
   })
 
   it('can disable Codex native subagents when Yoke owns routing', () => {
@@ -55,5 +67,23 @@ describe('provider invocations', () => {
   it('rejects provider selectors containing Windows shell metacharacters', () => {
     expect(() => buildProviderInvocation('codex', 'P', '/w', 'safe', { model: 'safe&whoami' })).toThrow()
     expect(() => buildProviderInvocation('codex', 'P', '/w', 'safe', { reasoningEffort: 'high|whoami' })).toThrow()
+  })
+
+  it('supports native output schemas with explicit provider-specific inputs', () => {
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    try {
+    expect(buildProviderInvocation('codex', 'P', '/w', 'safe', {}, { schemaFile: 'schema.json' }).args.slice(-2)).toEqual(['--output-schema', 'schema.json'])
+    expect(buildProviderInvocation('claude', 'P', '/w', 'safe', {}, { jsonSchema: { type: 'object' } }).args.slice(-2)).toEqual(['--json-schema', '{"type":"object"}'])
+    expect(() => buildProviderInvocation('gemini', 'P', '/w', 'safe', {}, { jsonSchema: {} })).toThrow(/structured output/)
+    expect(() => buildProviderInvocation('claude', 'P', '/w', 'safe', {}, { schemaFile: 'schema.json' })).toThrow(/schema/)
+    } finally { platform.mockRestore() }
+  })
+
+  it('rejects inline structured output through the Windows shell shim', () => {
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    try {
+      expect(() => buildProviderInvocation('claude', 'P', '/w', 'safe', {}, { jsonSchema: { type: 'object' } })).toThrow(/Windows/)
+      expect(() => buildProviderInvocation('codex', 'P', '/w', 'safe', {}, { schemaFile: 'path with spaces.json' })).toThrow(/schema/)
+    } finally { platform.mockRestore() }
   })
 })

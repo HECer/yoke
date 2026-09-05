@@ -20,12 +20,14 @@ import {
   readPendingDecision, writeDecisionResume,
 } from './decision.js'
 import { makeAdaptiveRunner } from '../routing/router.js'
+import { makeActionRunner } from '../execution/actions.js'
 import { runChangeApply } from '../change/inbox.js'
 import { createQualityCommandHooks, type QualityCommandRuntime } from '../quality/command.js'
 import { resolveQualityPolicy, type QualityPolicy, type QualityRunOverrides } from '../quality/types.js'
 import { runParallelLoopCommand } from './parallel-command.js'
 import { detectUiProject } from '../retrofit/ui-detect.js'
 import { designVerifier } from '../scan/gate.js'
+import { prepareIsolatedWorktree } from './recovery.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -109,6 +111,7 @@ export interface RunLoopCommandOptions {
   agent?: Agent
   isAvailable?: (agent: Agent) => boolean
   isolate?: boolean
+  resumeWorktree?: boolean
   reviewRunner?: AgentRunner
   reviewer?: Agent
   review?: boolean
@@ -144,6 +147,10 @@ export interface RunLoopCommandOptions {
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number | Promise<number> {
   const parallel = opts.parallel ?? 1
   const candidates = opts.candidates ?? 1
+  if (opts.resumeWorktree && (!opts.isolate || parallel !== 1 || candidates !== 1)) {
+    console.error('--resume-worktree requires --isolate --parallel=1 --candidates=1')
+    return 2
+  }
   if (!Number.isInteger(parallel) || parallel < 1) {
     console.error('--parallel must be a positive integer')
     return 2
@@ -223,7 +230,10 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
 
   const available = opts.isAvailable ?? isAgentAvailable
   const runnerAgent: Agent = resolveRunnerAgent(config, opts.agent, detectHostAgent())
-  const git = opts.git ?? realGitOps
+  const git = opts.git ?? {
+    ...realGitOps,
+    addWorktree: (repo: string, worktree: string) => prepareIsolatedWorktree(repo, worktree, opts.resumeWorktree === true),
+  }
   let commitIdentity = opts.commitIdentity
   if (!commitIdentity && !opts.git) {
     try {
@@ -288,7 +298,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     model: config.runner?.model,
     reasoningEffort: config.runner?.reasoningEffort,
     bare: config.runner?.bare,
-    ...((routingEnabled || opts.routing === false) ? { nativeMultiAgent: false } : {}),
+    ...((runnerAgent === 'codex' && (routingEnabled || opts.routing === false)) ? { nativeMultiAgent: false } : {}),
   }
   if ((parallel > 1 || candidates > 1) && routingEnabled) {
     console.error('Adaptive routing is not available with parallel workers or quality candidates. Run with --parallel=1 --candidates=1 or disable routing.')
@@ -349,7 +359,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   if (!runner) {
     const requiredProviders = parallel > 1 || candidates > 1
       ? [...new Set(loadPrd(path).filter(story => !story.passes).map(story => story.agent ?? runnerAgent))]
-      : [runnerAgent]
+      : loadPrd(path).filter(story => !story.passes).every(story => config.actions?.some(action => action.storyId === story.id)) ? [] : [runnerAgent]
     const unavailableProvider = requiredProviders.find(agent => !available(agent))
     if (unavailableProvider) {
       console.error(`Agent CLI "${unavailableProvider}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
@@ -370,6 +380,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
           parentSelection: runnerOpts.selection,
           orchestratorSelection: config.routing.orchestrator ?? runnerOpts.selection,
           workers: config.routing.workers,
+          rules: config.routing.rules,
           strategy: config.routing.strategy,
           maxCandidates: config.routing.maxCandidates,
           idleTimeoutMs: idleMs,
@@ -382,6 +393,10 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     announce(`Runner: ${runnerAgent} · permissions: ${permissions} · routing: ${routingEnabled ? 'on' : 'off'} · cwd: ${targetDir}`)
   }
 
+  if (config.actions?.length) {
+    if (parallel > 1 || candidates > 1) { console.error('Configured tool actions currently require --parallel=1 --candidates=1'); return 2 }
+    runner = makeActionRunner(config.actions, runner)
+  }
   let review = opts.reviewRunner
   if (!review && (opts.review || opts.reviewer)) {
     const reviewerAgent = opts.reviewer ?? (['codex', 'gemini', 'claude'] as Agent[]).find(agent => agent !== runnerAgent && available(agent))

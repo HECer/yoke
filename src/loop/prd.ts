@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { parse, stringify } from 'yaml'
 import { z } from 'zod'
 import { StoryQualityDeclarationSchema } from '../quality/types.js'
+import { validWriteScope } from './scheduler.js'
 
 export const AcceptanceCriterionSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
@@ -42,6 +43,8 @@ export const StorySchema = z.object({
   passes: z.boolean(),
   needs: z.array(z.string().min(1)).optional(),
   area: z.string().min(1).optional(),
+  /** Advisory relative file/directory scopes; not a filesystem permission boundary. */
+  writes: z.array(z.string().min(1).max(500).refine(validWriteScope, 'Write scopes must be relative non-glob paths without traversal')).max(100).optional(),
   agent: z.enum(['claude', 'codex', 'gemini']).optional(),
   /** Inbox request that created this story. Used for idempotent append-only intake. */
   sourceChange: z.string().min(1).optional(),

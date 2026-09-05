@@ -144,7 +144,7 @@ describe('agentInvocation', () => {
   it('maps gemini to stdin-driven headless mode (no bare -p: current gemini requires a value after -p)', () => {
     const inv = agentInvocation('gemini', 'P', '/w')
     expect(inv.command).toBe('gemini')
-    expect(inv.args).toEqual(['--approval-mode', 'auto_edit', '--sandbox'])
+    expect(inv.args).toEqual(['--approval-mode', 'auto_edit', '--sandbox', '--output-format', 'stream-json'])
     expect(inv.input).toBe('P')
   })
 

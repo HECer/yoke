@@ -35,6 +35,10 @@ beforeEach(() => {
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('yoke loop CLI', () => {
+  it('runs configured tool-only work with no model CLI installed', () => {
+    saveConfig(dir, { ...cfg(), agents: ['claude'], actions: [{ storyId: 'S1', file: process.execPath, args: ['-e', 'process.exit(0)'], timeoutMs: 1000 }] })
+    expect(runLoopCommand(dir, { git: stubGit, verify: verifyOk, isAvailable: () => false, maxIterations: 1 })).toBe(0)
+  })
   it('rejects fractional story caps', () => {
     expect(main(['loop', 'run', dir, '--max=1.5'])).toBe(1)
   })

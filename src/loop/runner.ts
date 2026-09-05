@@ -1,4 +1,5 @@
 import { isAcceptanceCriterion, type Story } from './prd.js'
+import { workspaceFingerprint } from '../workspace/fingerprint.js'
 import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -7,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { Agent, DecisionPolicy } from '../retrofit/config.js'
 import type { TokenUsage } from './reporter.js'
 import { loadContext, formatForPrompt, contextDir } from '../context/context.js'
+import { contextPacket } from '../context/packet.js'
 import { buildProviderInvocation, startProviderProcess } from '../agents/providers.js'
 import { parseProviderResult, parseProviderTelemetry } from '../agents/telemetry.js'
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
@@ -31,8 +33,9 @@ export interface AgentResult {
 
 export type AgentRunner = (ctx: AgentContext) => AgentResult
 
-export function contextBlockFor(targetDir: string): string {
-  return formatForPrompt(loadContext(contextDir(targetDir)))
+export function contextBlockFor(targetDir: string, story?: Story): string {
+  const context = loadContext(contextDir(targetDir))
+  return story ? contextPacket(context, `${story.title} ${story.area ?? ''} ${story.acceptance.map(c => typeof c === 'string' ? c : c.text).join(' ')}`) : formatForPrompt(context)
 }
 
 // How the agent handles ambiguous acceptance criteria: 'resolve' (default —
@@ -403,7 +406,7 @@ export function makeAsyncRunner(agent: Agent, opts: AsyncRunnerOpts = {}): Async
     agent,
     runnerInvocation(
       agent,
-      buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir), opts.onAmbiguity, opts.perfCommand),
+      buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), opts.onAmbiguity, opts.perfCommand),
       ctx.targetDir,
       true,
       opts.permissions ?? 'safe',
@@ -419,7 +422,7 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
   // redundant for claude and meaningless elsewhere; kept for caller compatibility.
   const captureTokens = true
   return (ctx: AgentContext): AgentResult => {
-    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe', opts.selection)
+    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe', opts.selection)
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     if (captureTokens) {
       const capture = opts.execCapture ?? runCliCapture
@@ -450,7 +453,7 @@ export const claudeRunner: AgentRunner = makeRunner('claude')
 export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: Invocation) => void | CapturedAgentRun): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
     const before = repositoryFingerprint(ctx.targetDir)
-    const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir), undefined, agent), ctx.targetDir, 'read-only')
+    const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), undefined, agent), ctx.targetDir, 'read-only')
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     let processFailure: string | undefined
     let actualModel: string | undefined
@@ -486,12 +489,7 @@ export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: I
 }
 
 export function repositoryFingerprint(targetDir: string): string {
-  try {
-    return execFileSync('git', ['diff', '--binary', 'HEAD'], { cwd: targetDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-      + execFileSync('git', ['status', '--porcelain=v1', '-z'], { cwd: targetDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-  } catch {
-    return ''
-  }
+  return workspaceFingerprint(targetDir)
 }
 
 function reviewResult(agent: Agent, storyId: string, verdict: ReviewVerdict, reviewOutcome: ReviewOutcome): AgentResult {

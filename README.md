@@ -3,13 +3,13 @@
 # 🐂 Yoke
 
 <!-- yoke:version:start -->1.6.2<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1021<!-- yoke:tests:end -->
+<!-- yoke:tests:start -->1100<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
 ### One harness, three agents — and zero trust in "done."
 
-**Yoke** installs one curated canon of skills, **mechanical safety gates**, and tool wiring into any project — natively for **Claude Code, OpenAI Codex CLI, and Gemini CLI**. Then, when you want it, an opt-in autonomous loop ships your spec story-by-story: tested, cross-model-reviewed, committed — **with a screenshot to prove every story and a video for every failure**.
+**Yoke** installs one curated canon of skills, **mechanical safety gates**, and tool wiring into any project — natively for **Claude Code, OpenAI Codex CLI, and Gemini CLI**. Its opt-in loop implements and verifies stories before committing. Independent review and browser proofs run when configured; screenshots and videos require the browser smoke gate.
 
 [![npm](https://img.shields.io/npm/v/%40hecer%2Fyoke?logo=npm&color=CB3837)](https://www.npmjs.com/package/@hecer/yoke)
 [![npm downloads](https://img.shields.io/npm/dm/%40hecer%2Fyoke?logo=npm)](https://www.npmjs.com/package/@hecer/yoke)
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1021%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1100%20defined-blue.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -26,6 +26,8 @@
 </div>
 
 > **TL;DR** — `yoke setup .` asks six questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. Add `--parallel=N` for dependency-aware workers, or declare a reference and add `--quality` for a bounded critic/repair gauntlet. If any blocking gate is red, nothing is committed. Proof lives in `.yoke/proof/<story>/`.
+
+The current source branch adds [verified project goals, recovery and a local dashboard](docs/VERIFIED-PROJECTS.md): run `yoke check .` before adopting the loop, define protected executable acceptance, continue bounded goals with any supported provider, and inspect projects with `yoke dashboard .`. Explicit routing rules and tool actions avoid unnecessary model calls; task-aware context and declared write scopes reduce repeated work. These features have automated local tests; provider capability parity is not a claim of equal model quality or measured competitive superiority.
 
 Yoke 1.5 keeps failed gate output compact without throwing evidence away: deterministic previews
 retain actionable failures and final summaries, while large complete stdout/stderr remains available
@@ -50,7 +52,7 @@ Agentic coding in 2026 fails in four well-documented ways. Yoke answers each one
 
 | The pain | What actually happens | What Yoke does about it |
 |---|---|---|
-| 🎭 **The verification gap** — *"agent says done, but it isn't"* | Agents submit confidently on 100% of runs while resolving far fewer; "all tests pass" when they were never run ([silent-failures research](https://arxiv.org/pdf/2603.25764)) | The loop trusts **your verify command's exit code**, never the agent's word. A story is `passes: true` only after tests are green, the reviewer approved, and the commit landed — atomically. Plus: **screenshot proofs** per story. |
+| 🎭 **The verification gap** — *"agent says done, but it isn't"* | A success message can omit untested acceptance criteria. | The loop executes acceptance and project checks. Enabled review and browser gates must pass before a story lands. `yoke check` exposes unmapped outcomes as unverified. |
 | 🔀 **Three agents, three configs** | Teams hand-maintain `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, skills, and MCP wiring separately — copy-paste drift everywhere | **One canon → `yoke retrofit`** generates the idiomatic native artifacts for each agent. Change the canon once, re-retrofit everywhere. |
 | 🌀 **Overnight loops going off the rails** | Raw Ralph-loop users "wake up to broken codebases that don't compile" | Yoke is **"Ralph, but with gates"**: clean-worktree gate, acceptance-criteria gate, green-tests gate, review gate, per-story worktree isolation, idle-timeout watchdog, single-flight lock, commit integrity. |
 | 😵 **Review fatigue** | AI adoption nearly doubles PR volume and review time; humans start skimming | **`yoke review`**: a second model writes a schema-validated pass/fail verdict — chainable into verify, pre-push, or CI. Cross-model review catches what self-review misses. |
@@ -59,7 +61,7 @@ Agentic coding in 2026 fails in four well-documented ways. Yoke answers each one
 
 **Who it's not for:** if you want a chat pair-programmer with no process, you don't need a harness. Yoke is for shipping with discipline.
 
-## ⏱️ 60 seconds: idea → tested, photographed software
+## Example: idea → verified implementation
 
 ```console
 $ yoke new reading-app --idea="a web app that tracks my reading list"
@@ -78,10 +80,10 @@ $ yoke loop run reading-app --isolate --review --max=10
                                               # nothing was committed. fix, then re-run.
 
 $ ls reading-app/.yoke/proof/STORY-2/
-home.png  list.png                            # photographic evidence, labelled per story
+home.png  list.png                            # example when browser smoke is configured
 ```
 
-Every claim in that transcript is enforced by code paths with tests behind them — 1021 of them, and this repo was built by its own loop and gates ([how it was built](#-why--how-it-was-built)).
+This is an illustrative transcript. Actual durations depend on the project, provider, retries and enabled gates; browser proof requires a configured smoke flow. See [how it was built](#-why--how-it-was-built).
 
 ## 🚀 Quickstart
 
@@ -856,7 +858,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1021 tests)
+npm test          # vitest (1100 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

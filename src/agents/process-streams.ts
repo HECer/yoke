@@ -34,9 +34,16 @@ export interface TelemetryAccumulator {
 export function createTelemetryAccumulator(agent: Agent): TelemetryAccumulator {
   let trailing = ''
   let telemetry: ProviderTelemetry = { usageAvailable: false }
+  let reportedModels: string[] = []
   const update = (lines: readonly string[]): void => {
-    const next = parseProviderTelemetry(agent, [...lines])
-    if (next.usageAvailable) telemetry = next
+    for (const line of lines) {
+      const next = parseProviderTelemetry(agent, [line])
+      if (next.reportedModels) reportedModels = next.reportedModels
+      else if (next.tokens?.model) reportedModels = [next.tokens.model]
+      // Provider result usage is cumulative: replace the latest measurement,
+      // never add it to earlier results or to assistant-message snapshots.
+      if (next.tokens || next.partialUsage) telemetry = next
+    }
   }
   return {
     append(text): void {
@@ -47,7 +54,12 @@ export function createTelemetryAccumulator(agent: Agent): TelemetryAccumulator {
     finish(): ProviderTelemetry {
       if (trailing) update([trailing])
       trailing = ''
-      return telemetry
+      if (telemetry.tokens) {
+        const { model: _model, ...tokens } = telemetry.tokens
+        return { usageAvailable: telemetry.usageAvailable, tokens: { ...tokens, ...(reportedModels.length === 1 ? { model: reportedModels[0] } : {}) },
+          ...(reportedModels.length > 1 ? { reportedModels } : {}) }
+      }
+      return { ...telemetry, ...(reportedModels.length ? { reportedModels } : {}) }
     },
   }
 }

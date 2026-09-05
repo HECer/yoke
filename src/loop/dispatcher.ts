@@ -7,7 +7,7 @@ import type { CandidateCoordinatorInput, CandidateCoordinatorResult } from './ca
 import { MergeQueue } from './merge-queue.js'
 import { isAcceptanceCriterion, loadPrd, progress, savePrd, type AcceptanceCriterion, type Story } from './prd.js'
 import type { LoopPhase } from './reporter.js'
-import { readyStories } from './scheduler.js'
+import { readyStories, writeScopesOverlap } from './scheduler.js'
 import type { VerifyResult } from './verify.js'
 import type { StoryWorkerCancellation, StoryWorkerProvider, StoryWorkerResult } from './worker.js'
 import { createWorkerCleanup } from './worker-cleanup.js'
@@ -146,6 +146,7 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
   const active = new Map<string, ActiveWorker>()
   const queued = new Map<string, Promise<void>>()
   const areas = new Set<string>()
+  const reservedWrites = new Map<string, readonly string[]>()
   const integrated: string[] = []
   const reopened: string[] = []
   const failed: string[] = []
@@ -190,10 +191,12 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
     },
   })
   const cleanup = (input: DispatcherWorkerInput): void => {
+    reservedWrites.delete(input.story.id)
     if (input.story.area) areas.delete(input.story.area)
     cleanupWorker(input)
   }
   const releaseCandidateClaim = (input: DispatcherWorkerInput): void => {
+    reservedWrites.delete(input.story.id)
     if (input.story.area) areas.delete(input.story.area)
     if (claims.release(input) === false) throw new Error('claim release failed')
   }
@@ -271,6 +274,7 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
     const input: DispatcherWorkerInput = { story, worktree, provider, cancellation: { signal: controller.signal }, dispatcherId, ownerToken, ...(candidateRace ? { candidateRace: true } : {}) }
     if (!claims.acquire(input)) { options.worktrees.remove(input); return }
     iterations += 1
+    reservedWrites.set(story.id, story.writes ?? [])
     if (story.area) areas.add(story.area)
     const candidateDispatch = candidateRace
     const task = (candidateDispatch && options.candidateCoordinator
@@ -364,9 +368,15 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
       if (!paused && !cancellationReason && integrationBlocks.length === 0 && iterations < options.maxIterations) {
         const busy = new Set([...active.keys(), ...queued.keys(), ...failed])
         const slots = Math.max(0, options.maxConcurrency - active.size)
-        const ready = readyStories(options.stories, { activeAreas: areas }).filter(story => !busy.has(story.id)).slice(0, slots)
+        const ready = readyStories(options.stories, { activeAreas: areas, activeWrites: [...reservedWrites.values()] }).filter(story => !busy.has(story.id))
+        let launched = 0
         for (const story of ready) {
-          if (!story.area || !areas.has(story.area)) launch(story)
+          if (launched >= slots || iterations >= options.maxIterations) break
+          if ((!story.area || !areas.has(story.area)) && ![...reservedWrites.values()].some(scopes => writeScopesOverlap(story.writes, scopes))) {
+            const before = iterations
+            launch(story)
+            if (iterations > before) launched++
+          }
         }
       }
       if (active.size > 0) { await Promise.race([...active.values()].map(worker => worker.task)); continue }

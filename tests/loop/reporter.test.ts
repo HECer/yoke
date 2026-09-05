@@ -244,7 +244,7 @@ describe('progress percent + ETA', () => {
     const st = readStatus(dir)!
     expect(st.state).toBe('running')
     expect(st.percent).toBe(25)
-    expect(st.eta).toEqual({ avgStoryMs: 120_000, remainingStories: 3, etaMs: 360_000 })
+    expect(st.eta).toEqual({ avgStoryMs: 120_000, remainingStories: 3, etaMs: 360_000, lowerMs: 360_000, upperMs: 360_000, sampleCount: 1, confidence: 'low' })
     const done = lines[lines.length - 1]
     expect(done).toContain('S1')
     expect(done).toContain('done in 2m')
@@ -262,7 +262,7 @@ describe('progress percent + ETA', () => {
     clock.advance(240_000)
     r.storyDone({ id: 'S2', title: 'b' }, { passed: 2, total: 4 })
     // avg(2m, 4m) = 3m; 2 stories remain → ~6m
-    expect(readStatus(dir)?.eta).toEqual({ avgStoryMs: 180_000, remainingStories: 2, etaMs: 360_000 })
+    expect(readStatus(dir)?.eta).toEqual({ avgStoryMs: 180_000, remainingStories: 2, etaMs: 360_000, lowerMs: 240_000, upperMs: 480_000, sampleCount: 2, confidence: 'low' })
   })
 
   it('persists durations to .yoke/story-durations.json for later runs', () => {
@@ -285,7 +285,7 @@ describe('progress percent + ETA', () => {
     const lines: string[] = []
     const r2 = makeReporter(dir, { log: (s) => lines.push(s) }, fixedNow)
     r2.storyStart({ id: 'S2', title: 'b' }, 1, { passed: 1, total: 2 })
-    expect(readStatus(dir)?.eta).toEqual({ avgStoryMs: 60_000, remainingStories: 1, etaMs: 60_000 })
+    expect(readStatus(dir)?.eta).toEqual({ avgStoryMs: 60_000, remainingStories: 1, etaMs: 60_000, lowerMs: 60_000, upperMs: 60_000, sampleCount: 1, confidence: 'low' })
     expect(lines[0]).toContain('~1m left')
   })
 
@@ -306,7 +306,7 @@ describe('progress percent + ETA', () => {
     r.storyDone({ id: 'S1', title: 'a' }, { passed: 1, total: 2 })
     const last = JSON.parse(lines[lines.length - 1])
     expect(last).toMatchObject({ type: 'status', state: 'running', story: 'S1', progress: { passed: 1, total: 2 }, percent: 50 })
-    expect(last.eta).toEqual({ avgStoryMs: 90_000, remainingStories: 1, etaMs: 90_000 })
+    expect(last.eta).toEqual({ avgStoryMs: 90_000, remainingStories: 1, etaMs: 90_000, lowerMs: 90_000, upperMs: 90_000, sampleCount: 1, confidence: 'low' })
   })
 
   it('noopReporter.storyDone does nothing', () => {

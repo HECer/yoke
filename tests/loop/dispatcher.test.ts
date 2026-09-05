@@ -32,6 +32,25 @@ function worktree(input: Pick<DispatcherWorkerInput, 'story'>): DispatcherWorktr
 const rebased = { kind: 'rebased', expectedHead: 'target-head' } as const
 
 describe('dispatcher', () => {
+  it('reserves overlapping write scopes through integration while filling unrelated slots', async () => {
+    const starts: string[] = []
+    const integrated = new Set<string>()
+    const result = await createDispatcher({
+      targetDir: '/repo', stories: [story('A', { writes: ['src/api'] }), story('B', { writes: ['src/api/client.ts'] }), story('C', { writes: ['src/web'] })], maxConcurrency: 2, maxIterations: 3,
+      worker: async input => {
+        starts.push(input.story.id)
+        if (input.story.id === 'B') expect(integrated.has('A')).toBe(true)
+        await Promise.resolve()
+        return candidate(input)
+      },
+      claims: { acquire: () => true, heartbeat: () => undefined, release: () => undefined },
+      worktrees: { create: worktree, remove: () => undefined },
+      git: { isClean: () => true, rebase: () => rebased, commit: () => undefined, integrate: input => { integrated.add(input.story.id) } },
+      gates: { verify: () => ({ passed: true, summary: 'green' }) },
+    }).run()
+    expect(result.status).toBe('complete')
+    expect(starts.slice(0, 2)).toEqual(['A', 'C'])
+  })
   it('runs independent stories concurrently while withholding dependent stories until integration', async () => {
     const stories = [
       story('A', { area: 'api', agent: 'codex' }),

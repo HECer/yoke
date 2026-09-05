@@ -2,16 +2,17 @@ import { execFileSync } from 'node:child_process'
 import type { GitOps } from './gates.js'
 import { sanitizeCommitMessage, type CommitIdentity } from './identity.js'
 
-const OUTPUT_ARTIFACT_EXCLUDE = ':(exclude).yoke/artifacts/**'
+export const RUNTIME_PATHS = ['.yoke/artifacts', '.yoke/events', '.yoke/checks', '.yoke/goal.json', '.yoke/goal.pause']
+export const RUNTIME_EXCLUDES = RUNTIME_PATHS.map(path => `:(exclude)${path}${path.endsWith('.json') || path.endsWith('.pause') ? '' : '/**'}`)
 
 export const realGitOps: GitOps = {
   isClean(dir: string): boolean {
-    const out = execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', '.', OUTPUT_ARTIFACT_EXCLUDE], { cwd: dir }).toString()
+    const out = execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', '.', ...RUNTIME_EXCLUDES], { cwd: dir }).toString()
     return out.trim() === ''
   },
   commitAll(dir: string, message: string, identity?: CommitIdentity): void {
-    execFileSync('git', ['reset', '--quiet', '--', '.yoke/artifacts'], { cwd: dir, stdio: 'pipe' })
-    execFileSync('git', ['add', '-A', '--', '.', OUTPUT_ARTIFACT_EXCLUDE], { cwd: dir, stdio: 'pipe' })
+    execFileSync('git', ['reset', '--quiet', '--', ...RUNTIME_PATHS], { cwd: dir, stdio: 'pipe' })
+    execFileSync('git', ['add', '-A', '--', '.', ...RUNTIME_EXCLUDES], { cwd: dir, stdio: 'pipe' })
     const staged = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: dir }).toString().trim()
     if (staged === '') {
       throw new Error('nothing to commit after agent run')

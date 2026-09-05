@@ -30,6 +30,8 @@ const ProviderTokenUsageSchema = z.object({
 export const ProviderTelemetrySchema = z.object({
   usageAvailable: z.boolean(),
   tokens: ProviderTokenUsageSchema.optional(),
+  partialUsage: ProviderTokenUsageSchema.partial().optional(),
+  reportedModels: z.array(z.string().min(1)).optional(),
 }).superRefine((telemetry, ctx) => {
   if (telemetry.usageAvailable && !telemetry.tokens) {
     ctx.addIssue({ code: 'custom', path: ['tokens'], message: 'usageAvailable telemetry requires token totals' })

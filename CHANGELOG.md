@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added
+- Independent `yoke check` with executable acceptance mapping, protected test infrastructure and content-bound evidence.
+- Durable project goals, provider handoff, checkpoint budgets, interruption accounting and project-scoped recovery.
+- Local project registry and loopback dashboard with goals, task estimates, evidence, consumption and pause controls.
+- Explicit routing rules with persisted gate-driven escalation; bounded tool actions without model calls.
+- Task-aware context packets, advisory write scopes, dependency-depth scheduling and empirical time ranges with prediction error records.
+
+### Fixed
+- Failed serial isolated worktrees are retained and can be explicitly resumed against their original target and PRD.
+- Reviewer fingerprints include untracked contents and acceptance inputs; unsupported nested repository identity fails closed.
+- Gemini always emits streaming telemetry, preserves model identity, honors aggregate token aliases and rejects unsupported selections. Its RTK hook merges native settings without a shell dependency.
+- Runtime evidence is excluded from Git gates and commits in existing projects. Partial usage and costs remain visibly incomplete.
+- Protected acceptance is checked after verification and repair, and linked goal state cannot overwrite unrelated files through pause.
+
+### Validation limits
+- Live authenticated provider comparisons and calibrated development-time/cost estimates are not established by the automated tests. Browser proof and independent model review still require explicit configuration.
+
 ## 1.6.2 — 2026-09-02
 
 ### Added

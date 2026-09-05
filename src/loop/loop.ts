@@ -1,4 +1,5 @@
 import { existsSync, unlinkSync, readFileSync } from 'node:fs'
+import { acceptanceProtectionProblem } from '../check/command.js'
 import { join, relative } from 'node:path'
 import { isAcceptanceCriterion, loadPrd, savePrd, selectNextStory, allPass, progress, storyPathSegment, type AcceptanceCriterion, type Story } from './prd.js'
 import { stopTheLineGate, preDispatchGate, type GitOps } from './gates.js'
@@ -205,6 +206,8 @@ function runCompletionGate(opts: LoopOptions, stories: Story[]): LoopResult | nu
 }
 
 function runCriterionGates(opts: LoopOptions, executionDir: string, story: Story): { passed: boolean; summary: string } {
+  const protectionProblem = acceptanceProtectionProblem(executionDir, opts.targetDir)
+  if (protectionProblem) return { passed: false, summary: protectionProblem }
   const criteria = story.acceptance.filter(isAcceptanceCriterion)
   if (criteria.length === 0) {
     return opts.requireCriterionEvidence
@@ -422,6 +425,11 @@ export function runLoop(opts: LoopOptions): LoopResult {
             return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
           }
         }
+        const protection = acceptanceProtectionProblem(wt, opts.targetDir)
+        if (protection) {
+          result.routing?.recordOutcome(false); reporter.blocked(protection)
+          return { status: 'blocked', iterations, reason: protection, finalProgress: progress(stories) }
+        }
         result.routing?.recordOutcome(true)
         // The worktree is a checkout of committed HEAD, so the agent above reads
         // context from HEAD's .yoke/context — commit context changes for --isolate
@@ -442,7 +450,11 @@ export function runLoop(opts: LoopOptions): LoopResult {
         reporter.blocked(reason)
         return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
       } finally {
-        try { opts.git.removeWorktree(opts.targetDir, wt) } catch { /* cleanup is best-effort */ }
+        // Failed or paused work is evidence and may contain the only copy of
+        // an implementation. Explicit cleanup owns discarding those trees.
+        if (landed) {
+          try { opts.git.removeWorktree(opts.targetDir, wt) } catch { /* cleanup is best-effort */ }
+        }
       }
       if (landed) reporter.storyDone({ id: story.id, title: story.title }, landed)
       continue
@@ -550,6 +562,11 @@ export function runLoop(opts: LoopOptions): LoopResult {
       }
     }
 
+    const protection = acceptanceProtectionProblem(opts.targetDir)
+    if (protection) {
+      result.routing?.recordOutcome(false); reporter.blocked(protection)
+      return { status: 'blocked', iterations, reason: protection, finalProgress: progress(stories) }
+    }
     result.routing?.recordOutcome(true)
     reporter.phase('committing')
     const dec = appendDecision(contextDir(opts.targetDir), {

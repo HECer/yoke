@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 import { pathToFileURL } from 'node:url'
 import { realpathSync } from 'node:fs'
+import { checkProject, checkExitCode, protectAcceptance } from './check/command.js'
+import { registerProject, listProjects, unregisterProject } from './dashboard/registry.js'
+import { startDashboard } from './dashboard/server.js'
+import { createProjectGoal, readProjectGoal, runProjectGoal, pauseProjectGoal, goalHandoff, budgetProjectGoal } from './goals/command.js'
 import { validateCanon } from './canon/validate.js'
 import type { Agent, DecisionPolicy } from './retrofit/config.js'
 import { runRetrofit } from './retrofit/command.js'
@@ -129,6 +133,72 @@ export function main(argv: string[]): number | Promise<number> {
         loop, routing, decisionPolicy: policyArg as DecisionPolicy | undefined,
         interactive: rest.includes('--yes') ? false : undefined,
       })
+    }
+    case 'projects': {
+      try {
+        const sub = rest[0] ?? 'list'
+        if (sub === 'list') { console.log(JSON.stringify(listProjects())); return 0 }
+        if (sub === 'add') { console.log(JSON.stringify(registerProject(rest[1] ?? '.'))); return 0 }
+        if (sub === 'remove') { console.log(unregisterProject(rest[1] ?? '') ? 'Project unregistered' : 'Project not registered'); return 0 }
+        throw new Error('Use projects add [dir]|list|remove <id>')
+      } catch (error) { console.error((error as Error).message); return 2 }
+    }
+    case 'dashboard': {
+      const port = rest.find(a => a.startsWith('--port='))?.slice('--port='.length)
+      if (port !== undefined && (!Number.isInteger(Number(port)) || Number(port) < 0 || Number(port) > 65535)) { console.error('Invalid dashboard port'); return 2 }
+      try { if (!rest.includes('--no-register')) registerProject(rest.find(a => !a.startsWith('-')) ?? '.') }
+      catch (error) { console.error((error as Error).message); return 2 }
+      return startDashboard({ port: port === undefined ? undefined : Number(port) }).then(server => {
+        console.log(`Yoke dashboard: ${server.url}\nPress Ctrl+C to stop.`)
+        return new Promise<number>(resolve => {
+          const stop = () => { process.off('SIGINT', stop); process.off('SIGTERM', stop); void server.close().then(() => resolve(0), () => resolve(1)) }
+          process.once('SIGINT', stop); process.once('SIGTERM', stop)
+        })
+      }).catch(error => { console.error((error as Error).message); return 2 })
+    }
+    case 'goal': {
+      const sub = rest[0] ?? 'status'
+      const targetDir = rest.slice(1).find(a => !a.startsWith('-')) ?? '.'
+      const value = (name: string) => rest.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3)
+      try {
+        if (sub === 'set') {
+          const objective = value('objective')
+          if (!objective) throw new Error('Use goal set [dir] --objective="..." with executable .yoke/acceptance.yaml criteria')
+          const goal = createProjectGoal(targetDir, objective, { maxAttempts: value('attempts') ? Number(value('attempts')) : undefined, maxMinutes: value('minutes') ? Number(value('minutes')) : undefined, tokenBudget: value('tokens') ? Number(value('tokens')) : undefined })
+          console.log(JSON.stringify(goal)); return 0
+        }
+        if (sub === 'status') { console.log(JSON.stringify(readProjectGoal(targetDir))); return 0 }
+        if (sub === 'budget') {
+          console.log(JSON.stringify(budgetProjectGoal(targetDir, { maxAttempts: value('attempts') ? Number(value('attempts')) : undefined, maxMinutes: value('minutes') ? Number(value('minutes')) : undefined, tokenBudget: value('tokens') ? Number(value('tokens')) : undefined, clearTokenBudget: rest.includes('--clear-token-budget') }))); return 0
+        }
+        if (sub === 'handoff') { console.log(goalHandoff(targetDir)); return 0 }
+        if (sub === 'pause') { pauseProjectGoal(targetDir); console.log('Pause requested at next safe boundary'); return 0 }
+        if (sub === 'run' || sub === 'resume') {
+          const provider = value('runner') ?? 'codex'
+          if (!['codex', 'claude', 'gemini'].includes(provider)) throw new Error('Unknown runner')
+          return runProjectGoal(targetDir, { provider: provider as Agent, selection: { model: value('model') } }).then(goal => {
+            console.log(JSON.stringify(goal)); return goal.status === 'complete' ? 0 : 1
+          }).catch(error => { console.error(`Goal: ${(error as Error).message}`); return 2 })
+        }
+        throw new Error('Use goal set|status|run|resume|pause|handoff')
+      } catch (error) { console.error(`Goal: ${(error as Error).message}`); return 2 }
+    }
+    case 'check': {
+      const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
+      try {
+        if (rest.includes('--protect')) {
+          console.log(`Acceptance pinned: ${protectAcceptance(targetDir, rest.includes('--refresh'))}`)
+          return 0
+        }
+        const report = checkProject(targetDir, { requirement: rest.find(a => a.startsWith('--requirement='))?.slice('--requirement='.length) })
+        if (rest.includes('--json')) console.log(JSON.stringify(report))
+        else {
+          console.log(`Check: ${report.status} — ${report.summary}`)
+          for (const criterion of report.criteria) console.log(`  ${criterion.status}: ${criterion.text}\n    ${criterion.summary}`)
+          console.log(`Evidence: ${report.evidencePath}`)
+        }
+        return checkExitCode(report)
+      } catch (error) { console.error(`Check unavailable: ${(error as Error).message}`); return 2 }
     }
     case 'validate':
       return runValidate(rest[0] ?? 'canon')
@@ -334,7 +404,7 @@ export function main(argv: string[]): number | Promise<number> {
         }
         const qualityFlags = parseQualityFlags(rest)
         if (!qualityFlags.ok) { console.error(qualityFlags.error); return 1 }
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, parallel, reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions, ...qualityFlags.options })
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, resumeWorktree: rest.includes('--resume-worktree'), parallel, reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions, ...qualityFlags.options })
       }
       console.log('usage: yoke loop <on|off|status|decision|answer|resume [--discard] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]')
       return 1
@@ -444,6 +514,7 @@ export function main(argv: string[]): number | Promise<number> {
     case 'upgrade':
       return runUpgrade()
     default:
+      console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
       console.log('usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | change <add|status> [dir] | prd <draft|check> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>')
       return cmd ? 1 : 0
   }

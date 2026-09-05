@@ -25,6 +25,11 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/references/',
   '.yoke/changes/',
   '.yoke/artifacts/',
+  '.yoke/checks/',
+  '.yoke/events/',
+  '.yoke/goal.json',
+  '.yoke/goal.json.*.tmp',
+  '.yoke/goal.pause',
 ]
 
 const HEADER = '# Yoke runtime artifacts (managed by yoke retrofit)'

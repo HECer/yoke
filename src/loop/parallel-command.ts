@@ -1,4 +1,5 @@
 import { existsSync, rmSync } from 'node:fs'
+import { acceptanceProtectionProblem } from '../check/command.js'
 import type { Agent } from '../retrofit/config.js'
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
 import { createDispatcher, type DispatcherWorkerInput } from './dispatcher.js'
@@ -46,6 +47,11 @@ export type ParallelCommandInput = {
 }
 
 export async function runParallelLoopCommand(input: ParallelCommandInput): Promise<number> {
+  const originalVerify = input.verify
+  input = { ...input, verify: path => {
+    const problem = acceptanceProtectionProblem(path, input.targetDir)
+    return problem ? { passed: false, summary: problem } : originalVerify(path)
+  } }
   const adapters = makeParallelAdapters(input.targetDir, input.identity, input.git)
   if (!adapters.git.isClean(input.targetDir)) {
     input.reporter.blocked('target working tree is not clean')
@@ -282,6 +288,7 @@ function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider,
     permissions: input.permissions,
     selection: {
       ...selection,
+      ...(provider.provider === 'codex' ? { nativeMultiAgent: false } : {}),
       ...(provider.model ? { model: provider.model } : {}),
       ...(provider.reasoningEffort ? { reasoningEffort: provider.reasoningEffort } : {}),
     },
@@ -320,5 +327,7 @@ function integrationGate(input: ParallelCommandInput, path: string, story: Story
   const quality = qualityEnabled ? input.quality?.qualityStage(context, 10_000, 'integration') : undefined
   if (quality && quality.kind !== 'pass' && quality.kind !== 'skipped') return { passed: false, summary: quality.summary }
   if (input.review) reporter.phase('reviewing')
-  return reviewGate(input.review, path, story)
+  const verdict = reviewGate(input.review, path, story)
+  const protection = acceptanceProtectionProblem(path, input.targetDir)
+  return protection ? { passed: false, summary: protection } : verdict
 }

@@ -885,7 +885,7 @@ describe('runLoop with isolation', () => {
     expect(events).toEqual(['criterion', 'criterion', 'review'])
   })
 
-  it('discards the worktree and leaves the main PRD untouched when verify fails', () => {
+  it('retains the worktree and leaves the main PRD untouched when verify fails', () => {
     const removed: string[] = []
     const verifyRed: Verifier = () => ({ passed: false, summary: 'red' })
     const res = runLoop({
@@ -894,7 +894,7 @@ describe('runLoop with isolation', () => {
     })
     expect(res.status).toBe('blocked')
     expect(loadPrd(isoPrd())[0].passes).toBe(false)  // main tree untouched
-    expect(removed.length).toBe(1)                    // worktree still cleaned up
+    expect(removed.length).toBe(0)                    // failed work remains recoverable
   })
 
   it('blocks in isolated mode when the reviewer rejects, leaving the main PRD untouched', () => {
@@ -906,7 +906,7 @@ describe('runLoop with isolation', () => {
     expect(res.status).toBe('blocked')
     expect(res.reason).toMatch(/review-malformed/i)
     expect(loadPrd(isoPrd())[0].passes).toBe(false)
-    expect(removed.length).toBe(1) // worktree still cleaned up
+    expect(removed.length).toBe(0) // failed work remains recoverable
   })
 
   it('repairs actionable isolated review rejection and reruns all gates inside the worktree before integration', () => {
@@ -965,7 +965,7 @@ describe('runLoop with isolation', () => {
     expect(res.reason).toMatch(/performance budget/i)
     expect(perfDirs).toEqual([true])                 // gate ran inside the worktree
     expect(loadPrd(isoPrd())[0].passes).toBe(false)  // main tree untouched
-    expect(removed.length).toBe(1)
+    expect(removed.length).toBe(0)
   })
 
   it('honours the ambiguity file written inside an isolated worktree', () => {
@@ -981,10 +981,10 @@ describe('runLoop with isolation', () => {
     expect(res.status).toBe('blocked')
     expect(res.reason).toContain('Undecidable criterion')
     expect(loadPrd(isoPrd())[0].passes).toBe(false)  // main tree untouched
-    expect(removed.length).toBe(1)                    // worktree still cleaned up
+    expect(removed.length).toBe(0)                    // blocked work is retained
   })
 
-  it('moves an isolated critical decision into the main project and cleans the worktree', () => {
+  it('moves an isolated critical decision into the main project and retains the worktree', () => {
     const removed: string[] = []
     const decisionRunner: AgentRunner = (ctx) => {
       writeFileSync(join(ctx.targetDir, '.yoke', 'decision-request.yaml'), [
@@ -1001,7 +1001,7 @@ describe('runLoop with isolation', () => {
     expect(res.status).toBe('blocked')
     expect(existsSync(join(isoDir, '.yoke', 'pending-decision.yaml'))).toBe(true)
     expect(loadPrd(isoPrd())[0].passes).toBe(false)
-    expect(removed).toHaveLength(1)
+    expect(removed).toHaveLength(0)
   })
 
   it('blocks (does not crash) when addWorktree throws, leaving the main PRD untouched', () => {

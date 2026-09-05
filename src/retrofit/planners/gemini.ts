@@ -16,7 +16,7 @@ export function planGemini(canonDir: string, _targetDir: string, codeGraph: Code
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const actions: Action[] = []
 
-  // GEMINI.md: baseline + rtk instruction (Gemini has no rewrite hook).
+  // GEMINI.md: baseline + instruction for commands outside the rewrite hook.
   const baseline = readFileSync(join(canonDir, 'AGENTS.md'), 'utf8')
   const autoSkillIndex = manifest.skills
     .filter(skill => skill.invocation === 'auto')
@@ -30,7 +30,7 @@ export function planGemini(canonDir: string, _targetDir: string, codeGraph: Code
     kind: 'write',
     target: 'GEMINI.md',
     content: `${baseline}\n${rtkInstruction()}\n\n## Yoke automatic skills\n\nUse the matching command when its capability is relevant:\n\n${autoSkillIndex}\n\n${PRESERVE_SCAFFOLD}\n`,
-    reason: 'baseline + rtk instruction (no hook on Gemini)',
+    reason: 'baseline + rtk instruction',
   })
 
   // One TOML slash command per skill.
@@ -51,13 +51,22 @@ export function planGemini(canonDir: string, _targetDir: string, codeGraph: Code
     actions.push(...skillPackageActions(canonDir, skill, 'gemini'))
   }
 
-  // settings.json: MCP servers + read AGENTS.md as context.
+  actions.push({
+    kind: 'write',
+    target: '.gemini/hooks/gemini-rtk-hook.mjs',
+    content: readFileSync(join(canonDir, 'tools/gemini-rtk-hook.mjs'), 'utf8'),
+    reason: 'portable RTK BeforeTool argument adapter',
+  })
+
+  // Merge to preserve user MCP servers, context and unrelated hooks.
   actions.push({
     kind: 'write',
     target: '.gemini/settings.json',
+    merge: true,
     content: JSON.stringify({
       mcpServers: mcpServers(codeGraph),
       context: { fileName: ['AGENTS.md', 'GEMINI.md'] },
+      hooks: { BeforeTool: [{ matcher: '^run_shell_command$', hooks: [{ name: 'yoke-rtk', type: 'command', command: 'node .gemini/hooks/gemini-rtk-hook.mjs' }] }] },
     }, null, 2) + '\n',
     reason: 'MCP servers + AGENTS.md context',
   })

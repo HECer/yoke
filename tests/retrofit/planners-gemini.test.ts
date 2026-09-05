@@ -21,6 +21,7 @@ loop: { spec: loop/loop-spec.md, prdSchema: loop/prd.schema.md }
 tools: []
 `)
   w('AGENTS.md', '# Baseline\n')
+  w('tools/gemini-rtk-hook.mjs', '// hook fixture\n')
   w('skills/tdd/SKILL.md', '---\nname: tdd\ndescription: Test-driven development\n---\nbody')
   w('skills/tdd/references/guide.md', '# Guide\n')
   w('skills/tdd/assets/sample.bin', new Uint8Array([0, 255, 4]))

@@ -1,5 +1,5 @@
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
-import type { Agent, RoutingStrategy, RoutingWorker } from '../retrofit/config.js'
+import type { Agent, RoutingRule, RoutingStrategy, RoutingWorker } from '../retrofit/config.js'
 import type { AgentContext, AgentResult, AgentRunner, CapturedAgentRun, RunnerOpts } from '../loop/runner.js'
 import {
   buildWatchdogInvocation,
@@ -9,7 +9,7 @@ import {
 } from '../loop/runner.js'
 import type { ModelCallUsage, TokenUsage } from '../loop/reporter.js'
 import { isAcceptanceCriterion } from '../loop/prd.js'
-import { historyForWorkers, projectHash, recordRoutingObservation, storyHash } from './registry.js'
+import { historyForWorkers, projectHash, readRoutingObservations, recordRoutingObservation, storyHash } from './registry.js'
 
 export interface RouteDecision {
   worker: 'SELF' | string
@@ -23,6 +23,7 @@ export interface AdaptiveRunnerOptions {
   workers: RoutingWorker[]
   strategy: RoutingStrategy
   maxCandidates: number
+  rules?: RoutingRule[]
   idleTimeoutMs?: number
   permissions?: PermissionProfile
   runnerOpts?: RunnerOpts
@@ -125,6 +126,7 @@ function callUsage(role: ModelCallUsage['role'], provider: Agent, selection: Mod
     ...(tokens?.cachedInputTokens !== undefined ? { cachedInputTokens: tokens.cachedInputTokens } : {}),
     ...(tokens?.cacheWriteInputTokens !== undefined ? { cacheWriteInputTokens: tokens.cacheWriteInputTokens } : {}),
     outputTokens: tokens?.outputTokens ?? 0,
+    usageAvailable: tokens !== undefined && tokens.measurementComplete !== false,
     ...(tokens?.reasoningOutputTokens !== undefined ? { reasoningOutputTokens: tokens.reasoningOutputTokens } : {}),
     ...(tokens?.totalCostUsd !== undefined ? { totalCostUsd: tokens.totalCostUsd } : {}),
     durationMs,
@@ -135,6 +137,7 @@ export function makeAdaptiveRunner(options: AdaptiveRunnerOptions): AgentRunner 
   const now = options.now ?? Date.now
   const available = options.isAvailable ?? (() => true)
   const eligibleWorkers = options.workers.filter(worker => available(worker.agent))
+  const failedStories = new Set<string>()
   const makeWorker = options.makeWorker ?? ((agent, selection) => makeRunner(agent, options.idleTimeoutMs ?? 0, {
     ...options.runnerOpts,
     permissions: options.permissions ?? 'safe',
@@ -144,15 +147,22 @@ export function makeAdaptiveRunner(options: AdaptiveRunnerOptions): AgentRunner 
   return (ctx): AgentResult => {
     // Re-rank per story so a long-running loop can use gate outcomes learned by
     // earlier stories without rebuilding the runner.
-    const candidates = rankWorkers(eligibleWorkers, options.strategy, options.maxCandidates)
+    const rule = options.rules?.find(rule => (!rule.area || rule.area === ctx.story.area) && (!rule.storyId || rule.storyId === ctx.story.id) && (rule.area || rule.storyId))
+    if (rule) {
+      const project = projectHash(ctx.targetDir)
+      const prior = readRoutingObservations().reverse().find(event => event.projectHash === project && event.storyHash === storyHash(project, ctx.story.id) && typeof event.verificationSuccess === 'boolean')
+      if (prior?.verificationSuccess === false) failedStories.add(ctx.story.id)
+    }
+    const ruleWorker = rule && failedStories.has(ctx.story.id) ? rule.escalateTo ?? 'SELF' : rule?.worker
+    const candidates = rule ? eligibleWorkers : rankWorkers(eligibleWorkers, options.strategy, options.maxCandidates)
     if (candidates.length === 0) {
       return makeWorker(options.parent, options.parentSelection ?? {})(ctx)
     }
 
     const prompt = buildRoutingPrompt(ctx, candidates, options.strategy)
-    const orchestratorSelection = { ...(options.parentSelection ?? {}), ...(options.orchestratorSelection ?? {}), nativeMultiAgent: false }
+    const orchestratorSelection = { ...(options.parentSelection ?? {}), ...(options.orchestratorSelection ?? {}), ...(options.parent === 'codex' ? { nativeMultiAgent: false } : {}) }
     const orchestratorStarted = now()
-    const routeRun = options.captureRoute
+    const routeRun: CapturedAgentRun = rule ? { success: true, summary: 'Explicit rule', output: '', tokens: { inputTokens: 0, outputTokens: 0 } } : options.captureRoute
       ? options.captureRoute(options.parent, ctx, prompt, orchestratorSelection)
       : runCapturedAgent(
           options.parent,
@@ -162,19 +172,21 @@ export function makeAdaptiveRunner(options: AdaptiveRunnerOptions): AgentRunner 
           ),
         )
     const orchestratorDurationMs = Math.max(0, now() - orchestratorStarted)
-    const decision = routeRun.success ? parseRouteDecision(routeRun.output, candidates.map(worker => worker.id)) : null
+    const decision = rule
+      ? { worker: ruleWorker === 'SELF' || candidates.some(w => w.id === ruleWorker) ? ruleWorker! : 'SELF', reason: failedStories.has(ctx.story.id) ? 'gate failure escalated by project rule' : 'explicit project routing rule' }
+      : routeRun.success ? parseRouteDecision(routeRun.output, candidates.map(worker => worker.id)) : null
     const selected = decision?.worker ?? 'SELF'
     const worker = selected === 'SELF' ? undefined : candidates.find(candidate => candidate.id === selected)
     const provider = worker?.agent ?? options.parent
     const selection: ModelSelection = worker
-      ? { model: worker.model, reasoningEffort: worker.reasoningEffort, nativeMultiAgent: false, bare: options.parentSelection?.bare }
-      : { ...(options.parentSelection ?? {}), nativeMultiAgent: false }
+      ? { model: worker.model, reasoningEffort: worker.reasoningEffort, ...(provider === 'codex' ? { nativeMultiAgent: false } : {}), ...(provider !== 'gemini' ? { bare: options.parentSelection?.bare } : {}) }
+      : { ...(options.parentSelection ?? {}), ...(provider === 'codex' ? { nativeMultiAgent: false } : {}) }
 
     const workerStarted = now()
     const result = makeWorker(provider, selection)(ctx)
     const workerDurationMs = Math.max(0, now() - workerStarted)
     const calls = [
-      callUsage('orchestrator', options.parent, orchestratorSelection, routeRun.tokens, orchestratorDurationMs),
+      ...(!rule ? [callUsage('orchestrator', options.parent, orchestratorSelection, routeRun.tokens, orchestratorDurationMs)] : []),
       callUsage(worker ? 'worker' : 'parent', provider, selection, result.tokens, workerDurationMs, selected),
     ]
     const tokens: TokenUsage = {
@@ -194,12 +206,16 @@ export function makeAdaptiveRunner(options: AdaptiveRunnerOptions): AgentRunner 
         : {}),
       ...(result.tokens?.model ? { model: result.tokens.model } : routeRun.tokens?.model ? { model: routeRun.tokens.model } : {}),
       calls,
+      measurementComplete: calls.every(call => call.usageAvailable),
+      costMeasurementComplete: calls.every(call => call.totalCostUsd !== undefined),
     }
 
     let recorded = false
     const recordOutcome = (verificationSuccess: boolean): void => {
       if (recorded) return
       recorded = true
+      if (!verificationSuccess) failedStories.add(ctx.story.id)
+      else failedStories.delete(ctx.story.id)
       const project = projectHash(ctx.targetDir)
       recordRoutingObservation({
         projectHash: project,

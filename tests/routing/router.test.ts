@@ -61,6 +61,40 @@ describe('routing control prompt', () => {
 })
 
 describe('adaptive runner', () => {
+  it('does not label controller-only dollars as complete execution cost', () => {
+    const run = makeAdaptiveRunner({ parent: 'codex', workers, strategy: 'cost', maxCandidates: 1, captureRoute: () => ({ success: true, summary: '', output: 'YOKE_ROUTE {"worker":"claude-fast"}', tokens: { inputTokens: 1, outputTokens: 1, totalCostUsd: 0.01 } }), makeWorker: () => () => ({ success: true, summary: '', tokens: { inputTokens: 2, outputTokens: 2 } }) })
+    expect(run({ targetDir: registry, story }).tokens).toMatchObject({ totalCostUsd: 0.01, measurementComplete: true, costMeasurementComplete: false })
+  })
+  it('escalates a rule only after independent gate failure', () => {
+    const selected: string[] = []
+    const runner = makeAdaptiveRunner({ parent: 'codex', workers, strategy: 'cost', maxCandidates: 1, rules: [{ storyId: 'S1', worker: 'claude-fast', escalateTo: 'codex-deep' }], makeWorker: agent => { selected.push(agent); return () => ({ success: true, summary: 'done' }) } })
+    const result = runner({ targetDir: registry, story })
+    expect(selected).toEqual(['claude'])
+    result.routing?.recordOutcome(false)
+    runner({ targetDir: registry, story })
+    expect(selected).toEqual(['claude', 'codex'])
+  })
+  it('retains gate-driven escalation when a blocked loop creates a new runner', () => {
+    const selected: string[] = []
+    const create = () => makeAdaptiveRunner({ parent: 'codex', workers, strategy: 'cost', maxCandidates: 1, rules: [{ storyId: 'S1', worker: 'claude-fast', escalateTo: 'codex-deep' }], makeWorker: agent => { selected.push(agent); return () => ({ success: true, summary: 'done' }) } })
+    create()({ targetDir: registry, story }).routing?.recordOutcome(false)
+    create()({ targetDir: registry, story })
+    expect(selected).toEqual(['claude', 'codex'])
+  })
+  it('uses an explicit area rule without spending a controller call', () => {
+    let controllerCalls = 0
+    const selected: string[] = []
+    const runner = makeAdaptiveRunner({
+      parent: 'codex', workers, strategy: 'balanced', maxCandidates: 2,
+      rules: [{ area: 'docs', worker: 'claude-fast' }],
+      captureRoute: () => { controllerCalls++; throw new Error('unnecessary controller') },
+      makeWorker: agent => { selected.push(agent); return () => ({ success: true, summary: 'done', tokens: { inputTokens: 3, outputTokens: 2 } }) },
+    })
+    const result = runner({ targetDir: registry, story: { ...story, area: 'docs' } })
+    expect(controllerCalls).toBe(0)
+    expect(selected).toEqual(['claude'])
+    expect(result.tokens?.calls).toHaveLength(1)
+  })
   it('routes to the selected worker and accounts for orchestration plus execution', () => {
     const moments = [0, 10, 20, 50]
     const selected: Array<{ agent: string; model?: string }> = []
