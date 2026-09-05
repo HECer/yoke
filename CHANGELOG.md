@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.7.0 — 2026-09-05
+
 ### Added
 - Independent `yoke check` with executable acceptance mapping, protected test infrastructure and content-bound evidence.
 - Durable project goals, provider handoff, checkpoint budgets, interruption accounting and project-scoped recovery.

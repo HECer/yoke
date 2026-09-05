@@ -2,7 +2,7 @@
 
 # 🐂 Yoke
 
-<!-- yoke:version:start -->1.6.2<!-- yoke:version:end -->
+<!-- yoke:version:start -->1.7.0<!-- yoke:version:end -->
 <!-- yoke:tests:start -->1100<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
@@ -27,7 +27,35 @@
 
 > **TL;DR** — `yoke setup .` asks six questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. Add `--parallel=N` for dependency-aware workers, or declare a reference and add `--quality` for a bounded critic/repair gauntlet. If any blocking gate is red, nothing is committed. Proof lives in `.yoke/proof/<story>/`.
 
-The current source branch adds [verified project goals, recovery and a local dashboard](docs/VERIFIED-PROJECTS.md): run `yoke check .` before adopting the loop, define protected executable acceptance, continue bounded goals with any supported provider, and inspect projects with `yoke dashboard .`. Explicit routing rules and tool actions avoid unnecessary model calls; task-aware context and declared write scopes reduce repeated work. These features have automated local tests; provider capability parity is not a claim of equal model quality or measured competitive superiority.
+**New in 1.7.0:** [verified project goals, recovery and one local dashboard for all your registered projects](docs/VERIFIED-PROJECTS.md). Check an existing project, continue a bounded goal with Codex, Claude or Gemini, and inspect tasks, acceptance evidence, recorded consumption and estimated timing in one place.
+
+### One dashboard, multiple projects
+
+```sh
+npm install -g @hecer/yoke@latest
+yoke projects add /path/to/frontend
+yoke projects add /path/to/backend
+yoke dashboard --no-register
+```
+
+Open the printed `http://127.0.0.1:...` URL. Each registered project has its own goals, tasks and evidence. The dashboard shows available worker state, per-task duration estimates, planned start offsets, input/output tokens, costs and unknown measurements. You can request a goal pause at a safe boundary.
+
+Projects are registered explicitly; this version does not automatically discover every process or aggregate other computers. Start/resume and budget changes use the CLI. Missing history appears as unknown; time ranges are empirical estimates, not exact deadlines.
+
+### Verified goals and efficient execution
+
+```sh
+yoke check /path/to/project --json
+# First define executable criteria and protected tests in .yoke/acceptance.yaml.
+yoke goal set /path/to/project --objective="Complete guest checkout" --attempts=3 --minutes=30
+yoke goal run /path/to/project --runner=codex
+yoke goal resume /path/to/project --runner=claude
+yoke goal handoff /path/to/project
+```
+
+Goals persist their objective, attempts and check evidence across runs. Changed protected tests block acceptance; failed work is retained. Explicit routing rules bypass controller calls, configured tool actions use no model, and failed rule-based attempts can escalate to a stronger worker. Context selection stays within a character budget; declared write scopes and dependencies guide parallel scheduling.
+
+See the [1.7 workflow guide](docs/VERIFIED-PROJECTS.md) for setup, Gemini selection, recovery and budgets. Provider contracts do not establish equal model quality; live comparative savings and calibrated time predictions remain unmeasured. Token budgets apply between provider calls, and browser proofs still require a configured smoke gate.
 
 Yoke 1.5 keeps failed gate output compact without throwing evidence away: deterministic previews
 retain actionable failures and final summaries, while large complete stdout/stderr remains available
@@ -159,6 +187,10 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 
 | Command | What it does | Exit codes |
 |---|---|---|
+| `yoke dashboard [dir] [--no-register] [--port=N]` | Local overview for every registered project; optionally register `dir` first | `0` stopped normally · `1` shutdown failure · `2` unavailable |
+| `yoke projects add\|list\|remove` | Register a project, list registrations or remove a reference by ID | `0` · `2` invalid/unavailable |
+| `yoke check [dir] [--json] [--requirement=] [--protect [--refresh]]` | Execute acceptance checks or explicitly pin their infrastructure | `0` passed/pinned · `1` failed · `2` unverified/unavailable |
+| `yoke goal set\|run\|resume\|pause\|status\|handoff\|budget [dir]` | Durable objectives, provider handoff, protected checks and checkpoint budgets | run/resume: `0` complete · `1` unfinished · `2` unavailable |
 | `yoke setup [dir] [--yes] [--host=] [--agent=] [--runner=] [--code-graph=] [--decision-policy=] [--loop\|--no-loop] [--routing\|--no-routing]` | Shared six-question setup for Claude, Codex, and Gemini; adaptive routing is always an explicit opt-in | `0` · `1` invalid setup |
 | `yoke validate [canonDir]` | Validate the canon (schema, frontmatter, templates) | `0` valid · `1` errors |
 | `yoke new <dir> [--idea=] [--agent=] [--runner=] [--loop]` | Greenfield bootstrap: git init → scaffold → retrofit → context → PRD (drafted from `--idea`) → committed | `0` · `1` usage / non-empty dir / draft failed (scaffold survives) · `2` draft agent unavailable |

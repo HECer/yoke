@@ -1,6 +1,6 @@
 # Verified projects, goals and measured execution
 
-These additions are implemented in the source tree. They do not require a cloud account or replace your provider CLI. Model availability, reasoning controls, structured output and telemetry depend on the selected provider; unknown usage is never a measured zero. Live authenticated provider comparison and calibrated time/cost benchmarks remain separate validation work.
+Available in Yoke 1.7.0. These additions do not require a cloud account or replace your provider CLI. Model availability, reasoning controls, structured output and telemetry depend on the selected provider; unknown usage is never a measured zero. Live authenticated provider comparison and calibrated time/cost benchmarks remain separate validation work.
 
 ## Check an existing project
 
