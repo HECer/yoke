@@ -22,7 +22,8 @@ const argsFor = (agent: Agent, permissions: PermissionProfile): string[] => {
   if (agent === 'codex') {
     if (permissions === 'unsafe') return ['exec', '--dangerously-bypass-approvals-and-sandbox', '--json']
     if (permissions === 'read-only') return ['exec', '--sandbox', 'read-only', '--json']
-    return ['exec', '--sandbox', 'workspace-write', '--approve-for-me', '--json']
+    // Automatic review already selects workspace-write and conflicts with --sandbox.
+    return ['exec', '--approve-for-me', '--json']
   }
   if (permissions === 'unsafe') return ['--yolo', '--output-format', 'stream-json']
   const approval = permissions === 'read-only' ? 'plan' : 'auto_edit'
