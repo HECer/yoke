@@ -122,7 +122,9 @@ describe('compactCommandOutput', () => {
     expect(result.preview).toContain('AssertionError')
   })
 
-  it('processes millions of short lines below the capture quota without materializing a line array', () => {
+  // Correctness under the full capture quota, not a five-second CPU benchmark.
+  // Windows/Node 20 hosted runners need headroom to scan seven million lines.
+  it('processes millions of short lines below the capture quota without materializing a line array', { timeout: 20_000 }, () => {
     const noisyLines = 7_000_000
     const raw = `error E1000: first actionable failure\n${'n\n'.repeat(noisyLines)}Tests: 1 failed, 2 passed`
 
