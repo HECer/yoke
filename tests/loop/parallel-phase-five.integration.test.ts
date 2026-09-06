@@ -63,7 +63,8 @@ describe('Phase 5 parallel integration', { timeout: 60_000 }, () => {
       },
     }))
 
-    expect(code).toBe(0)
+    const processEvidence = await Promise.all(providerProcesses.map(handle => handle.completion))
+    expect(code, JSON.stringify(processEvidence.map(result => ({ kind: result.kind, stdout: result.stdout, stderr: result.stderr })))).toBe(0)
     expect(readFileSync(join(project.barrier, 'overlap'), 'utf8')).toMatch(/[AB]/)
     expect(starts.slice(0, 2).sort()).toEqual(['A', 'B'])
     expect(starts).toEqual(['A', 'B', 'C'])
