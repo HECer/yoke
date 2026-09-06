@@ -12,9 +12,10 @@ import type { AgentRunner } from '../../src/loop/runner.js'
 import type { Verifier } from '../../src/loop/verify.js'
 import { readDecisionResume } from '../../src/loop/decision.js'
 import { main, parseQualityFlags } from '../../src/cli.js'
+import { projectAnalytics } from '../../src/dashboard/analytics.js'
 
 let dir: string
-const cfg = () => ({ canonVersion: '0.1.0', agents: ['claude'] as const, loop: { enabled: true } })
+const cfg = () => ({ canonVersion: '0.1.0', agents: ['claude'] as const, loop: { isolate: false, enabled: true } })
 const stubGit: GitOps = {
   isClean: () => true,
   commitAll: () => {},
@@ -35,6 +36,18 @@ beforeEach(() => {
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('yoke loop CLI', () => {
+  it('includes review consumption in persistent project usage without double-counting implementation', () => {
+    saveConfig(dir, cfg())
+    const result = runLoopCommand(dir, {
+      maxIterations: 1, git: stubGit, verify: verifyOk,
+      runner: () => ({ success: true, summary: 'done', tokens: { inputTokens: 100, outputTokens: 20, model: 'implementation-model' } }),
+      reviewRunner: () => ({ success: true, summary: 'approved', tokens: { inputTokens: 30, outputTokens: 10, model: 'review-model' } }),
+    })
+    expect(result).toBe(0)
+    const analytics = projectAnalytics(dir, { from: Date.now() - 60000, to: Date.now() + 1000, bucket: 'day' })
+    expect(analytics.total).toMatchObject({ inputTokens: 130, outputTokens: 30, accepted: 1 })
+    expect(analytics.models).toContainEqual(expect.objectContaining({ role: 'reviewer', model: 'review-model', inputTokens: 30 }))
+  })
   it('runs configured tool-only work with no model CLI installed', () => {
     saveConfig(dir, { ...cfg(), agents: ['claude'], actions: [{ storyId: 'S1', file: process.execPath, args: ['-e', 'process.exit(0)'], timeoutMs: 1000 }] })
     expect(runLoopCommand(dir, { git: stubGit, verify: verifyOk, isAvailable: () => false, maxIterations: 1 })).toBe(0)
@@ -83,9 +96,9 @@ describe('yoke loop CLI', () => {
   })
 
   it('setLoopEnabled preserves timeout and decision policy', () => {
-    saveConfig(dir, { ...cfg(), loop: { enabled: true, timeoutMinutes: 30, decisionPolicy: 'critical' } })
+    saveConfig(dir, { ...cfg(), loop: { isolate: false, enabled: true, timeoutMinutes: 30, decisionPolicy: 'critical' } })
     setLoopEnabled(dir, false)
-    expect(loadConfig(dir)?.loop).toEqual({ enabled: false, timeoutMinutes: 30, decisionPolicy: 'critical' })
+    expect(loadConfig(dir)?.loop).toEqual({ enabled: false, isolate: false, timeoutMinutes: 30, decisionPolicy: 'critical' })
   })
 
   it('loopStatus reports enabled state and progress', () => {
@@ -133,7 +146,7 @@ describe('yoke loop CLI', () => {
   })
 
   it('persists the trusted run options needed to resume after a critical decision', () => {
-    saveConfig(dir, { ...cfg(), agents: ['codex', 'claude'], loop: { enabled: true, decisionPolicy: 'critical' } })
+    saveConfig(dir, { ...cfg(), agents: ['codex', 'claude'], loop: { isolate: false, enabled: true, decisionPolicy: 'critical' } })
     const decisionRunner: AgentRunner = (ctx) => {
       writeFileSync(join(ctx.targetDir, '.yoke', 'decision-request.yaml'), [
         'version: 1', `storyId: ${ctx.story.id}`, 'question: Which identity model?', 'reason: Public API choice.',
@@ -154,7 +167,7 @@ describe('yoke loop CLI', () => {
   })
 
   it('preserves bounded quality options but never persists unbounded mode after a critical decision', () => {
-    saveConfig(dir, { ...cfg(), agents: ['codex'], loop: { enabled: true, decisionPolicy: 'critical' } })
+    saveConfig(dir, { ...cfg(), agents: ['codex'], loop: { isolate: false, enabled: true, decisionPolicy: 'critical' } })
     const decisionRunner: AgentRunner = (ctx) => {
       writeFileSync(join(ctx.targetDir, '.yoke', 'decision-request.yaml'), [
         'version: 1', `storyId: ${ctx.story.id}`, 'question: Which identity model?', 'reason: Public API choice.',
@@ -225,7 +238,7 @@ describe('yoke loop CLI', () => {
   })
 
   it('preserves an unlimited run across a critical-decision resume', () => {
-    saveConfig(dir, { ...cfg(), agents: ['codex'], loop: { enabled: true, decisionPolicy: 'critical' } })
+    saveConfig(dir, { ...cfg(), agents: ['codex'], loop: { isolate: false, enabled: true, decisionPolicy: 'critical' } })
     const decisionRunner: AgentRunner = (ctx) => {
       writeFileSync(join(ctx.targetDir, '.yoke', 'decision-request.yaml'), [
         'version: 1', `storyId: ${ctx.story.id}`, 'question: Which identity model?', 'reason: Public API choice.',

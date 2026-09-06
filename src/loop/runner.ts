@@ -376,6 +376,7 @@ export function runReviewAgent(inv: Invocation): AgentResult {
 }
 
 export interface RunnerOpts {
+  onStart?: (agent: Agent, selection: ModelSelection) => void
   /** Run claude in stream-json mode and report cumulative token usage on the AgentResult. */
   tokenReport?: boolean
   /** Ambiguous-criteria handling for the implementer prompt (default 'resolve': never stop). */
@@ -422,6 +423,9 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
   // redundant for claude and meaningless elsewhere; kept for caller compatibility.
   const captureTokens = true
   return (ctx: AgentContext): AgentResult => {
+    opts.onStart?.(agent, opts.selection ?? {})
+    const started = Date.now()
+    const attributed = (tokens: TokenUsage | undefined): TokenUsage | undefined => tokens ? { ...tokens, provider: agent, role: 'parent', storyId: ctx.story.id, durationMs: Date.now() - started } : undefined
     const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe', opts.selection)
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     if (captureTokens) {
@@ -429,12 +433,12 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
       try {
         const out = capture(inv)
         const telemetry = parseProviderTelemetry(agent, out.split(/\r?\n/))
-        return { success: true, summary: `${agent} implemented ${ctx.story.id}`, tokens: telemetry.tokens }
+        return { success: true, summary: `${agent} implemented ${ctx.story.id}`, tokens: attributed(telemetry.tokens) }
       } catch (e) {
         // Salvage usage from whatever the agent streamed before dying — those tokens were spent.
         const partial = (e as { stdout?: unknown }).stdout
         const tokens = partial == null ? undefined : parseProviderTelemetry(agent, String(partial).split(/\r?\n/)).tokens
-        return { success: false, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}`, tokens }
+        return { success: false, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}`, tokens: attributed(tokens) }
       }
     }
     try {
@@ -453,15 +457,17 @@ export const claudeRunner: AgentRunner = makeRunner('claude')
 export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: Invocation) => void | CapturedAgentRun): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
     const before = repositoryFingerprint(ctx.targetDir)
-    const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), undefined, agent), ctx.targetDir, 'read-only')
+    const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), undefined, agent), ctx.targetDir, 'read-only', { nativeMultiAgent: false })
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     let processFailure: string | undefined
     let actualModel: string | undefined
+    let usage: TokenUsage | undefined
     let output = ''
     try {
       const result = exec?.(inv) ?? runCapturedAgent(agent, inv)
       if (!result.success) processFailure = result.summary
       actualModel = result.tokens?.model
+      usage = result.tokens
       output = result.output
       if (!exec && !actualModel && !processFailure) processFailure = 'review provider did not report its model'
     } catch (e) {
@@ -476,14 +482,16 @@ export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: I
           success: false,
           summary: `review process failed: ${processFailure}; verdict: ${verdict.summary}`,
           reviewOutcome: { kind: 'infrastructure', summary: processFailure },
+          tokens: usage,
         }
       }
-      return verdict.approved
+      const reviewed = verdict.approved
         ? reviewResult(agent, ctx.story.id, verdict, { kind: 'approved', verdict })
         : reviewResult(agent, ctx.story.id, verdict, { kind: 'rejected', verdict })
+      return { ...reviewed, tokens: usage }
     } catch (e) {
       const summary = `${processFailure ? `review process failed: ${processFailure}; ` : ''}${(e as Error).message}`
-      return { success: false, summary, reviewOutcome: processFailure ? { kind: 'infrastructure', summary } : { kind: 'malformed', summary } }
+      return { success: false, summary, tokens: usage, reviewOutcome: processFailure ? { kind: 'infrastructure', summary } : { kind: 'malformed', summary } }
     }
   }
 }

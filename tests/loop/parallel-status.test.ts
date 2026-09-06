@@ -100,7 +100,7 @@ describe('parallel status reporting', () => {
       quality: { currentRound: 2, usedRepairs: 1, maxRepairs: 3, elapsedMs: 1_000, policy: 'blocking' },
     })
 
-    expect(readStatus(dir)?.parallel?.workers).toEqual([
+    expect(readStatus(dir)?.parallel?.workers).toMatchObject([
       { story: 'A', storyTitle: 'API', provider: 'claude', phase: 'verifying' },
       {
         story: 'B',

@@ -1,6 +1,9 @@
 import { existsSync, rmSync } from 'node:fs'
 import { acceptanceProtectionProblem } from '../check/command.js'
-import type { Agent } from '../retrofit/config.js'
+import type { Agent, YokeConfig } from '../retrofit/config.js'
+import { makeAsyncAdaptiveRunner } from '../routing/router.js'
+import { startProviderProcess } from '../agents/process.js'
+import { runnerInvocation, isAgentAvailable } from './runner.js'
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
 import { createDispatcher, type DispatcherWorkerInput } from './dispatcher.js'
 import { consumeDecisionRequest, type DecisionRequest } from './decision.js'
@@ -43,6 +46,8 @@ export type ParallelCommandInput = {
   readonly completion?: Verifier
   readonly quality?: QualityCommandHooks
   readonly candidateCount?: number
+  readonly routing?: YokeConfig['routing']
+  readonly isAvailable?: (agent: Agent) => boolean
   readonly onCriticalDecision?: (decision: DecisionRequest) => void
 }
 
@@ -82,6 +87,7 @@ export async function runParallelLoopCommand(input: ParallelCommandInput): Promi
     } : {}),
     pause,
     onProgress: status => input.reporter.parallel?.(status),
+    onAccepted: story => input.reporter.accepted?.(story),
     gates: {
       verify: input.verify,
       design: input.design,
@@ -237,7 +243,7 @@ function workerReporter(reporter: LoopReporter, worker: DispatcherWorkerInput, c
       if (reporter.parallelWorker) reporter.parallelWorker({ ...attribution, quality })
       else reporter.quality(quality)
     },
-    addTokens: usage => reporter.addTokens(usage),
+    addTokens: usage => reporter.addTokens({ ...usage, storyId: worker.story.id }),
   }
 }
 
@@ -282,19 +288,52 @@ function reportIntegrator(reporter: LoopReporter, worker: DispatcherWorkerInput,
 }
 
 function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider, signal: AbortSignal | undefined, workerId: string): WorkerRunner {
-  const { model: _globalModel, reasoningEffort: _globalReasoningEffort, ...selection } = input.selection
+  if (input.routing) {
+    const routed = makeAsyncAdaptiveRunner({
+      parent: provider.provider,
+      parentSelection: { ...input.selection, model: provider.model, reasoningEffort: provider.reasoningEffort, ...(provider.provider === 'codex' ? { nativeMultiAgent: false } : {}) },
+      projectRoot: input.targetDir,
+      workers: input.routing.workers,
+      rules: input.routing.rules,
+      strategy: input.routing.strategy,
+      maxCandidates: input.routing.maxCandidates,
+      orchestratorSelection: input.routing.orchestrator,
+      isAvailable: input.isAvailable ?? isAgentAvailable,
+      captureRoute: async (agent, context, prompt, selection) => {
+        const result = await startProviderProcess(agent, runnerInvocation(agent, prompt, context.targetDir, true, 'read-only', selection), { idleTimeoutMs: input.idleMs, signal, workerId }).completion
+        return { ...providerProcessResultToAgentResult(agent, context.story.id, result), output: result.stdout }
+      },
+      makeWorker: (agent, selection) => async context => {
+        if (signal?.aborted) return { success: false, summary: 'Routing cancelled before worker start' }
+        input.reporter.parallelWorker?.({ story: context.story.id, storyTitle: context.story.title, provider: agent, selectedProvider: agent, selectedModel: selection.model, phase: 'implementing' })
+        const run = makeAsyncRunner(agent, { onAmbiguity: input.onAmbiguity, permissions: input.permissions, selection,
+          process: { idleTimeoutMs: input.idleMs, signal, workerId } })
+        return providerProcessResultToAgentResult(agent, context.story.id, await run(context).completion)
+      },
+    })
+    return context => context.story.agent
+      ? asyncRunner({ ...input, routing: undefined }, provider, signal, workerId)(context)
+      : routed(context)
+  }
+  const { model: _globalModel, reasoningEffort: _globalReasoningEffort, nativeMultiAgent: _globalNative, bare: globalBare, ...selection } = input.selection
   const runner = makeAsyncRunner(provider.provider, {
     onAmbiguity: input.onAmbiguity,
     permissions: input.permissions,
     selection: {
       ...selection,
-      ...(provider.provider === 'codex' ? { nativeMultiAgent: false } : {}),
+      ...(provider.provider !== 'gemini' && globalBare !== undefined ? { bare: globalBare } : {}),
+      nativeMultiAgent: false,
       ...(provider.model ? { model: provider.model } : {}),
       ...(provider.reasoningEffort ? { reasoningEffort: provider.reasoningEffort } : {}),
     },
     process: { idleTimeoutMs: input.idleMs, signal, workerId },
   })
-  return async context => providerProcessResultToAgentResult(provider.provider, context.story.id, await runner(context).completion)
+  return async context => {
+    const started = Date.now()
+    const result = providerProcessResultToAgentResult(provider.provider, context.story.id, await runner(context).completion)
+    if (result.tokens) result.tokens = { ...result.tokens, provider: provider.provider, role: 'worker', storyId: context.story.id, durationMs: Date.now() - started }
+    return result
+  }
 }
 
 export function providerProcessResultToAgentResult(agent: Agent, storyId: string, result: ProviderProcessResult): AgentResult {

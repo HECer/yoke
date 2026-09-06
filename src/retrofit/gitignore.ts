@@ -27,6 +27,7 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/artifacts/',
   '.yoke/checks/',
   '.yoke/events/',
+  '.yoke/history/',
   '.yoke/goal.json',
   '.yoke/goal.json.*.tmp',
   '.yoke/goal.pause',

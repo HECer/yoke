@@ -9,10 +9,11 @@ import { dashboardPage } from './page.js'
 import { readEvents } from '../observability/events.js'
 import { estimateSchedule } from '../estimation/schedule.js'
 import { pauseProjectGoal } from '../goals/command.js'
+import { parsePeriod, projectAnalytics } from './analytics.js'
 
 const text = z.string().max(16000)
 const number = z.number().finite().nonnegative()
-const Goal = z.object({ objective: text, status: z.enum(['active', 'running', 'paused', 'blocked', 'complete']), reason: text.optional(), attempts: z.array(z.object({ durationMs: number.optional(), provider: text.optional(), success: z.boolean().optional(), summary: text.optional(), inputTokens: number.optional(), outputTokens: number.optional() })).max(200).default([]) })
+const Goal = z.object({ objective: text, status: z.enum(['active', 'running', 'paused', 'blocked', 'complete']), reason: text.optional(), pendingAttempt: z.object({ provider: text, model: text.optional(), startedAt: text }).optional(), attempts: z.array(z.object({ durationMs: number.optional(), provider: text.optional(), success: z.boolean().optional(), summary: text.optional(), inputTokens: number.optional(), outputTokens: number.optional() })).max(200).default([]) })
 const Status = z.object({ state: text, phase: text.optional(), reason: text.optional(), progress: z.object({ passed: number, total: number }).optional(), tokens: z.object({ inputTokens: number, outputTokens: number, totalCostUsd: number.optional(), measurementComplete: z.boolean().optional(), model: text.optional(), calls: z.array(z.object({ usageAvailable: z.boolean().optional() })).max(10000).optional() }).optional(), measurement: z.object({ costAvailable: z.enum(['unknown', 'partial', 'measured']), measuredCalls: number.optional(), unknownCalls: number.optional(), unmeasuredAttempts: number.optional() }).passthrough().optional(), parallel: z.object({ maxConcurrency: number }).passthrough().optional() }).passthrough()
 const Stories = z.array(z.object({ id: text, title: text, passes: z.boolean(), priority: number.optional(), area: text.optional(), writes: z.array(text).optional(), needs: z.array(text).optional() })).max(2000)
 const Check = z.object({ id: text, status: z.enum(['passed', 'failed', 'unverified']), generatedAt: text, summary: text, criteria: z.array(z.object({ id: text, text, status: z.enum(['passed', 'failed', 'unverified']), summary: text })).max(500) })
@@ -77,12 +78,18 @@ export async function startDashboard(options: { port?: number } = {}): Promise<{
       if (req.method === 'GET' && path === '/favicon.ico') { res.writeHead(204); res.end(); return }
       if (req.method === 'GET' && path === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(dashboardPage(token, nonce)); return }
       if (req.method === 'GET' && path === '/api/projects') { send(200, listProjects().map(project => snapshot(project, false))); return }
-      const match = /^\/api\/projects\/([a-f0-9]{32})(\/pause)?$/u.exec(path)
+      const match = /^\/api\/projects\/([a-f0-9]{32})(\/pause|\/analytics)?$/u.exec(path)
       if (match) {
         const project = listProjects().find(project => project.id === match[1])
         if (!project) { send(404, { error: 'Unknown project' }); return }
+        if (req.method === 'GET' && match[2] === '/analytics') {
+          if (project.error) { send(409, { error: project.error }); return }
+          let period
+          try { period = parsePeriod(new URL(req.url!, origin).searchParams) } catch (error) { send(400, { error: (error as Error).message }); return }
+          send(200, projectAnalytics(project.root, period)); return
+        }
         if (req.method === 'GET' && !match[2]) { send(200, snapshot(project, true)); return }
-        if (req.method === 'POST' && match[2]) {
+        if (req.method === 'POST' && match[2] === '/pause') {
           if (project.error || !snapshot(project, false).goal) { send(409, { error: 'No readable project goal' }); return }
           safeFile(project.root, '.yoke/goal.pause')
           pauseProjectGoal(project.root)

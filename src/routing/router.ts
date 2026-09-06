@@ -31,6 +31,8 @@ export interface AdaptiveRunnerOptions {
   captureRoute?: (agent: Agent, ctx: AgentContext, prompt: string, selection: ModelSelection) => CapturedAgentRun
   makeWorker?: (agent: Agent, selection: ModelSelection) => AgentRunner
   now?: () => number
+  /** Stable project identity when execution occurs in disposable worktrees. */
+  projectRoot?: string
 }
 
 const costRank = { low: 0, medium: 1, high: 2 } as const
@@ -133,7 +135,32 @@ function callUsage(role: ModelCallUsage['role'], provider: Agent, selection: Mod
   }
 }
 
+export interface AsyncAdaptiveRunnerOptions extends Omit<AdaptiveRunnerOptions, 'makeWorker' | 'captureRoute'> {
+  makeWorker: (agent: Agent, selection: ModelSelection) => (ctx: AgentContext) => Promise<AgentResult>
+  captureRoute: (agent: Agent, ctx: AgentContext, prompt: string, selection: ModelSelection) => Promise<CapturedAgentRun>
+}
+
 export function makeAdaptiveRunner(options: AdaptiveRunnerOptions): AgentRunner {
+  const run = routingSteps(options)
+  return ctx => {
+    const steps = run(ctx)
+    let next = steps.next()
+    while (!next.done) next = steps.next(next.value() as CapturedAgentRun & AgentResult)
+    return next.value
+  }
+}
+
+export function makeAsyncAdaptiveRunner(options: AsyncAdaptiveRunnerOptions): (ctx: AgentContext) => Promise<AgentResult> {
+  const run = routingSteps(options)
+  return async ctx => {
+    const steps = run(ctx)
+    let next = steps.next()
+    while (!next.done) next = steps.next(await next.value() as CapturedAgentRun & AgentResult)
+    return next.value
+  }
+}
+
+function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOptions) {
   const now = options.now ?? Date.now
   const available = options.isAvailable ?? (() => true)
   const eligibleWorkers = options.workers.filter(worker => available(worker.agent))
@@ -144,25 +171,25 @@ export function makeAdaptiveRunner(options: AdaptiveRunnerOptions): AgentRunner 
     selection,
   }))
 
-  return (ctx): AgentResult => {
+  return function* (ctx: AgentContext): Generator<() => CapturedAgentRun | AgentResult | Promise<CapturedAgentRun | AgentResult>, AgentResult, CapturedAgentRun & AgentResult> {
     // Re-rank per story so a long-running loop can use gate outcomes learned by
     // earlier stories without rebuilding the runner.
     const rule = options.rules?.find(rule => (!rule.area || rule.area === ctx.story.area) && (!rule.storyId || rule.storyId === ctx.story.id) && (rule.area || rule.storyId))
     if (rule) {
-      const project = projectHash(ctx.targetDir)
+      const project = projectHash(options.projectRoot ?? ctx.targetDir)
       const prior = readRoutingObservations().reverse().find(event => event.projectHash === project && event.storyHash === storyHash(project, ctx.story.id) && typeof event.verificationSuccess === 'boolean')
       if (prior?.verificationSuccess === false) failedStories.add(ctx.story.id)
     }
     const ruleWorker = rule && failedStories.has(ctx.story.id) ? rule.escalateTo ?? 'SELF' : rule?.worker
     const candidates = rule ? eligibleWorkers : rankWorkers(eligibleWorkers, options.strategy, options.maxCandidates)
     if (candidates.length === 0) {
-      return makeWorker(options.parent, options.parentSelection ?? {})(ctx)
+      return yield () => makeWorker(options.parent, options.parentSelection ?? {})(ctx)
     }
 
     const prompt = buildRoutingPrompt(ctx, candidates, options.strategy)
-    const orchestratorSelection = { ...(options.parentSelection ?? {}), ...(options.orchestratorSelection ?? {}), ...(options.parent === 'codex' ? { nativeMultiAgent: false } : {}) }
+    const orchestratorSelection = { ...(options.parentSelection ?? {}), ...(options.orchestratorSelection ?? {}), nativeMultiAgent: false }
     const orchestratorStarted = now()
-    const routeRun: CapturedAgentRun = rule ? { success: true, summary: 'Explicit rule', output: '', tokens: { inputTokens: 0, outputTokens: 0 } } : options.captureRoute
+    const routeRun: CapturedAgentRun = rule ? { success: true, summary: 'Explicit rule', output: '', tokens: { inputTokens: 0, outputTokens: 0 } } : yield () => options.captureRoute
       ? options.captureRoute(options.parent, ctx, prompt, orchestratorSelection)
       : runCapturedAgent(
           options.parent,
@@ -179,17 +206,19 @@ export function makeAdaptiveRunner(options: AdaptiveRunnerOptions): AgentRunner 
     const worker = selected === 'SELF' ? undefined : candidates.find(candidate => candidate.id === selected)
     const provider = worker?.agent ?? options.parent
     const selection: ModelSelection = worker
-      ? { model: worker.model, reasoningEffort: worker.reasoningEffort, ...(provider === 'codex' ? { nativeMultiAgent: false } : {}), ...(provider !== 'gemini' ? { bare: options.parentSelection?.bare } : {}) }
-      : { ...(options.parentSelection ?? {}), ...(provider === 'codex' ? { nativeMultiAgent: false } : {}) }
+      ? { model: worker.model, reasoningEffort: worker.reasoningEffort, nativeMultiAgent: false, ...(provider !== 'gemini' ? { bare: options.parentSelection?.bare } : {}) }
+      : { ...(options.parentSelection ?? {}), nativeMultiAgent: false }
 
     const workerStarted = now()
-    const result = makeWorker(provider, selection)(ctx)
+    const result = yield () => makeWorker(provider, selection)(ctx)
     const workerDurationMs = Math.max(0, now() - workerStarted)
     const calls = [
       ...(!rule ? [callUsage('orchestrator', options.parent, orchestratorSelection, routeRun.tokens, orchestratorDurationMs)] : []),
       callUsage(worker ? 'worker' : 'parent', provider, selection, result.tokens, workerDurationMs, selected),
     ]
     const tokens: TokenUsage = {
+      storyId: ctx.story.id,
+      escalated: Boolean(rule && failedStories.has(ctx.story.id)),
       inputTokens: (routeRun.tokens?.inputTokens ?? 0) + (result.tokens?.inputTokens ?? 0),
       ...((routeRun.tokens?.cachedInputTokens !== undefined || result.tokens?.cachedInputTokens !== undefined)
         ? { cachedInputTokens: (routeRun.tokens?.cachedInputTokens ?? 0) + (result.tokens?.cachedInputTokens ?? 0) }
@@ -216,7 +245,7 @@ export function makeAdaptiveRunner(options: AdaptiveRunnerOptions): AgentRunner 
       recorded = true
       if (!verificationSuccess) failedStories.add(ctx.story.id)
       else failedStories.delete(ctx.story.id)
-      const project = projectHash(ctx.targetDir)
+      const project = projectHash(options.projectRoot ?? ctx.targetDir)
       recordRoutingObservation({
         projectHash: project,
         storyHash: storyHash(project, ctx.story.id),

@@ -181,3 +181,19 @@ Am 2026-09-05 gelesene Primärquellen; vor konkreten Versions-/Preisentscheidung
 - https://github.com/open-gsd/gsd-core
 
 Provenienz der ursprünglichen README-Prüfung: kein C2PA gefunden, unterstützter Scan vollständig, Verifikation/Vertrauen/Metadatenprivatsphäre unbekannt. Unicode-Befund: Emoji-Variationszeichen, kein Nachweis eines KI-Wasserzeichens. Proprietäre Wasserzeichen nicht überprüfbar. Dieses Gesprächsdokument wurde vom KI-Assistenten aus der Sitzung zusammengefasst; es enthält keine unabhängige Bestätigung der Produktthesen.
+
+
+## Fortsetzung am 2026-09-06: Defaults und Dashboard
+
+Der Nutzer hat die kombinierte Umsetzung von automatischem Routing/Parallelismus und den drei Dashboardansichten Jetzt, Verbrauch & Zeit sowie Ergebnisse beauftragt. Die Änderungen liegen lokal als unveröffentlichter Ausbau vor; Paketversion und zuletzt veröffentlichtes Release bleiben 1.7.0.
+
+Umgesetzt: Routing im asynchronen Workerpfad; neue Setups mit Routing an, Parallelität auto und Isolation an; konservativ höchstens zwei Yoke-Worker bei deklarierten Schreibbereichen; Respektierung expliziter Einstellungen; dauerhafte Messhistorie getrennt von der kurzen Aktivitätsliste; Tages-/Wochen-/Monatsauswertung in UTC; Modell- und Projektvergleich; Verbrauchsdiagramm; aktuelle Aufgaben und Phasen; Abnahmen und Aufwand pro Abnahme. Verfügbare Reviewer-, Kritiker- und Reparaturnutzung wird mit erfasst. Details und Grenzen stehen in VERIFIED-PROJECTS.md.
+
+Weiterhin keine behaupteten Fähigkeiten: dynamische gemeinsame Nutzung von Slots durch native Subagenten (native Delegation ist für Loop-Aufrufe bei allen drei Anbietern deaktiviert), exakte Generierungsgeschwindigkeit, vollständige Rekonstruktion alter Verbrauchsdaten, automatische monatliche Archivverdichtung oder kalibrierte Zeitprognosen. Bestehende Quality-Reparaturlimits bleiben erhalten; konkurrierende Kandidaten bleiben optional.
+
+Die Umsetzung wurde mit Tests und einer lokalen Browserprüfung geprüft; authentifizierte Modellbenchmarks und Veröffentlichung waren kein Bestandteil dieser Fortsetzung. Dieses Update wurde vom KI-Assistenten aus der laufenden Umsetzung festgehalten.
+
+
+### Releaseauftrag am 2026-09-06
+
+Der Nutzer hat anschließend maximal drei Worker im Automatikmodus und die Veröffentlichung der Weiterentwicklung beauftragt. Releaseziel ist 1.8.0; der frühere lokale Zwischenstand mit zwei Workern ist damit überholt. Jede neue Version muss vor Veröffentlichung einen datierten Changelogeintrag erhalten; die verbindliche Regel steht in AGENTS.md. Der tatsächliche Veröffentlichungsstatus wird über GitHub Release und npm geprüft.

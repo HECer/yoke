@@ -128,7 +128,10 @@ export async function runProjectGoal(root: string, options: GoalRunOptions = {})
       report = checkProject(root)
       appendEvent(root, { runId: goal.id, timestamp: new Date().toISOString(), type: 'phase-ended', phase: 'verify', durationMs: Date.now() - checkStarted, outcome: report.status })
       goal.attempts.push({ provider, model: result.model ?? options.selection?.model, startedAt: new Date(started).toISOString(), durationMs: agentDurationMs, success: result.success, summary: result.summary.slice(0, 8000), checkId: report.id, inputTokens: result.inputTokens, outputTokens: result.outputTokens })
-      appendEvent(root, { runId: goal.id, timestamp: new Date().toISOString(), type: 'attempt-ended', attemptId: `${goal.id}:${goal.attempts.length}`, durationMs: Date.now() - started, outcome: report.status, data: { provider, model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens } })
+      const usageAvailable = result.inputTokens !== undefined && result.outputTokens !== undefined
+      appendEvent(root, { runId: goal.id, timestamp: new Date().toISOString(), type: 'tokens', attemptId: `${goal.id}:${goal.attempts.length}`, durationMs: agentDurationMs, data: { provider, role: 'parent', model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, usageAvailable } })
+      appendEvent(root, { runId: goal.id, timestamp: new Date().toISOString(), type: 'attempt-ended', attemptId: `${goal.id}:${goal.attempts.length}`, durationMs: Date.now() - started, outcome: report.status, data: { provider, model: result.model, usageAvailable } })
+      if (report.status === 'passed') appendEvent(root, { runId: goal.id, timestamp: new Date().toISOString(), type: 'accepted', attemptId: `${goal.id}:${goal.attempts.length}` })
       goal = save(root, { ...goal, lastCheck: report.id, pendingAttempt: undefined })
       if (controller.signal.aborted) return save(root, { ...goal, status: 'blocked', reason: 'Time budget exceeded; work retained' })
     }

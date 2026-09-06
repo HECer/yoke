@@ -367,7 +367,7 @@ export function main(argv: string[]): number | Promise<number> {
           console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini)`)
           return 1
         }
-        const isolate = rest.includes('--isolate')
+        const isolate = rest.includes('--isolate') ? true : rest.includes('--no-isolate') ? false : undefined
         const reviewerArg = rest.find(a => a.startsWith('--reviewer='))?.slice('--reviewer='.length)
         let reviewer: Agent | undefined
         if (reviewerArg) {
@@ -381,8 +381,8 @@ export function main(argv: string[]): number | Promise<number> {
         const allowSelfReview = rest.includes('--allow-self-review')
         const permissions = rest.includes('--unsafe') ? 'unsafe' as const : undefined
         const parallelArg = rest.find(a => a.startsWith('--parallel='))
-        const parallel = parallelArg ? Number(parallelArg.slice('--parallel='.length)) : 1
-        if (!Number.isInteger(parallel) || parallel < 1) { console.error(`Invalid --parallel value: ${parallelArg}`); return 1 }
+        const parallel = parallelArg && parallelArg !== '--parallel=auto' ? Number(parallelArg.slice('--parallel='.length)) : undefined
+        if (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) { console.error(`Invalid --parallel value: ${parallelArg}`); return 1 }
         const json = rest.includes('--json')
         const routing = rest.includes('--routing') ? true : rest.includes('--no-routing') ? false : undefined
         const toArg = rest.find(a => a.startsWith('--timeout='))
@@ -404,9 +404,9 @@ export function main(argv: string[]): number | Promise<number> {
         }
         const qualityFlags = parseQualityFlags(rest)
         if (!qualityFlags.ok) { console.error(qualityFlags.error); return 1 }
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, resumeWorktree: rest.includes('--resume-worktree'), parallel, reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions, ...qualityFlags.options })
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, resumeWorktree: rest.includes('--resume-worktree'), parallel, parallelAuto: parallelArg === '--parallel=auto', reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions, ...qualityFlags.options })
       }
-      console.log('usage: yoke loop <on|off|status|decision|answer|resume [--discard] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=N] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|decision|answer|resume [--discard] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=<auto|N>] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate|--no-isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]')
       return 1
     }
     case 'new': {

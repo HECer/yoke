@@ -447,7 +447,7 @@ describe('makeRunner claude default (no tokenReport flag)', () => {
     const res = runner({ targetDir: d, story })
     rmSync(d, { recursive: true, force: true })
     expect(res.success).toBe(true)
-    expect(res.tokens).toEqual({ inputTokens: 3, outputTokens: 2 })
+    expect(res.tokens).toMatchObject({ inputTokens: 3, outputTokens: 2 })
     expect(seen[0].args).toContain('stream-json')
   })
 })
@@ -466,7 +466,7 @@ describe('makeRunner with tokenReport', () => {
     const res = runner({ targetDir: d, story })
     rmSync(d, { recursive: true, force: true })
     expect(res.success).toBe(true)
-    expect(res.tokens).toEqual({ inputTokens: 15, outputTokens: 8, model: 'claude-opus-4-6-20260501' })
+    expect(res.tokens).toMatchObject({ inputTokens: 15, outputTokens: 8, model: 'claude-opus-4-6-20260501' })
     expect(seen).toHaveLength(1)
     expect(seen[0].args).toContain('stream-json')
     expect(seen[0].input).toContain('S1')  // the prompt still flows via stdin
@@ -479,7 +479,7 @@ describe('makeRunner with tokenReport', () => {
     const res = runner({ targetDir: d, story })
     rmSync(d, { recursive: true, force: true })
     expect(res.success).toBe(false)
-    expect(res.tokens).toEqual({ inputTokens: 15, outputTokens: 8, model: 'claude-opus-4-6-20260501' })
+    expect(res.tokens).toMatchObject({ inputTokens: 15, outputTokens: 8, model: 'claude-opus-4-6-20260501' })
   })
 
   it('captures structured telemetry for non-claude agents too', () => {
@@ -497,7 +497,7 @@ describe('makeRunner with tokenReport', () => {
     expect(invs).toHaveLength(1)
     expect(invs[0].args).toEqual(['exec', '--approve-for-me', '--json'])
     expect(res.success).toBe(true)
-    expect(res.tokens).toEqual({ inputTokens: 4, outputTokens: 2, model: 'gpt-5' })
+    expect(res.tokens).toMatchObject({ inputTokens: 4, outputTokens: 2, model: 'gpt-5' })
   })
 })
 

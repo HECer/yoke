@@ -12,7 +12,7 @@ describe('provider invocations', () => {
     expect(() => buildProviderInvocation('gemini', 'P', '/w', 'safe', { bare: true })).toThrow(/Gemini.*bare/)
     expect(() => buildProviderInvocation('gemini', 'P', '/w', 'safe', { reasoningEffort: 'high' })).toThrow(/Gemini.*reasoning/)
     expect(() => buildProviderInvocation('gemini', 'P', '/w', 'safe', { nativeMultiAgent: true })).toThrow(/Gemini.*nativeMultiAgent/)
-    expect(() => buildProviderInvocation('gemini', 'P', '/w', 'safe', { nativeMultiAgent: false })).toThrow(/Gemini.*nativeMultiAgent/)
+    expect(buildProviderInvocation('gemini', 'P', '/w', 'safe', { nativeMultiAgent: false }).args[0]).toContain('bounded-gemini.mjs')
   })
   it('uses safe, structured Claude mode without bypass flags by default', () => {
     const inv = buildProviderInvocation('claude', 'P', '/w', 'safe')

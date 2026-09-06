@@ -42,7 +42,7 @@ function writeQualityProject(referenceDigest: string, policy: 'blocking' | 'advi
   saveConfig(projectDir, {
     canonVersion: 'test',
     agents: ['codex'],
-    loop: { enabled: true },
+    loop: { isolate: false, enabled: true },
     ...(repairGates ? { verify: { command: 'npm run test:S1' }, perf: { command: 'npm run benchmark:S1' } } : {}),
     quality: { enabled: true, policy: 'blocking', maxRounds: 1, maxMinutes: 1, consistencyChecks: 2, maxParallelCandidates: 1, criticAgent: 'codex', criticModel: 'test-critic' },
   })
@@ -100,7 +100,7 @@ describe('runLoopCommand declared quality integration', () => {
   it('enables quality only for declared stories when the invocation opts in over disabled project defaults', () => {
     writeQualityProject(digest('trusted reference'))
     saveConfig(projectDir, {
-      canonVersion: 'test', agents: ['codex'], loop: { enabled: true },
+      canonVersion: 'test', agents: ['codex'], loop: { isolate: false, enabled: true },
       quality: { enabled: false, policy: 'blocking', maxRounds: 1, maxMinutes: 1, consistencyChecks: 2, maxParallelCandidates: 1, criticAgent: 'codex', criticModel: 'test-critic' },
     })
     let critics = 0

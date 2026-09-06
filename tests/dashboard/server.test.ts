@@ -6,11 +6,25 @@ import { request } from 'node:http'
 import { registerProject, listProjects, unregisterProject } from '../../src/dashboard/registry.js'
 import { startDashboard } from '../../src/dashboard/server.js'
 import { createProjectGoal } from '../../src/goals/command.js'
+import { appendEvent } from '../../src/observability/events.js'
 let root: string
 let oldState: string | undefined
 let server: Awaited<ReturnType<typeof startDashboard>> | undefined
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'yoke-dash-')); oldState = process.env.YOKE_STATE_DIR; process.env.YOKE_STATE_DIR = join(root, 'state') })
 afterEach(async () => { await server?.close(); server = undefined; if (oldState === undefined) delete process.env.YOKE_STATE_DIR; else process.env.YOKE_STATE_DIR = oldState; rmSync(root, { recursive: true, force: true }) })
+it('serves bounded project history and rejects invalid time ranges', async () => {
+  const project = registerProject(root)
+  appendEvent(root, { runId: 'test-run', type: 'tokens', timestamp: '2026-09-06T10:00:00Z', data: { inputTokens: 123, outputTokens: 45, model: 'reported-model' } })
+  server = await startDashboard()
+  const endpoint = `${server.url}api/projects/${project.id}/analytics`
+  const response = await fetch(endpoint + '?from=2026-09-01&to=2026-10-01&bucket=week')
+  expect(response.status).toBe(200)
+  const data = await response.json()
+  expect(data.total.inputTokens).toBe(123)
+  expect(data.models[0].model).toBe('reported-model')
+  expect((await fetch(endpoint + '?from=invalid')).status).toBe(400)
+  expect((await fetch(endpoint, { method: 'POST', headers: { Origin: server.url.slice(0, -1) } })).status).toBe(403)
+})
 it('registers canonical roots once and surfaces missing projects', () => {
   const project = join(root, 'project'); mkdirSync(project)
   const first = registerProject(project)

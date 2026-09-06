@@ -33,7 +33,8 @@ describe('yoke setup', () => {
     expect(await runSetup(dir, { host: 'codex', interactive: false })).toBe(0)
     expect(loadConfig(dir)).toMatchObject({
       agents: ['codex'], codeGraph: 'graphify',
-      loop: { enabled: true, decisionPolicy: 'auto' },
+      loop: { enabled: true, decisionPolicy: 'auto', parallel: 'auto', isolate: true },
+      routing: { enabled: true },
       runner: { agent: 'codex' },
     })
   })

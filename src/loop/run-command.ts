@@ -131,6 +131,7 @@ export interface RunLoopCommandOptions {
   commitIdentity?: CommitIdentity
   audit?: Verifier
   parallel?: number
+  parallelAuto?: boolean
   /** Override config.routing.enabled for this invocation. */
   routing?: boolean
   /** Test seam; production consumes the append-only change inbox. */
@@ -145,9 +146,9 @@ export interface RunLoopCommandOptions {
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number | Promise<number> {
-  const parallel = opts.parallel ?? 1
+  let parallel = opts.parallel ?? 1
   const candidates = opts.candidates ?? 1
-  if (opts.resumeWorktree && (!opts.isolate || parallel !== 1 || candidates !== 1)) {
+  if (opts.resumeWorktree && (opts.isolate === false || parallel !== 1 || candidates !== 1)) {
     console.error('--resume-worktree requires --isolate --parallel=1 --candidates=1')
     return 2
   }
@@ -190,6 +191,16 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   const path = prdPath(targetDir)
   if (!existsSync(path)) {
     console.error(`No PRD found at ${path}. Create one (see canon loop/prd.schema.md).`)
+    return 2
+  }
+  const parallelSetting = opts.parallelAuto ? 'auto' : opts.parallel ?? config.loop.parallel ?? 'auto'
+  if (parallelSetting === 'auto') {
+    const pending = loadPrd(path).filter(story => !story.passes)
+    parallel = !opts.resumeWorktree && !config.actions?.length && pending.length > 1 && pending.every(story => story.writes?.length) ? 3 : 1
+  } else parallel = parallelSetting
+  const isolate = opts.isolate ?? config.loop.isolate ?? true
+  if (opts.resumeWorktree && (!isolate || parallel !== 1)) {
+    console.error('--resume-worktree requires isolation and one worker')
     return 2
   }
   if (candidates > 1) {
@@ -276,11 +287,13 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     console.error('Quality candidate selection requires quality.critic.model (or legacy quality.criticModel) before any runner or worktree is started.')
     return 2
   }
+  let executionReporter: LoopReporter | undefined
   const quality = createQualityCommandHooks({
     targetDir,
     config,
     runnerAgent,
     idleMs,
+    onUsage: usage => executionReporter?.addTokens(usage),
     policy: qualityOverrides,
     ...(opts.qualityRuntime ? { runtime: opts.qualityRuntime } : {}),
   })
@@ -293,16 +306,13 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     announce(`Quality: ${resolved.policy} · critic: ${criticAgent}${configuredCriticModel ? `/${configuredCriticModel}` : '/provider-default'} · repair: ${repairAgent}${config.quality?.repair?.model ?? config.quality?.repairModel ? `/${config.quality?.repair?.model ?? config.quality?.repairModel}` : '/provider-default'} · permissions: read-only critic/safe repair · budget: ${limit}`)
   }
   const permissions = opts.permissions ?? config.runner?.permissions ?? 'safe'
-  const routingEnabled = opts.routing ?? config.routing?.enabled ?? false
+  const routingRequested = opts.routing ?? config.routing?.enabled ?? true
+  const routingEnabled = routingRequested && Boolean(config.routing?.workers.length)
   const runnerSelection = {
     model: config.runner?.model,
     reasoningEffort: config.runner?.reasoningEffort,
     bare: config.runner?.bare,
-    ...((runnerAgent === 'codex' && (routingEnabled || opts.routing === false)) ? { nativeMultiAgent: false } : {}),
-  }
-  if ((parallel > 1 || candidates > 1) && routingEnabled) {
-    console.error('Adaptive routing is not available with parallel workers or quality candidates. Run with --parallel=1 --candidates=1 or disable routing.')
-    return 2
+    nativeMultiAgent: false,
   }
   const parallelProviders = [{
     provider: runnerAgent,
@@ -337,7 +347,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }
   }
   const ambiguityPolicy = opts.decisionPolicy ?? opts.onAmbiguity ?? config.loop.decisionPolicy ?? config.loop.onAmbiguity ?? 'auto'
-  if (routingEnabled && (!config.routing || config.routing.workers.length === 0)) {
+  if (opts.routing === true && (!config.routing || config.routing.workers.length === 0)) {
     console.error('Adaptive routing was requested, but no worker profiles are configured. Run yoke setup . --routing or add routing.workers to .yoke/config.yaml.')
     return 2
   }
@@ -368,6 +378,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     // Token reporting is part of the machine interface: in --json mode a claude
     // runner switches to stream-json so cumulative usage rides on every status.
     const runnerOpts = {
+      onStart: (agent: Agent, selection: import('../agents/types.js').ModelSelection) => executionReporter?.execution?.(agent, selection.model),
       tokenReport: opts.json === true,
       onAmbiguity: ambiguityPolicy,
       perfCommand: config.perf?.command,
@@ -377,6 +388,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     runner = routingEnabled && config.routing
       ? makeAdaptiveRunner({
           parent: runnerAgent,
+          projectRoot: targetDir,
           parentSelection: runnerOpts.selection,
           orchestratorSelection: config.routing.orchestrator ?? runnerOpts.selection,
           workers: config.routing.workers,
@@ -390,7 +402,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
         })
       : makeRunner(runnerAgent, idleMs, runnerOpts)
     const announce = opts.json ? console.error : console.log
-    announce(`Runner: ${runnerAgent} · permissions: ${permissions} · routing: ${routingEnabled ? 'on' : 'off'} · cwd: ${targetDir}`)
+    announce(`Runner: ${runnerAgent} · permissions: ${permissions} · routing: ${routingEnabled ? 'on' : routingRequested ? 'auto (parent; no worker profiles)' : 'off'} · workers: ${parallel} · isolation: ${isolate || parallel > 1 ? 'on' : 'off'} · cwd: ${targetDir}`)
   }
 
   if (config.actions?.length) {
@@ -398,6 +410,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     runner = makeActionRunner(config.actions, runner)
   }
   let review = opts.reviewRunner
+  let reviewProvider: string = 'unknown'
   if (!review && (opts.review || opts.reviewer)) {
     const reviewerAgent = opts.reviewer ?? (['codex', 'gemini', 'claude'] as Agent[]).find(agent => agent !== runnerAgent && available(agent))
     if (!reviewerAgent) {
@@ -407,6 +420,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       }
     }
     const resolvedReviewer = reviewerAgent ?? runnerAgent
+    reviewProvider = resolvedReviewer
     if (resolvedReviewer === runnerAgent && !opts.allowSelfReview) {
       console.error(`Reviewer "${resolvedReviewer}" is also the implementer. Pick another agent or pass --allow-self-review explicitly.`)
       return 2
@@ -418,6 +432,15 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     review = makeReviewRunner(resolvedReviewer, idleMs)
   }
 
+  if (review) {
+    const reviewRunner = review
+    review = context => {
+      const started = Date.now()
+      let result: import('./runner.js').AgentResult | undefined
+      try { result = reviewRunner(context); return result }
+      finally { executionReporter?.addTokens({ inputTokens: 0, outputTokens: 0, measurementComplete: result?.tokens !== undefined, ...result?.tokens, provider: reviewProvider, role: 'reviewer', storyId: context.story.id, durationMs: Date.now() - started }) }
+    }
+  }
   let lock: ReturnType<typeof acquireLock>
   try { lock = acquireLock(targetDir) } catch (error) {
     console.error(`Cannot acquire the Yoke loop lock: ${(error as Error).message}`)
@@ -431,12 +454,13 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     console.warn(`Took over a stale loop lock (pid ${lock.stalePid} is gone).`)
   }
   const reporter = opts.reporter ?? makeReporter(targetDir, { json: opts.json })
+  executionReporter = reporter
   const buildResume = (storyId: string, requestId: string) => buildTrustedDecisionResumeState({
     storyId,
     requestId,
     ...(opts.maxIterations !== undefined ? { maxIterations: opts.maxIterations } : {}),
     agent: runnerAgent,
-    isolate: parallel > 1 || candidates > 1 || (opts.isolate ?? false),
+    isolate: parallel > 1 || candidates > 1 || isolate,
     reviewer: opts.reviewer,
     review: opts.review === true || opts.reviewRunner !== undefined,
     allowSelfReview: opts.allowSelfReview ?? false,
@@ -481,6 +505,8 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       selection: runnerSelection,
       providers: parallelProviders,
       affinityProviders: parallelAffinityProviders,
+      routing: routingEnabled ? config.routing : undefined,
+      isAvailable: available,
       onAmbiguity: ambiguityPolicy,
       git: opts.git,
       identity: commitIdentity,
@@ -514,7 +540,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       perf,
       audit,
       maxIterations,
-      isolate: (opts.parallel ?? 1) > 1 ? true : (opts.isolate ?? false),
+      isolate,
       review,
       reporter,
       ...(quality ?? {}),

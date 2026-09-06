@@ -130,6 +130,26 @@ Versioned local events record status, phase duration, attempts and available usa
 
 ## Local project dashboard
 
+### Execution defaults in 1.8.0
+
+New setups enable routing, `loop.parallel: auto` and `loop.isolate: true`. Existing explicit settings remain authoritative. At execution time, automatic routing uses configured profiles; without profiles it keeps the selected parent. Explicit `--routing` without profiles still reports a configuration error. Routing rules bypass the controller and can escalate following failed independent gates, including across worktrees and restarts. Routing now also runs asynchronously inside parallel workers. An explicit task provider affinity takes precedence over routing.
+
+Automatic parallelism allows at most three Yoke workers when every pending task declares nonempty write scopes. Dependencies and overlapping scopes still constrain dispatch. Unknown scopes, configured tool actions and worktree recovery select serial execution. Use `--parallel=N`, `--parallel=auto`, `--no-routing` or `--no-isolate` to override defaults. Serial worktrees retain failed work and require deliberate recovery; the default does not discard an existing recovery tree. Quality repair budgets and opt-in competing candidates retain their existing policies.
+
+Integration retains an execution slot until its candidate lands. Yoke loop runners disable native delegation so it cannot multiply the default worker budget: Codex disables multi_agent; Claude disallows Agent, Task, TeamCreate and SendMessage; Gemini uses a separate temporary system-settings copy that disables experimental agents and its always-on investigator/help overrides. Existing Gemini system policy and system-default paths are preserved; unreadable or malformed policy blocks launch. Original settings are never overwritten. The temporary copy is removed on normal exit; forced process termination may leave a private temporary directory. Explicit competing candidate counts remain a separate opt-in workload.
+
+### Dashboard views
+
+- **Now:** reported task and worker activity, requested provider/model, elapsed worker time, phase, integration, blockers, status age, backlog and empirical remaining-time ranges. The view refreshes every five seconds while visible and not being operated with keyboard focus. A stale status is marked rather than asserted to be live.
+- **Usage & time:** last 24 hours, 7/30/90/365 days or custom dates, grouped by UTC day, Monday-based week or month. Displays reported input/output and cache categories, cost coverage, consumption charts, per-model time buckets, per-task usage and summed phase/call durations. The overview also compares projects for the same period.
+- **Results:** recorded acceptances, ended attempts, explicitly successful outcomes, repair phases, rule-driven escalations and recorded tokens/time per acceptance. Saved acceptance evidence and goal attempts remain available; their timestamps may fall outside the statistics period.
+
+The short activity list still retains at most 1,000 events. Compact measurements now also persist under `.yoke/history/YYYY-MM-DD/` independently of that retention and across runs. They contain identifiers, model/provider evidence and measurements, not prompts or full status snapshots. Runtime history is excluded from Yoke commits and added to new project ignore rules. Available reviewer, quality critic and repair usage is recorded separately; absent usage is counted as unknown. Recent and archived records are deduplicated by event ID.
+
+Dates and buckets use UTC. The custom end date is inclusive; the API uses an exclusive upper timestamp. Usage belongs to the time the provider reports it, and durations to their end time. Tokens per elapsed minute divide recorded input/output by the full selected interval. Tokens per call minute use summed reported call duration, which can overlap across workers. Neither is measured generation speed. Cache categories are shown separately without adding them to input again.
+
+Historical activity that was never recorded or already expired cannot be reconstructed. Queue/human waiting time that lacks measurements remains unknown; phase and attempt durations are summed worker time, not automatically elapsed project time. Queries allow at most 366 days and bounded reads (8 MiB per shard, 32 MiB overall, 50,000 records); skipped, malformed or oversized history is reported as incomplete. History currently requires local disk retention rather than automatic monthly compaction. Unknown model identity is never replaced by a requested model, and missing charges are not estimated from token counts.
+
 ```sh
 yoke projects add /path/to/project
 yoke projects list

@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, readdirSync, lstatSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { archiveMeasurement } from './history.js'
 
 export interface LoopEvent {
   schemaVersion: 1
   id: string
   runId: string
   timestamp: string
-  type: 'status' | 'tokens' | 'phase-ended' | 'attempt-ended'
+  type: 'status' | 'tokens' | 'phase-ended' | 'attempt-ended' | 'accepted'
   storyId?: string
   attemptId?: string
   phase?: string
@@ -39,6 +40,7 @@ export function appendEvent(root: string, event: Omit<LoopEvent, 'schemaVersion'
     if (Buffer.byteLength(content) > EVENT_MAX_BYTES) return
     lastStamp = Math.max(Date.now(), lastStamp + 1)
     writeFileSync(join(dir, `${String(lastStamp).padStart(13, '0')}-${id}.json`), content, { flag: 'wx' })
+    try { archiveMeasurement(root, JSON.parse(content) as LoopEvent) } catch { /* Recent evidence survives archive failures. */ }
     const names = readdirSync(dir).filter(name => namePattern.test(name)).sort()
     for (const name of names.slice(0, Math.max(0, names.length - EVENT_CAP))) unlinkSync(join(dir, name))
   } catch { /* Local observability must never abort work. */ }
@@ -56,7 +58,7 @@ export function readEvents(root: string, limit: number = 200): LoopEvent[] {
         const stat = lstatSync(file)
         if (!stat.isFile() || stat.isSymbolicLink() || stat.size > EVENT_MAX_BYTES) return []
         const value = JSON.parse(readFileSync(file, 'utf8')) as LoopEvent
-        if (value?.schemaVersion !== 1 || typeof value.id !== 'string' || typeof value.runId !== 'string' || typeof value.timestamp !== 'string' || !Number.isFinite(Date.parse(value.timestamp)) || !['status', 'tokens', 'phase-ended', 'attempt-ended'].includes(value.type)) return []
+        if (value?.schemaVersion !== 1 || typeof value.id !== 'string' || typeof value.runId !== 'string' || typeof value.timestamp !== 'string' || !Number.isFinite(Date.parse(value.timestamp)) || !['status', 'tokens', 'phase-ended', 'attempt-ended', 'accepted'].includes(value.type)) return []
         if (value.durationMs !== undefined && (!Number.isFinite(value.durationMs) || value.durationMs < 0)) return []
         return [value]
       } catch { return [] }

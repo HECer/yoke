@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildRoutingPrompt, makeAdaptiveRunner, parseRouteDecision, rankWorkers } from '../../src/routing/router.js'
+import { buildRoutingPrompt, makeAdaptiveRunner, makeAsyncAdaptiveRunner, parseRouteDecision, rankWorkers } from '../../src/routing/router.js'
 import type { RoutingWorker } from '../../src/retrofit/config.js'
 
 const workers: RoutingWorker[] = [
@@ -61,6 +61,27 @@ describe('routing control prompt', () => {
 })
 
 describe('adaptive runner', () => {
+  it('allows concurrent asynchronous workers without serializing model calls', async () => {
+    let active = 0, peak = 0
+    const runner = makeAsyncAdaptiveRunner({ parent: 'codex', workers, strategy: 'cost', maxCandidates: 1,
+      captureRoute: async () => ({ success: true, summary: '', output: 'YOKE_ROUTE {"worker":"claude-fast"}' }),
+      makeWorker: () => async () => { active++; peak = Math.max(peak, active); await new Promise(resolve => setTimeout(resolve, 15)); active--; return { success: true, summary: 'done' } },
+    })
+    await Promise.all([runner({ targetDir: registry, story }), runner({ targetDir: registry, story: { ...story, id: 'S2' } })])
+    expect(peak).toBe(2)
+  })
+  it('shares gate-failure history across disposable worktrees', async () => {
+    const selected: string[] = []
+    const create = () => makeAsyncAdaptiveRunner({ parent: 'codex' as const, projectRoot: registry, workers, strategy: 'cost' as const, maxCandidates: 1,
+      rules: [{ storyId: 'S1', worker: 'claude-fast', escalateTo: 'codex-deep' }],
+      captureRoute: async () => { throw Error('rules must not invoke a controller') },
+      makeWorker: (agent) => async () => { selected.push(agent); return { success: true, summary: 'done' } },
+    })
+    const first = await create()({ targetDir: join(registry, 'worktree-one'), story }); first.routing?.recordOutcome(false)
+    const second = await create()({ targetDir: join(registry, 'worktree-two'), story })
+    expect(selected).toEqual(['claude', 'codex'])
+    expect(second.tokens?.escalated).toBe(true)
+  })
   it('does not label controller-only dollars as complete execution cost', () => {
     const run = makeAdaptiveRunner({ parent: 'codex', workers, strategy: 'cost', maxCandidates: 1, captureRoute: () => ({ success: true, summary: '', output: 'YOKE_ROUTE {"worker":"claude-fast"}', tokens: { inputTokens: 1, outputTokens: 1, totalCostUsd: 0.01 } }), makeWorker: () => () => ({ success: true, summary: '', tokens: { inputTokens: 2, outputTokens: 2 } }) })
     expect(run({ targetDir: registry, story }).tokens).toMatchObject({ totalCostUsd: 0.01, measurementComplete: true, costMeasurementComplete: false })

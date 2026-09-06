@@ -1,6 +1,7 @@
 import type { Agent } from '../retrofit/config.js'
 import type { AgentInvocation, ModelSelection, PermissionProfile } from './types.js'
 import { ModelSelectionSchema } from './contracts.js'
+import { fileURLToPath } from 'node:url'
 
 export {
   providerSpawnOptions,
@@ -41,7 +42,7 @@ export function buildProviderInvocation(
   const parsedSelection = ModelSelectionSchema.parse(selection)
   if (agent === 'gemini' && parsedSelection.bare) throw new Error('Gemini does not support the bare startup selection')
   if (agent === 'gemini' && parsedSelection.reasoningEffort) throw new Error('Gemini does not support the reasoningEffort selection')
-  if (agent === 'gemini' && parsedSelection.nativeMultiAgent !== undefined) throw new Error('Gemini does not support the nativeMultiAgent selection')
+  if (agent === 'gemini' && parsedSelection.nativeMultiAgent === true) throw new Error('Gemini does not support enabling the nativeMultiAgent selection')
   const args = argsFor(agent, permissions)
   if (output.schemaFile !== undefined || output.jsonSchema !== undefined) {
     if (agent === 'codex' && output.schemaFile && output.jsonSchema === undefined) {
@@ -59,9 +60,13 @@ export function buildProviderInvocation(
     else if (agent === 'codex') args.push('--config', `model_reasoning_effort=${parsedSelection.reasoningEffort}`)
   }
   if (agent === 'codex' && parsedSelection.nativeMultiAgent === false) args.push('--disable', 'multi_agent')
+  if (agent === 'claude' && parsedSelection.nativeMultiAgent === false) args.push('--disallowedTools', 'Agent', 'Task', 'TeamCreate', 'SendMessage')
   if (parsedSelection.bare) {
     if (agent === 'codex') args.push('--ignore-user-config')
     else if (agent === 'claude') args.push('--bare')
+  }
+  if (agent === 'gemini' && parsedSelection.nativeMultiAgent === false) {
+    return { command: process.execPath, args: [fileURLToPath(new URL('../../hooks/bounded-gemini.mjs', import.meta.url)), ...args], input: prompt, cwd }
   }
   return { command: agent, args, input: prompt, cwd }
 }

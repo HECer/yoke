@@ -76,6 +76,7 @@ export type DispatcherOptions = {
   readonly dispatcherId?: string
   readonly id?: () => string
   readonly clock?: DispatcherClock
+  readonly onAccepted?: (story: Story) => void
   readonly onProgress?: (status: {
     readonly dispatcherId: string
     readonly maxConcurrency: number
@@ -239,11 +240,13 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
         case 'integrated':
           input.story.passes = true
           integrated.push(input.story.id)
+          options.onAccepted?.(input.story)
           result.routing.recordOutcome?.(true)
           return
         case 'integrated-but-blocked':
           input.story.passes = true
           integrated.push(input.story.id)
+          options.onAccepted?.(input.story)
           integrationBlocks.push(merge.reason)
           result.routing.recordOutcome?.(true)
           return
@@ -367,7 +370,8 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
       if (options.pause?.()) paused = true
       if (!paused && !cancellationReason && integrationBlocks.length === 0 && iterations < options.maxIterations) {
         const busy = new Set([...active.keys(), ...queued.keys(), ...failed])
-        const slots = Math.max(0, options.maxConcurrency - active.size)
+        // Integration/review retains its execution slot until the candidate lands.
+        const slots = Math.max(0, options.maxConcurrency - active.size - queued.size)
         const ready = readyStories(options.stories, { activeAreas: areas, activeWrites: [...reservedWrites.values()] }).filter(story => !busy.has(story.id))
         let launched = 0
         for (const story of ready) {
@@ -379,7 +383,7 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
           }
         }
       }
-      if (active.size > 0) { await Promise.race([...active.values()].map(worker => worker.task)); continue }
+      if (active.size > 0) { await Promise.race([...active.values()].map(worker => worker.task).concat([...queued.values()])); continue }
       if (queued.size > 0) { await Promise.race(queued.values()); continue }
       if (cancellationReason) return { status: 'cancelled', reason: cancellationReason, iterations, integrated, reopened, failed }
       if (paused) return { status: 'paused', iterations, integrated, reopened, failed }

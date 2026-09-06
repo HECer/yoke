@@ -53,6 +53,8 @@ export const YokeConfigSchema = z.object({
   agents: z.array(AgentSchema),
   loop: z.object({
     enabled: z.boolean(),
+    parallel: z.union([z.literal('auto'), z.number().int().positive()]).optional(),
+    isolate: z.boolean().optional(),
     timeoutMinutes: z.number().optional(),
     decisionPolicy: z.enum(['auto', 'critical']).optional(),
     // Ambiguous acceptance criteria: 'resolve' (default — agent decides and continues)
@@ -126,7 +128,7 @@ export interface YokeConfig {
   actions?: ToolAction[]
   canonVersion: string
   agents: Agent[]
-  loop: { enabled: boolean; timeoutMinutes?: number; decisionPolicy?: DecisionPolicy; onAmbiguity?: 'resolve' | 'abort' }
+  loop: { enabled: boolean; parallel?: 'auto' | number; isolate?: boolean; timeoutMinutes?: number; decisionPolicy?: DecisionPolicy; onAmbiguity?: 'resolve' | 'abort' }
   runner?: { agent?: Agent; model?: string; reasoningEffort?: string; bare?: boolean; permissions?: PermissionProfile }
   routing?: {
     enabled: boolean

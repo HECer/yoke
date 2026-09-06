@@ -2,8 +2,8 @@
 
 # 🐂 Yoke
 
-<!-- yoke:version:start -->1.7.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1100<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.8.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->1117<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1100%20defined-blue.svg)
+![Tests](https://img.shields.io/badge/tests-1117%20defined-blue.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -27,7 +27,7 @@
 
 > **TL;DR** — `yoke setup .` asks six questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. Add `--parallel=N` for dependency-aware workers, or declare a reference and add `--quality` for a bounded critic/repair gauntlet. If any blocking gate is red, nothing is committed. Proof lives in `.yoke/proof/<story>/`.
 
-**New in 1.7.0:** [verified project goals, recovery and one local dashboard for all your registered projects](docs/VERIFIED-PROJECTS.md). Check an existing project, continue a bounded goal with Codex, Claude or Gemini, and inspect tasks, acceptance evidence, recorded consumption and estimated timing in one place.
+**New in 1.8.0:** [automatic routing, up to three parallel workers and expanded project dashboards](docs/VERIFIED-PROJECTS.md). Inspect current work, compare recorded consumption across projects and models by day, week or month, and track measured effort per accepted change. New setups enable routing and isolated execution by default; explicit overrides remain available.
 
 ### One dashboard, multiple projects
 
@@ -62,8 +62,8 @@ retain actionable failures and final summaries, while large complete stdout/stde
 in private, content-addressed local artifacts. Existing projects keep their serial behavior and use
 safe 2 KiB preview / 8 KiB artifact defaults unless configured otherwise.
 
-Yoke 1.4 adds opt-in parallel workers and a bounded, reference-driven quality gauntlet without
-changing existing serial loop defaults. See [the 1.4 migration guide](docs/MIGRATING-TO-1.4.md)
+Yoke 1.4 introduced opt-in parallel workers and a bounded, reference-driven quality gauntlet.
+Yoke 1.8.0 uses automatic parallelism for tasks with declared write scopes. See [the 1.4 migration guide](docs/MIGRATING-TO-1.4.md)
 for the new flags, configuration, cleanup behavior, and review-verdict contract.
 
 Yoke 1.1 is safe-by-default: provider CLIs use autonomous sandbox profiles unless `--unsafe`
@@ -191,7 +191,7 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke projects add\|list\|remove` | Register a project, list registrations or remove a reference by ID | `0` · `2` invalid/unavailable |
 | `yoke check [dir] [--json] [--requirement=] [--protect [--refresh]]` | Execute acceptance checks or explicitly pin their infrastructure | `0` passed/pinned · `1` failed · `2` unverified/unavailable |
 | `yoke goal set\|run\|resume\|pause\|status\|handoff\|budget [dir]` | Durable objectives, provider handoff, protected checks and checkpoint budgets | run/resume: `0` complete · `1` unfinished · `2` unavailable |
-| `yoke setup [dir] [--yes] [--host=] [--agent=] [--runner=] [--code-graph=] [--decision-policy=] [--loop\|--no-loop] [--routing\|--no-routing]` | Shared six-question setup for Claude, Codex, and Gemini; adaptive routing is always an explicit opt-in | `0` · `1` invalid setup |
+| `yoke setup [dir] [--yes] [--host=] [--agent=] [--runner=] [--code-graph=] [--decision-policy=] [--loop\|--no-loop] [--routing\|--no-routing]` | Shared six-question setup for Claude, Codex, and Gemini; routing defaults on for new setups and preserves explicit opt-outs | `0` · `1` invalid setup |
 | `yoke validate [canonDir]` | Validate the canon (schema, frontmatter, templates) | `0` valid · `1` errors |
 | `yoke new <dir> [--idea=] [--agent=] [--runner=] [--loop]` | Greenfield bootstrap: git init → scaffold → retrofit → context → PRD (drafted from `--idea`) → committed | `0` · `1` usage / non-empty dir / draft failed (scaffold survives) · `2` draft agent unavailable |
 | `yoke retrofit [dir] [--agent=claude,codex,gemini\|all] [--code-graph=graphify\|serena] [--loop]` | Install/update the harness, non-destructively | `0` |
@@ -563,14 +563,16 @@ use `yoke loop resume . --discard`; pending decisions are never deleted by that 
 `loop.onAmbiguity: resolve|abort` and `--on-ambiguity=` remain supported as compatibility aliases;
 new projects should use `decisionPolicy: auto|critical`.
 
-### Adaptive model routing (explicit opt-in)
+### Adaptive model routing
 
-`yoke setup` asks before enabling routing; the default is **off**. When enabled, the selected
+`yoke setup` enables routing by default and preserves explicit opt-outs. Without configured
+worker profiles, automatic execution keeps the selected parent. When enabled, the selected
 parent remains the strong planner/controller. Before each bounded story it receives only the
 story, acceptance criteria, and at most three eligible worker profiles, then returns one
 machine-readable choice. The worker can be a cheaper/faster Claude, Codex, or Gemini profile;
-`SELF` keeps difficult work on the parent. Provider-native subagents are disabled for these
-runs so Yoke does not pay for two orchestration layers.
+`SELF` keeps difficult work on the parent. Explicit project rules skip the controller.
+Loop runners disable native delegation in Codex, Claude and Gemini so it cannot multiply
+the Yoke worker budget. Integration retains its execution slot until the candidate lands.
 
 **Provider support:** adaptive routing uses Yoke's shared provider adapter and works with Claude
 Code, Codex CLI, and Gemini CLI, including mixed-provider worker lists. Internal contract tests
@@ -584,7 +586,7 @@ runner:
   model: gpt-5.6-sol       # optional; provider model strings stay opaque to Yoke
   reasoningEffort: high
 routing:
-  enabled: true            # setup defaults false; setup --routing opts in
+  enabled: true            # new setup default; false preserves an explicit opt-out
   strategy: balanced       # balanced | cost | speed | quality
   maxCandidates: 3
   workers:
@@ -605,7 +607,7 @@ routing:
       capabilities: [large-context, implementation]
 ```
 
-Use `yoke loop run . --routing` for a one-run opt-in or `--no-routing` for a controlled
+Use `yoke loop run . --routing` to explicitly require configured routing or `--no-routing` for a controlled
 baseline. Routing control calls are read-only and deliberately tiny; malformed output or no
 eligible worker falls back to `SELF`. Yoke does not ship a universal, fast-aging
 "intelligence score". Candidate model IDs come from project configuration while setup defaults
@@ -615,9 +617,12 @@ after 30 days. It stores no prompts, source, or project paths—only a project h
 time/token/outcome evidence. Writes are immutable one-event files, so concurrent Yoke instances
 cannot overwrite a shared registry file.
 
-Routing is not free: it adds one controller call per story. It is most promising when a bounded
-worker saves more than that call costs; tiny stories may be slower. Keep it opt-in and measure it
-on your own backlog rather than assuming a win.
+Routing is not free: stories without a matching rule can add a controller call. Measure it
+on your own backlog rather than assuming a win. Routing now also runs within asynchronous
+parallel workers. Automatic parallelism starts at up to three workers when pending tasks declare
+write scopes; unknown scopes and configured tool actions keep execution serial. Isolation is
+on by default. Explicit `--parallel=N`, `--no-routing` and `--no-isolate` remain available.
+See [execution defaults and dashboard measurement details](docs/VERIFIED-PROJECTS.md#execution-defaults-in-180).
 
 ### Performance budgets: efficiency as a gate, not a style
 
@@ -841,7 +846,7 @@ the routed median used **33.8% less wall time, 11.0% less fresh input, 49.5% few
 and 78.2% fewer reasoning tokens**. All three pairs improved wall time and fresh input.
 
 The boundary matters: an earlier architecture/privacy task correctly stayed on `SELF` and paid
-controller overhead, so routing is an explicit opt-in rather than a universal win. Codex did not
+controller overhead, so the routing default is not evidence of universal savings. Codex did not
 emit dollar cost for these plan-backed runs; Yoke reports the measured token breakdown instead of
 inventing a price. Method, ranges, controller cost, caveats, analyzer, and six raw JSON rows are in
 [`bench/RESULTS.md`](bench/RESULTS.md#codex-only-full-repository-routing-study-2026-08-02).
@@ -890,7 +895,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1100 tests)
+npm test          # vitest (1117 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

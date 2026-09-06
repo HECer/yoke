@@ -60,6 +60,7 @@ export function createQualityCommandHooks(input: {
   readonly idleMs: number
   readonly policy?: QualityRunOverrides
   readonly runtime?: QualityCommandRuntime
+  readonly onUsage?: (usage: import('../loop/reporter.js').TokenUsage) => void
 }): QualityCommandHooks | undefined {
   const defaults = input.config.quality
   const overrides = input.policy
@@ -68,6 +69,14 @@ export function createQualityCommandHooks(input: {
 
   const references = input.runtime?.reference ?? productionReferenceAdapters(input.targetDir)
   const invoke = input.runtime?.invoke ?? runCapturedAgent
+  const measuredInvoke = (role: string, storyId: string) => (agent: Agent, invocation: Invocation): CapturedAgentRun => {
+    const started = Date.now()
+    let result: CapturedAgentRun | undefined
+    try { result = invoke(agent, invocation); return result }
+    finally {
+      input.onUsage?.({ inputTokens: 0, outputTokens: 0, measurementComplete: result?.tokens !== undefined, ...result?.tokens, provider: agent, role, storyId, durationMs: Date.now() - started })
+    }
+  }
   const prepared = new Map<string, PreparedQuality>()
   const criticAgent = defaults?.critic?.agent ?? defaults?.criticAgent ?? input.config.agents.find(agent => agent !== input.runnerAgent) ?? input.runnerAgent
   const criticModel = defaults?.critic?.model ?? defaults?.criticModel ?? (criticAgent === input.runnerAgent ? input.config.runner?.model : undefined)
@@ -76,6 +85,7 @@ export function createQualityCommandHooks(input: {
   const configuredRepairModel = defaults?.repair?.model ?? defaults?.repairModel
   const configuredRepairEffort = defaults?.repair?.reasoningEffort ?? defaults?.repairReasoningEffort
   const repairSelection = {
+    nativeMultiAgent: false,
     ...(configuredRepairModel ? { model: configuredRepairModel } : repairAgent === input.runnerAgent && input.config.runner?.model ? { model: input.config.runner.model } : {}),
     ...(configuredRepairEffort ? { reasoningEffort: configuredRepairEffort } : repairAgent === input.runnerAgent && input.config.runner?.reasoningEffort ? { reasoningEffort: input.config.runner.reasoningEffort } : {}),
   }
@@ -141,7 +151,7 @@ export function createQualityCommandHooks(input: {
             request,
             referenceBytes,
             candidateBytes: candidate.artifacts.map(value => value.bytes),
-            invocation: invoke,
+            invocation: measuredInvoke('critic', context.story.id),
             agent: criticAgent,
             ownershipRoot: input.targetDir,
             idleMs: input.idleMs,
@@ -169,7 +179,7 @@ export function createQualityCommandHooks(input: {
         buildProviderInvocation(repairAgent, repairPrompt(context, request, input.config), context.targetDir, 'safe', repairSelection),
         input.idleMs,
       )
-      const result = invoke(repairAgent, invocation)
+      const result = measuredInvoke('repair', context.story.id)(repairAgent, invocation)
       return { success: result.success, summary: result.summary }
     },
     repairLimits: resolveQualityPolicy({ defaults, overrides }).limits,
@@ -189,7 +199,7 @@ export function createQualityCommandHooks(input: {
         agent: criticAgent,
         model: criticModel ?? (() => { throw new Error('candidate comparison requires an explicit critic model when the provider default cannot be known before comparison') })(),
         idleMs: input.idleMs,
-        invoke,
+        invoke: measuredInvoke('critic', story.id),
       })
     },
   }
@@ -221,6 +231,7 @@ function providerCriticCall(input: {
     }
     const invocation = buildWatchdogInvocation(
       buildProviderInvocation(input.agent, criticPrompt(input.request), criticDir, 'read-only', {
+        nativeMultiAgent: false,
         ...(input.model ? { model: input.model } : {}),
         ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
       }),

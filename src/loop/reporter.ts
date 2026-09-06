@@ -40,6 +40,9 @@ export interface QualityStatus {
 }
 
 export interface ParallelWorkerStatus {
+  readonly startedAt?: string
+  readonly selectedProvider?: string
+  readonly selectedModel?: string
   readonly story: string
   readonly storyTitle: string
   readonly provider: string
@@ -120,6 +123,11 @@ export interface ModelCallUsage {
 }
 
 export interface TokenUsage {
+  storyId?: string
+  provider?: string
+  role?: string
+  durationMs?: number
+  escalated?: boolean
   measurementComplete?: boolean
   costMeasurementComplete?: boolean
   inputTokens: number
@@ -134,6 +142,7 @@ export interface TokenUsage {
 }
 
 export interface LoopStatus {
+  execution?: { provider: string; requestedModel?: string; startedAt: string }
   state: LoopState
   phase?: LoopPhase
   story?: string
@@ -146,7 +155,7 @@ export interface LoopStatus {
   startedAt: string
   updatedAt: string
   tokens?: TokenUsage
-  measurement?: { measuredCalls: number; unmeasuredAttempts: number; usageAvailable: boolean; costAvailable: 'unknown' | 'partial' | 'measured' }
+  measurement?: { measuredCalls: number; unknownCalls?: number; unmeasuredAttempts: number; usageAvailable: boolean; costAvailable: 'unknown' | 'partial' | 'measured' }
   quality?: QualityStatus
   parallel?: ParallelStatus
 }
@@ -192,6 +201,8 @@ export interface LoopReporter {
   quality(status: QualityStatus): void
   /** Accumulate runner token usage; totals ride along on every subsequent status write. */
   addTokens(usage: TokenUsage): void
+  accepted?(story: StoryRef): void
+  execution?(provider: string, requestedModel?: string): void
   parallel?(status: ParallelStatus): void
   parallelWorker?(status: ParallelWorkerStatus): void
   parallelIntegrator?(status: ParallelWorkerStatus | null): void
@@ -215,6 +226,7 @@ export function makeReporter(
   let tokens: TokenUsage | undefined
   const runId = randomUUID()
   let measuredCalls = 0
+  let unknownCalls = 0
   let measuredCosts = 0
   let unmeasuredAttempts = 0
   type Attempt = { id: string; storyId: string; started: number; phase?: string; phaseStarted: number; usageAvailable: boolean; prediction?: { expectedMs: number; lowerMs: number; upperMs: number; sampleCount: number } }
@@ -260,7 +272,10 @@ export function makeReporter(
 
   const persist = (status: LoopStatus, logLabel: string, consoleLine: string) => {
     const time = Date.parse(status.updatedAt)
-    if (logLabel === 'story-done') finishAttempt('serial', 'completed', time)
+    if (logLabel === 'story-done') {
+      finishAttempt('serial', 'completed', time)
+      appendEvent(dir, { runId, timestamp: status.updatedAt, type: 'accepted', storyId: status.story })
+    }
     else if (status.state !== 'running') for (const key of [...attempts.keys()]) finishAttempt(key, status.state, time)
     else if (status.story && status.phase) track('serial', status.story, status.phase, time)
     const workerKeys = new Set<string>()
@@ -272,7 +287,7 @@ export function makeReporter(
     }
     for (const key of [...attempts.keys()]) if (key.startsWith('parallel:') && !workerKeys.has(key)) finishAttempt(key, 'worker-ended', time)
     const withPercent = { ...status, percent: percentOf(status.progress) }
-    const measurement: NonNullable<LoopStatus['measurement']> = { measuredCalls, unmeasuredAttempts, usageAvailable: measuredCalls > 0, costAvailable: measuredCosts === 0 ? 'unknown' : measuredCosts === measuredCalls && unmeasuredAttempts === 0 && tokens?.measurementComplete !== false && tokens?.costMeasurementComplete !== false ? 'measured' : 'partial' }
+    const measurement: NonNullable<LoopStatus['measurement']> = { measuredCalls, unknownCalls, unmeasuredAttempts, usageAvailable: measuredCalls > 0, costAvailable: measuredCosts === 0 ? 'unknown' : measuredCosts === measuredCalls && unknownCalls === 0 && unmeasuredAttempts === 0 && tokens?.measurementComplete !== false && tokens?.costMeasurementComplete !== false ? 'measured' : 'partial' }
     const next = { ...withPercent, ...(tokens ? { tokens: { ...tokens } } : {}), measurement }
     current = next
     appendEvent(dir, { runId, timestamp: status.updatedAt, type: 'status', ...(status.story ? { storyId: status.story } : {}), data: { ...next } })
@@ -286,6 +301,12 @@ export function makeReporter(
   }
 
   return {
+    execution(provider, requestedModel) {
+      if (current) persist({ ...current, execution: { provider, requestedModel, startedAt: now().toISOString() }, updatedAt: now().toISOString() }, 'execution', `  · ${provider}/${requestedModel ?? 'provider-default'}`)
+    },
+    accepted(story) {
+      appendEvent(dir, { runId, timestamp: now().toISOString(), type: 'accepted', storyId: story.id })
+    },
     storyStart(story, iteration, progress) {
       const ts = now().toISOString()
       finishAttempt('serial', 'superseded', Date.parse(ts))
@@ -355,10 +376,15 @@ export function makeReporter(
         return previous
           ? {
               ...worker,
+              startedAt: previous.startedAt,
+              selectedProvider: previous.selectedProvider,
+              selectedModel: previous.selectedModel,
+              ...(previous.model ? { model: previous.model } : {}),
+              provider: previous.provider,
               ...(previous.phase ? { phase: previous.phase } : {}),
               ...(previous.quality ? { quality: previous.quality } : {}),
             }
-          : worker
+          : { ...worker, startedAt: now().toISOString() }
       })
       const reportedCandidates = previousWorkers.filter(worker => worker.candidateId && !(workers ?? []).some(candidate => sameWorker(candidate, worker)))
       const parallel = {
@@ -413,11 +439,13 @@ export function makeReporter(
         const value = usage[key]
         if (value !== undefined && (!Number.isFinite(value) || value < 0)) delete usage[key]
       }
-      measuredCalls++
-      if (usage.totalCostUsd !== undefined && Number.isFinite(usage.totalCostUsd) && usage.totalCostUsd >= 0) measuredCosts++
-      const attempt = attempts.get('serial')
-      if (attempt) attempt.usageAvailable = true
-      appendEvent(dir, { runId, timestamp: now().toISOString(), type: 'tokens', ...(attempt ? { storyId: attempt.storyId, attemptId: attempt.id } : {}), data: { usageAvailable: true, ...usage } })
+      const calls = usage.calls?.length ? usage.calls : [{ usageAvailable: usage.measurementComplete !== false, totalCostUsd: usage.totalCostUsd }]
+      measuredCalls += calls.filter(call => call.usageAvailable !== false).length
+      unknownCalls += calls.filter(call => call.usageAvailable === false).length
+      measuredCosts += calls.filter(call => call.totalCostUsd !== undefined && Number.isFinite(call.totalCostUsd) && call.totalCostUsd >= 0).length
+      const attempt = usage.storyId ? [...attempts.values()].find(attempt => attempt.storyId === usage.storyId) : attempts.get('serial')
+      if (attempt) attempt.usageAvailable = usage.measurementComplete !== false
+      appendEvent(dir, { runId, timestamp: now().toISOString(), type: 'tokens', ...(usage.storyId ? { storyId: usage.storyId } : {}), ...(usage.durationMs !== undefined ? { durationMs: usage.durationMs } : {}), ...(attempt ? { storyId: attempt.storyId, attemptId: attempt.id } : {}), data: { usageAvailable: usage.measurementComplete !== false, ...usage } })
       const model = usage.model ?? tokens?.model
       const cachedInputTokens = (tokens?.cachedInputTokens ?? 0) + (usage.cachedInputTokens ?? 0)
       const cacheWriteInputTokens = (tokens?.cacheWriteInputTokens ?? 0) + (usage.cacheWriteInputTokens ?? 0)

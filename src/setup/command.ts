@@ -60,7 +60,7 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
   const defaultLoop = opts.loop ?? existing?.loop.enabled ?? true
   const defaultRunner = opts.runner ?? existing?.runner?.agent ?? (host && defaultAgents.includes(host) ? host : defaultAgents[0] ?? host ?? 'claude')
   const defaultPolicy = opts.decisionPolicy ?? existing?.loop.decisionPolicy ?? (existing?.loop.onAmbiguity === 'abort' ? 'critical' : 'auto')
-  const defaultRouting = opts.routing ?? existing?.routing?.enabled ?? false
+  const defaultRouting = opts.routing ?? existing?.routing?.enabled ?? true
   const interactive = opts.interactive ?? (process.stdin.isTTY === true && process.stdout.isTTY === true)
 
   let close: (() => void) | undefined
@@ -95,10 +95,11 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
     if (code !== 0) return code
     const config = loadConfig(targetDir)
     if (!config) return 1
-    config.loop = { ...config.loop, enabled: loop, decisionPolicy }
+    config.loop = { parallel: 'auto', isolate: true, ...config.loop, enabled: loop, decisionPolicy }
     config.runner = { ...config.runner, agent: runner }
     const existingWorkers = config.routing?.workers ?? []
     config.routing = {
+      ...config.routing,
       enabled: routing,
       strategy: config.routing?.strategy ?? 'balanced',
       maxCandidates: config.routing?.maxCandidates ?? 3,

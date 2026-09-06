@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## 1.8.0 — 2026-09-06
+
+### Added
+- Add persistent local measurement history and dashboard views for current work, usage/time and results, including UTC day/week/month filters, model history, project comparisons and consumption charts.
+- Display current tasks, worker phases, integration progress and status age, with automatic refresh of the current-work view.
+- Record explicit acceptances and show measured tokens and time per acceptance. Attribute available reviewer, critic and repair usage; distinguish actual reported models, unknown calls and partial costs.
+
+### Changed
+- Enable routing in new setups and automatically select up to three parallel workers when all pending tasks declare write scopes. Dependencies and overlapping scopes still constrain dispatch. Preserve explicit opt-outs and use isolated worktrees by default.
+- Share routing decisions between synchronous and asynchronous runners; support routed parallel workers, stable recovery history and explicit provider affinity.
+- Reserve execution capacity through integration and disable native delegation for loop providers; preserve Gemini system policy in a temporary bounded-execution configuration.
+- Require a dated changelog entry, synchronized version metadata and verified release checks for every new version in the project instructions.
+
+### Fixed
+- Avoid conflicting Codex sandbox arguments and prevent Codex-only options from leaking into Gemini workers.
+- Keep compact measurement history after recent activity expires, deduplicate archived events, and report incomplete history instead of treating missing usage as zero.
+- Preserve reviewer telemetry and worker/model attribution across parallel execution and recovery.
+
+### Migration and validation limits
+- Use `--parallel=N` to choose a worker limit, `--parallel=auto` for automatic selection, `--no-routing` to opt out of routing, and `--no-isolate` to opt out of default isolation. Explicit existing configuration remains authoritative. Unknown write scopes, tool actions and worktree recovery select serial execution in auto mode.
+- Automatic routing needs configured profiles; otherwise it keeps the selected parent provider. Explicit `--routing` without profiles reports a configuration error.
+- Missing historical usage cannot be reconstructed. Tokens per minute describe interval or summed call consumption, not measured generation speed. Live authenticated provider benchmarks, resource-adaptive concurrency and calibrated time/cost predictions are not established by this release.
+
 ## 1.7.0 — 2026-09-05
 
 ### Added

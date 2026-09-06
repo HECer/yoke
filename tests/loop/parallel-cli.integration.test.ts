@@ -10,6 +10,8 @@ import type { AgentRunner } from '../../src/loop/runner.js'
 import type { GitOps } from '../../src/loop/gates.js'
 import type { Verifier } from '../../src/loop/verify.js'
 import type { ModelSelection } from '../../src/agents/types.js'
+import { readStatus, makeReporter } from '../../src/loop/reporter.js'
+import { buildProviderInvocation } from '../../src/agents/providers.js'
 
 const { makeAsyncRunner } = vi.hoisted(() => ({ makeAsyncRunner: vi.fn() }))
 
@@ -43,6 +45,41 @@ afterEach(() => {
 })
 
 describe('yoke loop run --parallel', () => {
+  it('does not leak Codex-only selections into a Gemini affinity worker', async () => {
+    saveConfig(dir, { canonVersion: 'test', agents: ['codex', 'gemini'], loop: { enabled: true }, runner: { agent: 'codex', bare: true, reasoningEffort: 'high' } })
+    savePrd(join(dir, '.yoke', 'prd.yaml'), [{ id: 'A', title: 'Gemini task', priority: 1, acceptance: ['works'], passes: false, agent: 'gemini' }])
+    makeAsyncRunner.mockImplementation((agent, options) => {
+      expect(agent).toBe('gemini')
+      expect(options.selection.nativeMultiAgent).toBe(false)
+      expect(options.selection).not.toHaveProperty('bare')
+      expect(() => buildProviderInvocation(agent, 'test', dir, 'safe', options.selection)).not.toThrow()
+      return () => ({ completion: Promise.resolve({ kind: 'succeeded', telemetry: { usageAvailable: false } }) })
+    })
+    expect(await runLoopCommand(dir, { parallel: 2, maxIterations: 1, git: parallelGit(), verify: verifyOk, isAvailable: () => true })).toBe(0)
+  })
+  it('automatically allows three workers for declared independent scopes', async () => {
+    const path = join(dir, '.yoke', 'prd.yaml')
+    savePrd(path, loadPrd(path).map(story => ({ ...story, writes: [`src/${story.id}`] })))
+    const reporter = makeReporter(dir, { quiet: true })
+    const parallelReports = vi.spyOn(reporter, 'parallel')
+    const code = await runLoopCommand(dir, { maxIterations: 3, runner: () => ({ success: true, summary: 'done' }), git: parallelGit(), verify: verifyOk, reporter })
+    expect(code).toBe(0)
+    expect(parallelReports).toHaveBeenCalledWith(expect.objectContaining({ maxConcurrency: 3 }))
+  })
+  it('keeps unknown scopes serial but isolates execution by default', async () => {
+    let executionDir = ''
+    const code = await runLoopCommand(dir, { maxIterations: 1, runner: context => { executionDir = context.targetDir; return { success: true, summary: 'done' } }, git: parallelGit(), verify: verifyOk })
+    expect(code).toBe(1)
+    expect(executionDir).not.toBe(dir)
+    expect(executionDir).toContain('worktrees')
+    expect(readStatus(dir)?.parallel).toBeUndefined()
+  })
+  it('respects explicit serial and non-isolated execution', async () => {
+    let executionDir = ''
+    const code = await runLoopCommand(dir, { parallel: 1, isolate: false, maxIterations: 1, runner: context => { executionDir = context.targetDir; return { success: true, summary: 'done' } }, git: parallelGit(), verify: verifyOk })
+    expect(code).toBe(1)
+    expect(executionDir).toBe(dir)
+  })
   it('runs affinity stories with their configured provider model while no-affinity stories keep the global provider', async () => {
     const calls: Array<{ agent: string; selection: ModelSelection | undefined }> = []
     makeAsyncRunner.mockImplementation((agent, options) => {
@@ -133,7 +170,7 @@ describe('yoke loop run --parallel', () => {
     expect(workerStarts).toBe(0)
   })
 
-  it('rejects parallel routing before the direct worker path can bypass adaptive selection', async () => {
+  it('routes parallel work through configured rules and the asynchronous provider', async () => {
     saveConfig(dir, {
       canonVersion: '0.1.0',
       agents: ['claude'],
@@ -142,22 +179,28 @@ describe('yoke loop run --parallel', () => {
         enabled: true,
         strategy: 'balanced',
         maxCandidates: 1,
-        workers: [{ id: 'claude-worker', agent: 'claude', costTier: 'medium', capabilities: [] }],
+        workers: [{ id: 'claude-worker', agent: 'claude', model: 'routed-model', costTier: 'medium', capabilities: [] }],
+        rules: [{ storyId: 'A', worker: 'claude-worker' }],
       },
       verify: { command: 'node -e "process.exit(0)"' },
     })
     let starts = 0
+    makeAsyncRunner.mockImplementation((_agent, options) => {
+      expect(options.selection.model).toBe('routed-model')
+      return () => { starts++; return { completion: Promise.resolve({ kind: 'succeeded', telemetry: { usageAvailable: false } }) } }
+    })
 
     const code = await Promise.resolve(runLoopCommand(dir, {
       parallel: 2,
       maxIterations: 1,
-      runner: () => { starts += 1; return { success: true, summary: 'unexpected' } },
+      isAvailable: () => true,
       git: parallelGit(),
       verify: verifyOk,
     }))
 
-    expect(code).toBe(2)
-    expect(starts).toBe(0)
+    expect(code).toBe(1)
+    expect(starts).toBe(1)
+    expect(loadPrd(join(dir, '.yoke', 'prd.yaml')).find(story => story.id === 'A')?.passes).toBe(true)
   })
 
   it('rejects duplicate affinity profiles for one provider before parallel dispatch', async () => {

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import type { GitOps } from './gates.js'
 import { sanitizeCommitMessage, type CommitIdentity } from './identity.js'
 
-export const RUNTIME_PATHS = ['.yoke/artifacts', '.yoke/events', '.yoke/checks', '.yoke/goal.json', '.yoke/goal.pause']
+export const RUNTIME_PATHS = ['.yoke/artifacts', '.yoke/events', '.yoke/history', '.yoke/checks', '.yoke/goal.json', '.yoke/goal.pause']
 export const RUNTIME_EXCLUDES = RUNTIME_PATHS.map(path => `:(exclude)${path}${path.endsWith('.json') || path.endsWith('.pause') ? '' : '/**'}`)
 
 export const realGitOps: GitOps = {
