@@ -20,7 +20,7 @@ export function resolveWindowsCommand(command: string, args: readonly string[], 
   const script = readFileSync(found, 'utf8')
   const entry = script.match(/"%dp0%[\\/]([^"\r\n]+\.(?:m?js|cjs))"/iu)?.[1]
   if (!entry) throw Error('Unsupported Windows batch launcher; use a native executable or an npm-generated CLI launcher')
-  const target = resolve(dirname(found), entry)
+  const target = resolve(dirname(found), ...entry.split(/[\\/]/u))
   if (!file(target)) throw Error('Provider npm entry point is missing')
   const localNode = join(dirname(found), 'node.exe')
   return { command: file(localNode) ? localNode : process.execPath, args: [target, ...args] }
