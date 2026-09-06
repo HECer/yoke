@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startProviderProcess } from '../../src/agents/providers.js'
@@ -134,7 +134,9 @@ describe('Phase 5 parallel integration', { timeout: 60_000 }, () => {
 const identity = { authorName: 'Test User', authorEmail: 'test@example.com', allowCoAuthors: false }
 
 function createProject(stories: readonly StorySpec[], quality: boolean): Project {
-  const dir = mkdtempSync(join(tmpdir(), 'yoke-phase-five-'))
+  // Node 24's Windows fs watcher asserts on 8.3 aliases such as RUNNER~1.
+  // Resolve the fixture root before passing barrier paths to real subprocesses.
+  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'yoke-phase-five-')))
   const barrier = join(dir, '.yoke', 'proof', 'phase-five-barrier')
   const criterionLog = join(dir, '.yoke', 'proof', 'criteria.log')
   projects.push(dir)
