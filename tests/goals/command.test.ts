@@ -3,11 +3,30 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, symlinkSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createProjectGoal, runProjectGoal, readProjectGoal, goalHandoff, pauseProjectGoal } from '../../src/goals/command.js'
+import { saveConfig } from '../../src/retrofit/config.js'
+import { saveAssessment } from '../../src/routing/capability.js'
+import { defaultRoutingWorkers } from '../../src/setup/command.js'
 let root: string
 let state: string
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'yoke-goal-')); state = mkdtempSync(join(tmpdir(), 'yoke-state-')); vi.stubEnv('YOKE_STATE_DIR', state); mkdirSync(join(root, '.yoke')) })
 afterEach(() => { rmSync(root, { recursive: true, force: true }); rmSync(state, { recursive: true, force: true }); vi.unstubAllEnvs() })
 function manifest() { writeFileSync(join(root, '.yoke', 'acceptance.yaml'), 'version: 1\nprotected: [test.mjs]\ncriteria:\n- id: outcome\n  text: Expected outcome\n  commands: [node test.mjs]\n') }
+it('uses a cached goal assessment to choose a smaller model and retains independent acceptance', async () => {
+  vi.stubEnv('YOKE_REGISTRY_DIR', join(state, 'routing'))
+  manifest()
+  writeFileSync(join(root, 'test.mjs'), 'import {existsSync} from "node:fs"; process.exit(existsSync("implemented.txt") ? 0 : 1)')
+  const goal = createProjectGoal(root, 'Expected outcome')
+  saveConfig(root, { canonVersion: 'test', agents: ['codex'], loop: { enabled: true }, routing: { enabled: true, strategy: 'capability', maxCandidates: 3, workers: defaultRoutingWorkers(['codex']) } })
+  saveAssessment(root, { id: goal.id, title: goal.objective, priority: 1, passes: false, agent: 'codex', acceptance: ['Expected outcome'] }, { taskClass: 'implementation', difficulty: 'medium', uncertainty: 'low', risk: 'low', scope: 'low', testability: 'high', reason: 'Known implementation', approach: 'Implement and run node test.mjs' }, { provider: 'codex', model: 'gpt-6-astra' })
+  const result = await runProjectGoal(root, { provider: 'codex', selection: { model: 'gpt-6-astra' }, execute: async input => {
+    expect(input.selection.model).toBe('gpt-5.6-terra')
+    expect(input.prompt).toContain('Implement and run node test.mjs')
+    writeFileSync(join(root, 'implemented.txt'), 'done')
+    return { success: true, summary: 'implemented', inputTokens: 10, outputTokens: 2, model: 'gpt-5.6-terra' }
+  } })
+  expect(result.status).toBe('complete')
+  expect(result.attempts[0]).toMatchObject({ model: 'gpt-5.6-terra', inputTokens: 10, outputTokens: 2 })
+})
 it('does not replace an unfinished objective', () => {
   createProjectGoal(root, 'First objective')
   expect(() => createProjectGoal(root, 'Different objective')).toThrow(/unfinished|active/i)

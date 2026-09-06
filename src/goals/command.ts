@@ -1,3 +1,7 @@
+import { loadConfig } from "../retrofit/config.js"
+import { makeAsyncAdaptiveRunner } from "../routing/router.js"
+import type { AgentResult } from "../loop/runner.js"
+import type { TokenUsage } from "../loop/reporter.js"
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -16,7 +20,7 @@ const Goal = z.object({ version: z.literal(1), id: z.string().uuid(), objective:
 export type ProjectGoal = z.infer<typeof Goal>
 export interface GoalLimits { maxAttempts?: number; maxMinutes?: number; tokenBudget?: number }
 export interface GoalExecutionInput { root: string; provider: Agent; selection: ModelSelection; prompt: string; signal: AbortSignal }
-export interface GoalExecutionResult { success: boolean; summary: string; inputTokens?: number; outputTokens?: number; model?: string }
+export interface GoalExecutionResult { provider?: Agent; tokens?: TokenUsage; routing?: AgentResult["routing"];  success: boolean; summary: string; inputTokens?: number; outputTokens?: number; model?: string }
 export interface GoalRunOptions { provider?: Agent; selection?: ModelSelection; execute?: (input: GoalExecutionInput) => Promise<GoalExecutionResult> }
 const goalPath = (root: string) => statePath(root, 'goal.json')
 function save(root: string, goal: ProjectGoal): ProjectGoal {
@@ -77,7 +81,7 @@ export function goalHandoff(root: string): string {
 async function executeAgent(input: GoalExecutionInput): Promise<GoalExecutionResult> {
   const handle = startProviderProcess(input.provider, buildProviderInvocation(input.provider, input.prompt, input.root, 'safe', input.selection), { signal: input.signal, idleTimeoutMs: 20 * 60_000 })
   const result = await handle.completion
-  return { success: result.kind === 'succeeded', summary: result.kind === 'succeeded' ? 'Agent finished; independently checked below' : `${result.kind}: ${result.stderr.slice(-3000)}`, ...result.telemetry.tokens }
+  return { success: result.kind === 'succeeded', summary: result.kind === 'succeeded' ? 'Agent finished; independently checked below' : `${result.kind}: ${result.stderr.slice(-3000)}`, ...result.telemetry.tokens, tokens: result.telemetry.tokens }
 }
 export async function runProjectGoal(root: string, options: GoalRunOptions = {}): Promise<ProjectGoal> {
   const lock = acquireLock(root)
@@ -100,7 +104,24 @@ export async function runProjectGoal(root: string, options: GoalRunOptions = {})
     if (!manifest?.criteria.length || manifest.criteria.some(c => c.commands.length === 0) || !manifest.protected.length) return save(root, { ...goal, status: 'blocked', reason: 'Map every acceptance criterion to an executable command and explicitly protect its test infrastructure before running a goal' })
     try { protectAcceptance(root) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error }
     const provider = options.provider ?? 'codex'
-    const execute = options.execute ?? executeAgent
+    const rawExecute = options.execute ?? executeAgent
+    const config = loadConfig(root)
+    const execute = async (input: GoalExecutionInput): Promise<GoalExecutionResult> => {
+      if (!config?.routing?.enabled || config.routing.strategy !== "capability") return rawExecute(input)
+      const routed = makeAsyncAdaptiveRunner({ parent: provider, parentSelection: input.selection, projectRoot: root, workers: config.routing.workers, strategy: "capability", maxCandidates: config.routing.maxCandidates, maxAttempts: Math.min(goal!.maxAttempts, config.routing.maxAttempts ?? 5),
+        captureRoute: async (agent, context, prompt, selection) => {
+          const run = await startProviderProcess(agent, buildProviderInvocation(agent, prompt, root, "read-only", selection), { signal: input.signal, idleTimeoutMs: 20 * 60_000 }).completion
+          return { success: run.kind === "succeeded", summary: run.kind, output: run.stdout, tokens: run.telemetry.tokens }
+        },
+        makeWorker: (agent, selection) => async context => {
+          const result = await rawExecute({ ...input, provider: agent, selection, prompt: input.prompt + "\nPlanner approach:\n" + (context.story.assessment?.approach ?? "") })
+          return { ...result, infrastructureFailure: !result.success, tokens: result.tokens ?? (result.inputTokens !== undefined && result.outputTokens !== undefined ? { inputTokens: result.inputTokens, outputTokens: result.outputTokens, model: result.model } : undefined) }
+        },
+      })
+      const result = await routed({ targetDir: root, story: { id: goal!.id, title: goal!.objective, priority: 1, passes: false, agent: provider, acceptance: manifest.criteria.map(c => c.text) } })
+      const last = result.tokens?.calls?.at(-1)
+      return { ...result, provider: (last?.provider as Agent | undefined) ?? provider, model: last?.actualModel, inputTokens: result.tokens?.measurementComplete ? result.tokens.inputTokens : undefined, outputTokens: result.tokens?.measurementComplete ? result.tokens.outputTokens : undefined }
+    }
     let report: CheckReport = checkProject(root)
     while (report.status !== 'passed') {
       const protectionProblem = acceptanceProtectionProblem(root)
@@ -126,13 +147,15 @@ export async function runProjectGoal(root: string, options: GoalRunOptions = {})
       const agentDurationMs = Date.now() - started
       const checkStarted = Date.now()
       report = checkProject(root)
+      if (!result.routing?.blocked) result.routing?.recordOutcome(report.status === 'passed')
       appendEvent(root, { runId: goal.id, timestamp: new Date().toISOString(), type: 'phase-ended', phase: 'verify', durationMs: Date.now() - checkStarted, outcome: report.status })
-      goal.attempts.push({ provider, model: result.model ?? options.selection?.model, startedAt: new Date(started).toISOString(), durationMs: agentDurationMs, success: result.success, summary: result.summary.slice(0, 8000), checkId: report.id, inputTokens: result.inputTokens, outputTokens: result.outputTokens })
+      goal.attempts.push({ provider: result.provider ?? provider, model: result.model ?? options.selection?.model, startedAt: new Date(started).toISOString(), durationMs: agentDurationMs, success: result.success, summary: result.summary.slice(0, 8000), checkId: report.id, inputTokens: result.inputTokens, outputTokens: result.outputTokens })
       const usageAvailable = result.inputTokens !== undefined && result.outputTokens !== undefined
-      appendEvent(root, { runId: goal.id, timestamp: new Date().toISOString(), type: 'tokens', attemptId: `${goal.id}:${goal.attempts.length}`, durationMs: agentDurationMs, data: { provider, role: 'parent', model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, usageAvailable } })
+      appendEvent(root, { runId: goal.id, timestamp: new Date().toISOString(), type: 'tokens', attemptId: `${goal.id}:${goal.attempts.length}`, durationMs: agentDurationMs, data: { ...result.tokens, provider: result.provider ?? provider, role: 'parent', model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens, usageAvailable } })
       appendEvent(root, { runId: goal.id, timestamp: new Date().toISOString(), type: 'attempt-ended', attemptId: `${goal.id}:${goal.attempts.length}`, durationMs: Date.now() - started, outcome: report.status, data: { provider, model: result.model, usageAvailable } })
       if (report.status === 'passed') appendEvent(root, { runId: goal.id, timestamp: new Date().toISOString(), type: 'accepted', attemptId: `${goal.id}:${goal.attempts.length}` })
       goal = save(root, { ...goal, lastCheck: report.id, pendingAttempt: undefined })
+      if (result.routing?.blocked) return save(root, { ...goal, status: "blocked", reason: result.summary })
       if (controller.signal.aborted) return save(root, { ...goal, status: 'blocked', reason: 'Time budget exceeded; work retained' })
     }
     return save(root, { ...goal, status: 'complete', lastCheck: report.id, reason: 'All executable acceptance checks passed on the current workspace' })

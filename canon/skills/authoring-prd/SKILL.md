@@ -22,6 +22,13 @@ new stories; they do not require a release object.
    placeholders; critical irreversible choices use the structured decision channel.
 8. Use `needs` only for hard prerequisites, `area` for collision domains, and `agent` only as
    a Claude/Codex/Gemini affinity hint.
+9. Keep planning on the start model. Add an `assessment` to each story: `taskClass`
+   (`mechanical`, `implementation`, `debugging`, `architecture`), `difficulty`, `uncertainty`,
+   `risk`, `scope`, `testability` (each `low`, `medium`, `high`), a concise `reason`, and
+   an actionable `approach` including checks. High testability means executable checks
+   reliably detect mistakes. Small security-sensitive changes can still be high-risk.
+   These are planning judgments, never invented success probabilities; Yoke selects the
+   execution model from configured profiles and independent outcomes.
 
 ## Format (`.yoke/prd.yaml`)
 

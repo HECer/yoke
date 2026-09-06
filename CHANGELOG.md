@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 1.9.0 — 2026-09-06
+
+### Added
+- Add capability-based routing with persisted task assessments, explicit model/effort tiers, role eligibility and conservative use of independent task-class outcomes.
+- Keep planning on the start model; reuse assessments across attempts/worktrees and invalidate them when task requirements change.
+- Add bounded repair and tier escalation after mechanical gate failures, retaining the patch and forwarding failure evidence. Infrastructure failures do not trigger capability escalation.
+- Apply task-based profiles to reviews, quality critics/repairs and goal execution; display implementation selection reasons and next escalation in the dashboard.
+- Add setup options `--routing-strategy=capability` and `--routing-preset` for explicit migration. Preserve existing strategies and custom profiles by default.
+
+### Validation limits
+- Initial profile tiers are configurable hypotheses, not authenticated model benchmarks, price estimates or calibrated success probabilities. See [capability routing](docs/CAPABILITY-ROUTING.md) for defaults and bounds.
+
 ## 1.8.0 — 2026-09-06
 
 ### Added

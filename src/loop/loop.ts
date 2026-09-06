@@ -1,3 +1,4 @@
+import { knownInfrastructureFailure } from "../routing/capability.js"
 import { existsSync, unlinkSync, readFileSync } from 'node:fs'
 import { acceptanceProtectionProblem } from '../check/command.js'
 import { join, relative } from 'node:path'
@@ -339,9 +340,10 @@ export function runLoop(opts: LoopOptions): LoopResult {
       let landed: { passed: number; total: number } | null = null
       try {
         opts.git.addWorktree(opts.targetDir, wt)
-        const result = opts.runner({ targetDir: wt, story })
+        const result = runImplementation(opts, wt, story, reporter)
         iterations++
         if (result.tokens) reporter.addTokens(result.tokens)
+        if (result.routing?.blocked) { reporter.blocked(result.summary); return { status: "blocked", iterations, reason: result.summary, finalProgress: progress(stories) } }
         let decision
         try { decision = consumeDecisionRequest(wt, opts.targetDir, story.id) } catch (error) {
           const reason = `invalid critical decision request for story ${story.id}: ${(error as Error).message}`
@@ -430,7 +432,6 @@ export function runLoop(opts: LoopOptions): LoopResult {
           result.routing?.recordOutcome(false); reporter.blocked(protection)
           return { status: 'blocked', iterations, reason: protection, finalProgress: progress(stories) }
         }
-        result.routing?.recordOutcome(true)
         // The worktree is a checkout of committed HEAD, so the agent above reads
         // context from HEAD's .yoke/context — commit context changes for --isolate
         // to honour them. We write the decision here so `integrate` carries it back.
@@ -444,6 +445,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         savePrd(wtPrd, updated)
         opts.git.commitAll(wt, `yoke: complete ${story.id} ${story.title}`, opts.commitIdentity)
         opts.git.integrate(opts.targetDir, wt)
+        result.routing?.recordOutcome(true)
         landed = progress(updated)
       } catch (e) {
         const reason = blockReason(`isolated iteration failed for ${story.id}: ${(e as Error).message}`, opts.targetDir, opts.git)
@@ -460,9 +462,10 @@ export function runLoop(opts: LoopOptions): LoopResult {
       continue
     }
 
-    const result = opts.runner({ targetDir: opts.targetDir, story })
+    const result = runImplementation(opts, opts.targetDir, story, reporter)
     iterations++
     if (result.tokens) reporter.addTokens(result.tokens)
+        if (result.routing?.blocked) { reporter.blocked(result.summary); return { status: "blocked", iterations, reason: result.summary, finalProgress: progress(stories) } }
 
     let decision
     try { decision = consumeDecisionRequest(opts.targetDir, opts.targetDir, story.id) } catch (error) {
@@ -595,5 +598,25 @@ export function runLoop(opts: LoopOptions): LoopResult {
       }
     }
     reporter.storyDone({ id: story.id, title: story.title }, progress(updated))
+  }
+}
+
+function runImplementation(opts: LoopOptions, dir: string, story: Story, reporter: LoopReporter): AgentResult {
+  let feedback: string | undefined
+  for (let attempt = 0; ; attempt++) {
+    const result = opts.runner({ targetDir: dir, story, feedback })
+    if (!result.routing?.canRetry || result.routing.blocked || attempt >= 7) return result
+    if (["decision-request.yaml", "ambiguity.md", "loop.pause"].some(name => existsSync(join(dir, ".yoke", name))) || existsSync(pauseFilePath(opts.targetDir))) return result
+    const protection = acceptanceProtectionProblem(dir, opts.targetDir)
+    if (protection) return result
+    const criteria = runCriterionGates(opts, dir, story)
+    const gates = [opts.verify, opts.design, opts.perf, opts.audit].filter((gate): gate is Verifier => Boolean(gate))
+    let verdict = criteria
+    if (verdict.passed) for (const gate of gates) { verdict = runGate(gate, dir, story.id); if (!verdict.passed) break }
+    if (verdict.passed) return result
+    if (knownInfrastructureFailure(verdict.summary)) { result.routing.recordOutcome(false, "infrastructure"); return result }
+    result.routing.recordOutcome(false)
+    if (result.tokens) reporter.addTokens(result.tokens)
+    feedback = verdict.summary
   }
 }

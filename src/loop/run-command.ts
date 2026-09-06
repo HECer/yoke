@@ -1,3 +1,4 @@
+import { roleSelection } from "../routing/capability.js"
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { loadConfig, saveConfig, defaultConfig, resolveOutputPolicy, resolveVerifyCommand, type DecisionPolicy } from '../retrofit/config.js'
@@ -290,7 +291,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   let executionReporter: LoopReporter | undefined
   const quality = createQualityCommandHooks({
     targetDir,
-    config,
+    config: opts.routing === false ? { ...config, routing: undefined } : config,
     runnerAgent,
     idleMs,
     onUsage: usage => executionReporter?.addTokens(usage),
@@ -319,7 +320,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     ...(runnerSelection.model ? { model: runnerSelection.model } : {}),
     ...(runnerSelection.reasoningEffort ? { reasoningEffort: runnerSelection.reasoningEffort } : {}),
   }]
-  const parallelAffinityProviders = (config.routing?.workers ?? []).map(worker => ({
+  const parallelAffinityProviders = config.routing?.strategy === 'capability' ? config.agents.map(agent => ({ provider: agent, ...(agent === runnerAgent ? runnerSelection : {}) })) : (config.routing?.workers ?? []).map(worker => ({
     provider: worker.agent,
     ...(worker.model ? { model: worker.model } : {}),
     ...(worker.reasoningEffort ? { reasoningEffort: worker.reasoningEffort } : {}),
@@ -395,6 +396,8 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
           rules: config.routing.rules,
           strategy: config.routing.strategy,
           maxCandidates: config.routing.maxCandidates,
+          maxAttempts: config.routing.maxAttempts,
+          onDecision: (id, decision) => executionReporter?.routingDecision?.(id, decision),
           idleTimeoutMs: idleMs,
           permissions,
           runnerOpts,
@@ -429,7 +432,14 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       console.error(`Reviewer agent CLI "${resolvedReviewer}" was not found on PATH. Install it, or pick another with --reviewer=<claude|codex|gemini>.`)
       return 2
     }
-    review = makeReviewRunner(resolvedReviewer, idleMs)
+    review = context => {
+      const implementer = readStatus(targetDir)?.routingDecisions?.[context.story.id]?.provider ?? runnerAgent
+      const selectedReviewer = !opts.reviewer && resolvedReviewer === implementer
+        ? (["codex", "claude", "gemini"] as Agent[]).find(agent => agent !== implementer && available(agent)) ?? resolvedReviewer : resolvedReviewer
+      if (selectedReviewer === implementer && !opts.allowSelfReview) return { success: false, summary: "Independent review requires a provider distinct from the routed implementer", reviewOutcome: { kind: "infrastructure", summary: "Routed implementation and reviewer share a provider" } }
+      reviewProvider = selectedReviewer
+      return makeReviewRunner(selectedReviewer, idleMs, undefined, routingEnabled ? roleSelection(targetDir, config, context.story, selectedReviewer, "reviewer") : undefined)(context)
+    }
   }
 
   if (review) {

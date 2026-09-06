@@ -13,6 +13,8 @@ export interface SetupOptions {
   runner?: Agent
   decisionPolicy?: DecisionPolicy
   routing?: boolean
+  routingStrategy?: import('../retrofit/config.js').RoutingStrategy
+  routingPreset?: boolean
   interactive?: boolean
   ask?: (question: string) => Promise<string>
 }
@@ -20,15 +22,27 @@ export interface SetupOptions {
 const ALL_AGENTS: Agent[] = ['claude', 'codex', 'gemini']
 
 export function defaultRoutingWorkers(agents: Agent[]): RoutingWorker[] {
-  const workers: Partial<Record<Agent, RoutingWorker>> = {
-    claude: { id: 'claude-fast', agent: 'claude', model: 'haiku', costTier: 'low', capabilities: ['exploration', 'mechanical-edits', 'tests'] },
-    // Inherit the account's current Codex model and lower only its supported effort.
-    // This avoids pinning a model id that will age out of the provider catalog.
-    codex: { id: 'codex-light', agent: 'codex', reasoningEffort: 'low', costTier: 'medium', capabilities: ['exploration', 'mechanical-edits', 'tests'] },
-    // Gemini CLI's default/Auto route tracks the models available to the active account.
-    gemini: { id: 'gemini-auto', agent: 'gemini', costTier: 'low', capabilities: ['large-context', 'exploration', 'implementation'] },
+  const workers: Record<Agent, RoutingWorker[]> = {
+    claude: [
+      { id: 'claude-fast', agent: 'claude', model: 'haiku', tier: 'light', costTier: 'low', capabilities: ['mechanical', 'tests'] },
+      { id: 'claude-standard', agent: 'claude', model: 'sonnet', tier: 'standard', costTier: 'medium', capabilities: ['implementation'] },
+      { id: 'claude-strong', agent: 'claude', model: 'sonnet', reasoningEffort: 'high', tier: 'strong', costTier: 'medium', capabilities: ['debugging'] },
+      { id: 'claude-frontier', agent: 'claude', model: 'opus', tier: 'frontier', costTier: 'high', capabilities: ['architecture'] },
+    ],
+    codex: [
+      { id: 'codex-light', agent: 'codex', model: 'gpt-5.6-luna', reasoningEffort: 'low', tier: 'light', costTier: 'low', capabilities: ['mechanical', 'tests'] },
+      { id: 'codex-standard', agent: 'codex', model: 'gpt-5.6-terra', reasoningEffort: 'medium', tier: 'standard', costTier: 'low', capabilities: ['implementation'] },
+      { id: 'codex-strong', agent: 'codex', model: 'gpt-5.6-sol', reasoningEffort: 'high', tier: 'strong', costTier: 'medium', capabilities: ['debugging'] },
+      { id: 'codex-frontier', agent: 'codex', model: 'gpt-6-astra', reasoningEffort: 'high', tier: 'frontier', costTier: 'high', capabilities: ['architecture'] },
+    ],
+    gemini: [
+      { id: 'gemini-light', agent: 'gemini', model: 'gemini-2.5-flash', tier: 'light', costTier: 'low', capabilities: ['mechanical', 'tests'] },
+      { id: 'gemini-standard', agent: 'gemini', model: 'gemini-2.5-pro', tier: 'standard', costTier: 'medium', capabilities: ['implementation'] },
+      { id: 'gemini-strong', agent: 'gemini', model: 'gemini-2.5-pro', tier: 'strong', costTier: 'medium', capabilities: ['debugging'] },
+      { id: 'gemini-frontier', agent: 'gemini', model: 'gemini-2.5-pro', tier: 'frontier', costTier: 'high', capabilities: ['architecture'] },
+    ],
   }
-  return agents.map(agent => workers[agent]).filter((worker): worker is RoutingWorker => worker !== undefined)
+  return agents.flatMap(agent => workers[agent])
 }
 
 function parseAgents(value: string, fallback: Agent[]): Agent[] {
@@ -101,10 +115,10 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
     config.routing = {
       ...config.routing,
       enabled: routing,
-      strategy: config.routing?.strategy ?? 'balanced',
+      strategy: opts.routingStrategy ?? config.routing?.strategy ?? 'capability',
       maxCandidates: config.routing?.maxCandidates ?? 3,
       ...(config.routing?.orchestrator ? { orchestrator: config.routing.orchestrator } : {}),
-      workers: existingWorkers.length > 0 ? existingWorkers : defaultRoutingWorkers(agents),
+      workers: existingWorkers.length > 0 && !opts.routingPreset ? existingWorkers : defaultRoutingWorkers(agents),
     }
     saveConfig(targetDir, config)
     console.log(`Yoke setup complete: agents=${agents.join(',')} · runner=${runner} · loop=${loop ? 'on' : 'off'} · routing=${routing ? 'on' : 'off'} · decisions=${decisionPolicy}`)

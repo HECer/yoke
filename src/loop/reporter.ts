@@ -142,6 +142,8 @@ export interface TokenUsage {
 }
 
 export interface LoopStatus {
+  routingDecisions?: Record<string, { profile: string; provider: string; model?: string; reasoningEffort?: string; reason: string; next: string; assessment?: import("../routing/assessment.js").TaskAssessment }>
+
   execution?: { provider: string; requestedModel?: string; startedAt: string }
   state: LoopState
   phase?: LoopPhase
@@ -202,6 +204,7 @@ export interface LoopReporter {
   /** Accumulate runner token usage; totals ride along on every subsequent status write. */
   addTokens(usage: TokenUsage): void
   accepted?(story: StoryRef): void
+  routingDecision?(storyId: string, decision: NonNullable<LoopStatus["routingDecisions"]>[string]): void
   execution?(provider: string, requestedModel?: string): void
   parallel?(status: ParallelStatus): void
   parallelWorker?(status: ParallelWorkerStatus): void
@@ -301,6 +304,9 @@ export function makeReporter(
   }
 
   return {
+    routingDecision(storyId, decision) {
+      if (current) persist({ ...current, routingDecisions: { ...current.routingDecisions, [storyId]: decision }, updatedAt: now().toISOString() }, "routing", `  · route ${storyId}: ${decision.profile} (${decision.reason})`)
+    },
     execution(provider, requestedModel) {
       if (current) persist({ ...current, execution: { provider, requestedModel, startedAt: now().toISOString() }, updatedAt: now().toISOString() }, 'execution', `  · ${provider}/${requestedModel ?? 'provider-default'}`)
     },

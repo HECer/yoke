@@ -290,13 +290,15 @@ function reportIntegrator(reporter: LoopReporter, worker: DispatcherWorkerInput,
 function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider, signal: AbortSignal | undefined, workerId: string): WorkerRunner {
   if (input.routing) {
     const routed = makeAsyncAdaptiveRunner({
-      parent: provider.provider,
-      parentSelection: { ...input.selection, model: provider.model, reasoningEffort: provider.reasoningEffort, ...(provider.provider === 'codex' ? { nativeMultiAgent: false } : {}) },
+      parent: input.routing.strategy === 'capability' ? input.runnerAgent : provider.provider,
+      parentSelection: input.routing.strategy === 'capability' ? input.selection : { ...input.selection, model: provider.model, reasoningEffort: provider.reasoningEffort, nativeMultiAgent: false },
       projectRoot: input.targetDir,
       workers: input.routing.workers,
       rules: input.routing.rules,
       strategy: input.routing.strategy,
       maxCandidates: input.routing.maxCandidates,
+      maxAttempts: input.routing.maxAttempts,
+      onDecision: (id, decision) => input.reporter.routingDecision?.(id, decision),
       orchestratorSelection: input.routing.orchestrator,
       isAvailable: input.isAvailable ?? isAgentAvailable,
       captureRoute: async (agent, context, prompt, selection) => {
@@ -311,7 +313,7 @@ function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider,
         return providerProcessResultToAgentResult(agent, context.story.id, await run(context).completion)
       },
     })
-    return context => context.story.agent
+    return context => context.story.agent && input.routing?.strategy !== 'capability'
       ? asyncRunner({ ...input, routing: undefined }, provider, signal, workerId)(context)
       : routed(context)
   }
@@ -341,10 +343,10 @@ export function providerProcessResultToAgentResult(agent: Agent, storyId: string
   const telemetry = tokens ? { tokens } : {}
   switch (result.kind) {
     case 'succeeded': return { success: true, summary: `${agent} implemented ${storyId}`, ...telemetry }
-    case 'cancelled': return { success: false, summary: result.reason, ...telemetry }
-    case 'timed-out': return { success: false, summary: result.reason, ...telemetry }
-    case 'spawn-failed': return { success: false, summary: result.error, ...telemetry }
-    case 'failed': return { success: false, summary: `${agent} exited ${result.exitCode ?? 'without a code'}`, ...telemetry }
+    case 'cancelled': return { success: false, infrastructureFailure: true, summary: result.reason, ...telemetry }
+    case 'timed-out': return { success: false, infrastructureFailure: true, summary: result.reason, ...telemetry }
+    case 'spawn-failed': return { success: false, infrastructureFailure: true, summary: result.error, ...telemetry }
+    case 'failed': return { success: false, infrastructureFailure: true, summary: `${agent} exited ${result.exitCode ?? 'without a code'}`, ...telemetry }
     default: return assertNever(result)
   }
 }

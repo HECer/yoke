@@ -25,6 +25,13 @@ export interface RoutingObservation {
   verificationSuccess: boolean
   inputTokens: number
   outputTokens: number
+  assessmentKey?: string
+  taskClass?: string
+  requiredTier?: string
+  role?: string
+  failureKind?: 'implementation' | 'infrastructure'
+  usageAvailable?: boolean
+  totalCostUsd?: number
 }
 
 export interface WorkerHistory {

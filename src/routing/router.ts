@@ -6,10 +6,13 @@ import {
   makeRunner,
   runCapturedAgent,
   runnerInvocation,
+  contextBlockFor,
 } from '../loop/runner.js'
 import type { ModelCallUsage, TokenUsage } from '../loop/reporter.js'
 import { isAcceptanceCriterion } from '../loop/prd.js'
 import { historyForWorkers, projectHash, readRoutingObservations, recordRoutingObservation, storyHash } from './registry.js'
+import { assessmentInstructions, assessmentKey, parseAssessment } from './assessment.js'
+import { chooseCapability, readAssessment, saveAssessment } from './capability.js'
 
 export interface RouteDecision {
   worker: 'SELF' | string
@@ -23,6 +26,8 @@ export interface AdaptiveRunnerOptions {
   workers: RoutingWorker[]
   strategy: RoutingStrategy
   maxCandidates: number
+  maxAttempts?: number
+  onDecision?: (storyId: string, decision: { profile: string; provider: Agent; model?: string; reasoningEffort?: string; reason: string; next: string; assessment?: import('./assessment.js').TaskAssessment }) => void
   rules?: RoutingRule[]
   idleTimeoutMs?: number
   permissions?: PermissionProfile
@@ -172,6 +177,42 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
   }))
 
   return function* (ctx: AgentContext): Generator<() => CapturedAgentRun | AgentResult | Promise<CapturedAgentRun | AgentResult>, AgentResult, CapturedAgentRun & AgentResult> {
+    if (options.strategy === 'capability' && !options.rules?.some(rule => (!rule.area || rule.area === ctx.story.area) && (!rule.storyId || rule.storyId === ctx.story.id))) {
+      const root = options.projectRoot ?? ctx.targetDir
+      let assessment = readAssessment(root, ctx.story)
+      let planning: CapturedAgentRun | undefined
+      const calls: ModelCallUsage[] = []
+      if (!assessment) {
+        const prompt = [assessmentInstructions, 'Use the supplied task contract and project context to produce a bounded plan. Do not implement or change files.',
+          contextBlockFor(ctx.targetDir, ctx.story), JSON.stringify(ctx.story), 'Return exactly one line: YOKE_ASSESS {"taskClass":"implementation","difficulty":"medium","uncertainty":"low","risk":"low","scope":"low","testability":"high","reason":"evidence","approach":"steps and tests"}'].join('\n')
+        const selection = { ...options.parentSelection, nativeMultiAgent: false }
+        const started = now()
+        planning = yield () => options.captureRoute ? options.captureRoute(options.parent, ctx, prompt, selection)
+          : runCapturedAgent(options.parent, buildWatchdogInvocation(runnerInvocation(options.parent, prompt, ctx.targetDir, true, 'read-only', selection), options.idleTimeoutMs ?? 0))
+        calls.push(callUsage('orchestrator', options.parent, selection, planning.tokens, now() - started))
+        assessment = planning.success ? parseAssessment(planning.output) : undefined
+        if (assessment) saveAssessment(root, ctx.story, assessment, { provider: options.parent, model: planning.tokens?.model ?? selection.model })
+      }
+      if (!assessment) return { success: false, summary: 'Routing assessment unavailable or invalid; implementation was not started', tokens: aggregateCalls(calls), routing: { recordOutcome: () => undefined, blocked: true } }
+      const choice = chooseCapability({ root, story: ctx.story, assessment, workers: eligibleWorkers, parent: options.parent, parentSelection: options.parentSelection, maxAttempts: options.maxAttempts })
+      options.onDecision?.(ctx.story.id, { profile: choice.worker?.id ?? 'SELF', provider: choice.provider, model: choice.selection.model, reasoningEffort: choice.selection.reasoningEffort, reason: choice.reason, next: choice.next, assessment })
+      if (choice.exhausted) return { success: false, summary: 'Routing attempt budget exhausted; replan this task before retrying', tokens: aggregateCalls(calls), routing: { recordOutcome: () => undefined, blocked: true } }
+      const started = now()
+      const result = yield () => makeWorker(choice.provider, choice.selection)({ ...ctx, story: { ...ctx.story, assessment } })
+      calls.push(callUsage(choice.worker ? 'worker' : 'parent', choice.provider, choice.selection, result.tokens, now() - started, choice.worker?.id ?? 'SELF'))
+      let recorded = false
+      return { ...result, summary: `route=${choice.worker?.id ?? 'SELF'} (${choice.reason}); ${result.summary}`,
+        tokens: { ...aggregateCalls(calls), storyId: ctx.story.id, escalated: choice.failures > 1 },
+        routing: { canRetry: !result.infrastructureFailure && choice.failures + 1 < (options.maxAttempts ?? 5), recordOutcome: (verified, failureKind) => {
+          if (recorded) return
+          recorded = true
+          recordRoutingObservation({ projectHash: projectHash(root), storyHash: storyHash(projectHash(root), ctx.story.id), assessmentKey: assessmentKey(ctx.story), taskClass: assessment!.taskClass, requiredTier: choice.requiredTier,
+            role: 'implementation', strategy: 'capability', selected: choice.worker?.id ?? 'SELF', provider: choice.provider, requestedModel: choice.selection.model, requestedReasoningEffort: choice.selection.reasoningEffort,
+            actualModel: result.tokens?.model, orchestratorProvider: options.parent, orchestratorModel: options.parentSelection?.model, orchestratorDurationMs: calls.filter(c => c.role === 'orchestrator').reduce((s,c) => s+c.durationMs,0), workerDurationMs: calls[calls.length-1].durationMs,
+            processSuccess: result.success, verificationSuccess: verified, failureKind: failureKind ?? (result.infrastructureFailure ? 'infrastructure' : 'implementation'), usageAvailable: result.tokens !== undefined && result.tokens.measurementComplete !== false,
+            inputTokens: result.tokens?.inputTokens ?? 0, outputTokens: result.tokens?.outputTokens ?? 0, totalCostUsd: result.tokens?.totalCostUsd })
+        } } }
+    }
     // Re-rank per story so a long-running loop can use gate outcomes learned by
     // earlier stories without rebuilding the runner.
     const rule = options.rules?.find(rule => (!rule.area || rule.area === ctx.story.area) && (!rule.storyId || rule.storyId === ctx.story.id) && (rule.area || rule.storyId))
@@ -271,4 +312,11 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
       : `route=SELF (${routeRun.success ? 'invalid routing response' : 'orchestrator failed'})`
     return { ...result, summary: `${routeSummary}; ${result.summary}`, tokens, routing: { recordOutcome } }
   }
+}
+
+function aggregateCalls(calls: ModelCallUsage[]): TokenUsage {
+  return { inputTokens: calls.reduce((n,c) => n+c.inputTokens,0), outputTokens: calls.reduce((n,c) => n+c.outputTokens,0),
+    cachedInputTokens: calls.reduce((n,c) => n+(c.cachedInputTokens ?? 0),0), cacheWriteInputTokens: calls.reduce((n,c) => n+(c.cacheWriteInputTokens ?? 0),0),
+    ...(calls.some(c => c.totalCostUsd !== undefined) ? { totalCostUsd: calls.reduce((n,c) => n+(c.totalCostUsd ?? 0),0) } : {}),
+    calls, measurementComplete: calls.every(c => c.usageAvailable), costMeasurementComplete: calls.every(c => c.totalCostUsd !== undefined) }
 }

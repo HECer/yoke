@@ -127,10 +127,14 @@ export function main(argv: string[]): number | Promise<number> {
       if (policyArg && policyArg !== 'auto' && policyArg !== 'critical') { console.error(`Invalid --decision-policy value: ${policyArg}`); return 1 }
       const loop = rest.includes('--loop') ? true : rest.includes('--no-loop') ? false : undefined
       const routing = rest.includes('--routing') ? true : rest.includes('--no-routing') ? false : undefined
+      const routingStrategy = rest.find(a => a.startsWith('--routing-strategy='))?.slice('--routing-strategy='.length)
+      if (routingStrategy && !['capability', 'balanced', 'cost', 'speed', 'quality'].includes(routingStrategy)) { console.error('Invalid routing strategy'); return 1 }
       return runSetup(targetDir, {
         host: hostArg as Agent | undefined, agents, runner: runnerArg as Agent | undefined,
         codeGraph: graphArg as 'graphify' | 'serena' | undefined,
         loop, routing, decisionPolicy: policyArg as DecisionPolicy | undefined,
+        routingStrategy: routingStrategy as import('./retrofit/config.js').RoutingStrategy | undefined,
+        routingPreset: rest.includes('--routing-preset'),
         interactive: rest.includes('--yes') ? false : undefined,
       })
     }

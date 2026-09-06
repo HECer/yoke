@@ -11,6 +11,14 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-setup-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('yoke setup', () => {
+  it('preserves custom profiles until a preset reset is explicitly requested', async () => {
+    const custom = { id: 'custom', agent: 'codex' as const, model: 'custom-model', costTier: 'medium' as const, capabilities: [] }
+    saveConfig(dir, { canonVersion: 'test', agents: ['codex'], loop: { enabled: true }, routing: { enabled: true, strategy: 'balanced', maxCandidates: 3, workers: [custom] } })
+    await runSetup(dir, { interactive: false, routingStrategy: 'capability' })
+    expect(loadConfig(dir)?.routing?.workers).toEqual([custom])
+    await runSetup(dir, { interactive: false, routingPreset: true })
+    expect(loadConfig(dir)?.routing?.workers.map(w => w.tier)).toEqual(['light', 'standard', 'strong', 'frontier'])
+  })
   it('asks the setup questions and persists the selected Codex workflow', async () => {
     const answers = ['codex', 'serena', 'yes', 'codex', 'critical', 'yes']
     const questions: string[] = []
@@ -24,7 +32,7 @@ describe('yoke setup', () => {
       agents: ['codex'], codeGraph: 'serena',
       loop: { enabled: true, decisionPolicy: 'critical' },
       runner: { agent: 'codex' },
-      routing: { enabled: true, strategy: 'balanced' },
+      routing: { enabled: true, strategy: 'capability' },
     })
     expect(existsSync(join(dir, '.agents/skills/yoke-workflow/SKILL.md'))).toBe(true)
   })

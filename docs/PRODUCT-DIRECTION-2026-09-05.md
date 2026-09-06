@@ -197,3 +197,13 @@ Die Umsetzung wurde mit Tests und einer lokalen Browserprüfung geprüft; authen
 ### Releaseauftrag am 2026-09-06
 
 Der Nutzer hat anschließend maximal drei Worker im Automatikmodus und die Veröffentlichung der Weiterentwicklung beauftragt. Releaseziel ist 1.8.0; der frühere lokale Zwischenstand mit zwei Workern ist damit überholt. Jede neue Version muss vor Veröffentlichung einen datierten Changelogeintrag erhalten; die verbindliche Regel steht in AGENTS.md. Der tatsächliche Veröffentlichungsstatus wird über GitHub Release und npm geprüft.
+
+
+## Aufgabenbezogene Modellauswahl nach Release 1.8.0
+
+Der Nutzer hat die Umsetzung der vorgeschlagenen Fähigkeitsauswahl ausdrücklich beauftragt: Planung mit dem Startmodell, gespeicherte Aufgabenbewertung, Modell-/Effort-Profile für Codex, Claude und Gemini, begrenzte Reparatur/Eskalation sowie nachvollziehbare Dashboardanzeige. Die Implementierung wird lokal nach 1.8.0 entwickelt. Verhalten, Migration und Grenzen stehen in CAPABILITY-ROUTING.md; die veröffentlichten 1.8.0-Defaults dürfen damit nicht verwechselt werden.
+
+
+### Releaseauftrag 1.9.0
+
+Der Nutzer hat die Veröffentlichung des Capability-Routing-Ausbaus ausdrücklich beauftragt. Releaseziel ist 1.9.0. Der datierte Changelog und CAPABILITY-ROUTING.md beschreiben Verhalten, Migration und Grenzen; frühere Hinweise auf den lokalen Zwischenstand bleiben historische Sitzungsnotizen.

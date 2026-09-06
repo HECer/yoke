@@ -4,6 +4,7 @@ import { parse, stringify } from 'yaml'
 import { z } from 'zod'
 import { StoryQualityDeclarationSchema } from '../quality/types.js'
 import { validWriteScope } from './scheduler.js'
+import { AssessmentSchema } from '../routing/assessment.js'
 
 export const AcceptanceCriterionSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
@@ -49,6 +50,7 @@ export const StorySchema = z.object({
   /** Inbox request that created this story. Used for idempotent append-only intake. */
   sourceChange: z.string().min(1).optional(),
   quality: StoryQualityDeclarationSchema.optional(),
+  assessment: AssessmentSchema.optional(),
 }).superRefine((story, ctx) => {
   const structured = story.acceptance.filter(isAcceptanceCriterion)
   const ids = structured.map(criterion => criterion.id)

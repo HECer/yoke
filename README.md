@@ -2,8 +2,8 @@
 
 # 🐂 Yoke
 
-<!-- yoke:version:start -->1.8.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1117<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.9.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->1134<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1117%20defined-blue.svg)
+![Tests](https://img.shields.io/badge/tests-1134%20defined-blue.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -27,7 +27,7 @@
 
 > **TL;DR** — `yoke setup .` asks six questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. Add `--parallel=N` for dependency-aware workers, or declare a reference and add `--quality` for a bounded critic/repair gauntlet. If any blocking gate is red, nothing is committed. Proof lives in `.yoke/proof/<story>/`.
 
-**New in 1.8.0:** [automatic routing, up to three parallel workers and expanded project dashboards](docs/VERIFIED-PROJECTS.md). Inspect current work, compare recorded consumption across projects and models by day, week or month, and track measured effort per accepted change. New setups enable routing and isolated execution by default; explicit overrides remain available.
+**New in 1.9.0:** [routing by task requirements](docs/CAPABILITY-ROUTING.md). Keep planning on the start model, select execution models and effort from saved task assessments, and use bounded repair and escalation with independent checks. The dashboard explains model selection; existing routing settings remain authoritative.
 
 ### One dashboard, multiple projects
 
@@ -895,7 +895,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1117 tests)
+npm test          # vitest (1134 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

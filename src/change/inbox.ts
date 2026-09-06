@@ -1,3 +1,4 @@
+import { assessmentInstructions } from "../routing/assessment.js"
 import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -109,6 +110,7 @@ export function buildChangePrompt(request: ChangeRequest, proposalPath: string, 
     `Change request ${request.id}: ${request.request}`,
     '',
     'Create an append-only proposal: add small new stories; never rewrite or delete existing stories.',
+    assessmentInstructions,
     `Existing story IDs: ${stories.map(story => story.id).join(', ') || '(none)'}`,
     'Every proposed story must have passes: false and 2-5 structured acceptance criteria.',
     'Every criterion must have a stable id, behavioral text, and one or more executable verify commands.',

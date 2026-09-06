@@ -1,3 +1,7 @@
+import { knownInfrastructureFailure } from "../routing/capability.js"
+import { existsSync } from "node:fs"
+import { join } from "node:path"
+import { acceptanceProtectionProblem } from "../check/command.js"
 import { isAcceptanceCriterion } from './prd.js'
 import type { AgentContext, AgentResult } from './runner.js'
 import type { Verifier, VerifyResult } from './verify.js'
@@ -197,7 +201,7 @@ export async function runStoryWorker(input: StoryWorkerInput): Promise<StoryWork
   }
   let implementation: AgentResult
   try {
-    implementation = await input.runner(context)
+    implementation = await runWorkerImplementation(input, context, evidence)
   } catch (error) {
     return finalResult(input, {
       ...baseResult(input, evidence, `worker implementation failed: ${errorMessage(error)}`),
@@ -206,6 +210,7 @@ export async function runStoryWorker(input: StoryWorkerInput): Promise<StoryWork
     })
   }
   if (implementation.tokens) input.reporter?.addTokens(implementation.tokens)
+  if (implementation.routing?.blocked) return finalResult(input, { ...baseResult(input, evidence, implementation.summary), kind: "mechanical-failure", stage: "implementation" })
 
   const afterImplementationCancellation = cancellationReason(input.cancellation)
   if (afterImplementationCancellation) {
@@ -291,4 +296,19 @@ export async function runStoryWorker(input: StoryWorkerInput): Promise<StoryWork
     })
   }
   return finalResult(input, result)
+}
+
+async function runWorkerImplementation(input: StoryWorkerInput, context: AgentContext, evidence: MutableWorkerEvidence): Promise<AgentResult> {
+  let feedback: string | undefined
+  for (let attempt = 0; ; attempt++) {
+    const result = await input.runner({ ...context, feedback })
+    if (!result.routing?.canRetry || result.routing.blocked || attempt >= 7 || cancellationReason(input.cancellation) || input.pause?.()) return result
+    if (["decision-request.yaml", "ambiguity.md", "loop.pause"].some(name => existsSync(join(context.targetDir, ".yoke", name))) || acceptanceProtectionProblem(context.targetDir)) return result
+    const gates = runMechanicalGates(input, context, evidence)
+    if (gates.kind !== "failed") return result
+    if (knownInfrastructureFailure(gates.summary)) { result.routing.recordOutcome(false, "infrastructure"); return result }
+    result.routing.recordOutcome(false)
+    if (result.tokens) input.reporter?.addTokens(result.tokens)
+    feedback = gates.summary
+  }
 }

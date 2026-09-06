@@ -19,16 +19,18 @@ import type { ReviewOutcome } from '../quality/repair.js'
 export interface AgentContext {
   targetDir: string
   story: Story
+  feedback?: string
 }
 
 export interface AgentResult {
   success: boolean
+  infrastructureFailure?: boolean
   summary: string
   reviewOutcome?: ReviewOutcome
   /** Cumulative token usage of this invocation (agents running in JSON mode only). */
   tokens?: TokenUsage
   /** Adaptive runners defer capability learning until Yoke's independent gates decide. */
-  routing?: { recordOutcome: (verified: boolean) => void }
+  routing?: { recordOutcome: (verified: boolean, failureKind?: 'implementation' | 'infrastructure') => void; blocked?: boolean; canRetry?: boolean }
 }
 
 export type AgentRunner = (ctx: AgentContext) => AgentResult
@@ -63,6 +65,7 @@ export function buildClaudePrompt(story: Story, context: string, onAmbiguity: Am
     `Story ${story.id}: ${story.title}`,
     'Acceptance criteria (Definition of Done):',
     criteria,
+    ...(story.assessment ? ['Planner approach:', story.assessment.approach] : []),
     '',
     "When done, ensure the project's full test suite passes.",
     'Do NOT commit — the loop commits on your behalf after verifying.',
@@ -407,7 +410,7 @@ export function makeAsyncRunner(agent: Agent, opts: AsyncRunnerOpts = {}): Async
     agent,
     runnerInvocation(
       agent,
-      buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), opts.onAmbiguity, opts.perfCommand),
+      buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story) + (ctx.feedback ? "\nPrior independent failure; preserve useful existing changes and fix the root cause:\n" + ctx.feedback.slice(0, 8000) : ""), opts.onAmbiguity, opts.perfCommand),
       ctx.targetDir,
       true,
       opts.permissions ?? 'safe',
@@ -426,7 +429,7 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
     opts.onStart?.(agent, opts.selection ?? {})
     const started = Date.now()
     const attributed = (tokens: TokenUsage | undefined): TokenUsage | undefined => tokens ? { ...tokens, provider: agent, role: 'parent', storyId: ctx.story.id, durationMs: Date.now() - started } : undefined
-    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe', opts.selection)
+    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story) + (ctx.feedback ? "\nPrior independent failure; preserve useful existing changes and fix the root cause:\n" + ctx.feedback.slice(0, 8000) : ""), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe', opts.selection)
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     if (captureTokens) {
       const capture = opts.execCapture ?? runCliCapture
@@ -438,7 +441,7 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
         // Salvage usage from whatever the agent streamed before dying — those tokens were spent.
         const partial = (e as { stdout?: unknown }).stdout
         const tokens = partial == null ? undefined : parseProviderTelemetry(agent, String(partial).split(/\r?\n/)).tokens
-        return { success: false, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}`, tokens: attributed(tokens) }
+        return { success: false, infrastructureFailure: true, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}`, tokens: attributed(tokens) }
       }
     }
     try {
@@ -447,17 +450,17 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
       ;(opts.exec ?? runCli)(inv)
       return { success: true, summary: `${agent} implemented ${ctx.story.id}` }
     } catch (e) {
-      return { success: false, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}` }
+      return { success: false, infrastructureFailure: true, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}` }
     }
   }
 }
 
 export const claudeRunner: AgentRunner = makeRunner('claude')
 
-export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: Invocation) => void | CapturedAgentRun): AgentRunner {
+export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: Invocation) => void | CapturedAgentRun, selection: ModelSelection = {}): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
     const before = repositoryFingerprint(ctx.targetDir)
-    const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), undefined, agent), ctx.targetDir, 'read-only', { nativeMultiAgent: false })
+    const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), undefined, agent), ctx.targetDir, 'read-only', { ...selection, nativeMultiAgent: false })
     const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     let processFailure: string | undefined
     let actualModel: string | undefined

@@ -11,7 +11,7 @@ import { ToolActionSchema, type ToolAction } from '../execution/actions.js'
 export type Agent = z.infer<typeof AgentSchema>
 export type CodeGraph = 'graphify' | 'serena'
 export type DecisionPolicy = 'auto' | 'critical'
-export type RoutingStrategy = 'balanced' | 'cost' | 'speed' | 'quality'
+export type RoutingStrategy = 'balanced' | 'cost' | 'speed' | 'quality' | 'capability'
 
 const CodeGraphSchema = z.enum(['graphify', 'serena'])
 
@@ -38,6 +38,8 @@ const RoutingWorkerSchema = z.object({
   reasoningEffort: z.string().min(1).optional(),
   costTier: z.enum(['low', 'medium', 'high']).default('medium'),
   capabilities: z.array(z.string().min(1)).default([]),
+  tier: z.enum(['light', 'standard', 'strong', 'frontier']).optional(),
+  roles: z.array(z.enum(['implementation', 'reviewer', 'critic', 'repair'])).optional(),
 })
 const RoutingRuleSchema = z.object({
   area: z.string().min(1).optional(),
@@ -70,7 +72,8 @@ export const YokeConfigSchema = z.object({
   }).optional(),
   routing: z.object({
     enabled: z.boolean(),
-    strategy: z.enum(['balanced', 'cost', 'speed', 'quality']).default('balanced'),
+    strategy: z.enum(['balanced', 'cost', 'speed', 'quality', 'capability']).default('balanced'),
+    maxAttempts: z.number().int().min(1).max(8).optional(),
     maxCandidates: z.number().int().min(1).max(5).default(3),
     orchestrator: z.object({
       model: z.string().min(1).optional(),
@@ -122,6 +125,8 @@ export interface RoutingWorker {
   reasoningEffort?: string
   costTier: 'low' | 'medium' | 'high'
   capabilities: string[]
+  tier?: import('../routing/assessment.js').CapabilityTier
+  roles?: Array<'implementation' | 'reviewer' | 'critic' | 'repair'>
 }
 
 export interface YokeConfig {
@@ -133,6 +138,7 @@ export interface YokeConfig {
   routing?: {
     enabled: boolean
     strategy: RoutingStrategy
+    maxAttempts?: number
     maxCandidates: number
     orchestrator?: { model?: string; reasoningEffort?: string }
     workers: RoutingWorker[]

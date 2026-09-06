@@ -1,3 +1,4 @@
+import { roleSelection } from "../routing/capability.js"
 import { execFileSync } from 'node:child_process'
 import { randomInt } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -113,6 +114,9 @@ export function createQualityCommandHooks(input: {
       }
     },
     qualityStage: (context, round, attempt = 'worker') => {
+      const routed = !defaults?.critic?.model && !defaults?.criticModel ? roleSelection(input.targetDir, input.config, context.story, criticAgent, "critic") : undefined
+      const selectedCriticModel = routed?.model ?? criticModel
+      const selectedCriticEffort = criticReasoningEffort ?? routed?.reasoningEffort
       const declaration = context.story.quality
       if (!declaration) return { kind: 'skipped', summary: 'no story quality declaration' }
       const quality = prepared.get(context.story.id)
@@ -146,7 +150,7 @@ export function createQualityCommandHooks(input: {
           reference: { digest: refreshed.artifact.digest, artifact: referenceArtifact, ...(refreshed.artifact.provenance.contentType ? { contentType: refreshed.artifact.provenance.contentType } : {}) },
           candidate: { digests: candidate.digests, artifacts: candidateArtifacts },
           provider: criticAgent,
-          model: criticModel,
+          model: selectedCriticModel,
           invoke: request => providerCriticCall({
             request,
             referenceBytes,
@@ -155,8 +159,8 @@ export function createQualityCommandHooks(input: {
             agent: criticAgent,
             ownershipRoot: input.targetDir,
             idleMs: input.idleMs,
-            ...(criticModel ? { model: criticModel } : {}),
-            reasoningEffort: criticReasoningEffort,
+            ...(selectedCriticModel ? { model: selectedCriticModel } : {}),
+            reasoningEffort: selectedCriticEffort,
           }),
           mkdir: path => mkdirSync(path, { recursive: true }),
           writeFile: (path, content) => writeFileSync(path, content),
@@ -175,8 +179,10 @@ export function createQualityCommandHooks(input: {
       }
     },
     repair: (context, request) => {
+      const routed = !configuredRepairModel ? roleSelection(input.targetDir, input.config, context.story, repairAgent, "repair", request.round) : undefined
+      const selectedRepair = routed ? { ...routed, ...(configuredRepairEffort ? { reasoningEffort: configuredRepairEffort } : {}) } : repairSelection
       const invocation = buildWatchdogInvocation(
-        buildProviderInvocation(repairAgent, repairPrompt(context, request, input.config), context.targetDir, 'safe', repairSelection),
+        buildProviderInvocation(repairAgent, repairPrompt(context, request, input.config), context.targetDir, 'safe', selectedRepair),
         input.idleMs,
       )
       const result = measuredInvoke('repair', context.story.id)(repairAgent, invocation)
@@ -197,7 +203,7 @@ export function createQualityCommandHooks(input: {
         declaration: story.quality,
         artifacts: projectDir => input.runtime?.artifacts ?? productionArtifactAdapters(projectDir),
         agent: criticAgent,
-        model: criticModel ?? (() => { throw new Error('candidate comparison requires an explicit critic model when the provider default cannot be known before comparison') })(),
+        model: ((!defaults?.critic?.model && !defaults?.criticModel ? roleSelection(input.targetDir, input.config, story, criticAgent, "critic")?.model : undefined) ?? criticModel) ?? (() => { throw new Error('candidate comparison requires an explicit critic model when the provider default cannot be known before comparison') })(),
         idleMs: input.idleMs,
         invoke: measuredInvoke('critic', story.id),
       })
