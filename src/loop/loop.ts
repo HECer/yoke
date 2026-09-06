@@ -343,7 +343,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         const result = runImplementation(opts, wt, story, reporter)
         iterations++
         if (result.tokens) reporter.addTokens(result.tokens)
-        if (result.routing?.blocked) { reporter.blocked(result.summary); return { status: "blocked", iterations, reason: result.summary, finalProgress: progress(stories) } }
+        if (result.infrastructureFailure || result.routing?.blocked) { if (result.infrastructureFailure) result.routing?.recordOutcome(false, "infrastructure"); reporter.blocked(result.summary); return { status: "blocked", iterations, reason: result.summary, finalProgress: progress(stories) } }
         let decision
         try { decision = consumeDecisionRequest(wt, opts.targetDir, story.id) } catch (error) {
           const reason = `invalid critical decision request for story ${story.id}: ${(error as Error).message}`
@@ -465,7 +465,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
     const result = runImplementation(opts, opts.targetDir, story, reporter)
     iterations++
     if (result.tokens) reporter.addTokens(result.tokens)
-        if (result.routing?.blocked) { reporter.blocked(result.summary); return { status: "blocked", iterations, reason: result.summary, finalProgress: progress(stories) } }
+        if (result.infrastructureFailure || result.routing?.blocked) { if (result.infrastructureFailure) result.routing?.recordOutcome(false, "infrastructure"); reporter.blocked(result.summary); return { status: "blocked", iterations, reason: result.summary, finalProgress: progress(stories) } }
 
     let decision
     try { decision = consumeDecisionRequest(opts.targetDir, opts.targetDir, story.id) } catch (error) {
@@ -614,7 +614,10 @@ function runImplementation(opts: LoopOptions, dir: string, story: Story, reporte
     let verdict = criteria
     if (verdict.passed) for (const gate of gates) { verdict = runGate(gate, dir, story.id); if (!verdict.passed) break }
     if (verdict.passed) return result
-    if (knownInfrastructureFailure(verdict.summary)) { result.routing.recordOutcome(false, "infrastructure"); return result }
+    if (knownInfrastructureFailure(verdict.summary)) {
+      result.routing.recordOutcome(false, 'infrastructure')
+      return { ...result, success: false, infrastructureFailure: true, summary: verdict.summary, routing: { ...result.routing, blocked: true, canRetry: false } }
+    }
     result.routing.recordOutcome(false)
     if (result.tokens) reporter.addTokens(result.tokens)
     feedback = verdict.summary

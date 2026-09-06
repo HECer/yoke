@@ -1,4 +1,8 @@
 import { assessmentInstructions } from "../routing/assessment.js"
+import { bindAssessments, preparedProblems } from '../prd/assess.js'
+import { loadConfig } from '../retrofit/config.js'
+import { resolvePlanner } from '../routing/planning.js'
+import { readPlanningFile } from '../routing/contracts.js'
 import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -104,13 +108,14 @@ export function pendingChanges(targetDir: string): ChangeRequest[] {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
 }
 
-export function buildChangePrompt(request: ChangeRequest, proposalPath: string, stories: Story[]): string {
+export function buildChangePrompt(request: ChangeRequest, proposalPath: string, stories: Story[], brief = ''): string {
   return [
     'You are planning one newly requested product change for the Yoke autonomous loop.',
     `Change request ${request.id}: ${request.request}`,
     '',
     'Create an append-only proposal: add small new stories; never rewrite or delete existing stories.',
-    assessmentInstructions,
+      assessmentInstructions,
+      ...(brief ? ['Approved planning brief:', brief] : []),
     `Existing story IDs: ${stories.map(story => story.id).join(', ') || '(none)'}`,
     'Every proposed story must have passes: false and 2-5 structured acceptance criteria.',
     'Every criterion must have a stable id, behavioral text, and one or more executable verify commands.',
@@ -167,6 +172,9 @@ function archiveRequest(targetDir: string, request: ChangeRequest): void {
 }
 
 export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): ChangeApplyResult {
+  const config = loadConfig(targetDir)
+  const planner = resolvePlanner(config, opts.runner, opts.selection)
+  opts = { ...opts, runner: planner.agent, selection: planner.selection }
   let requests: ChangeRequest[]
   try { requests = pendingChanges(targetDir) } catch (error) {
     return { ok: false, added: 0, summary: `invalid pending request: ${(error as Error).message}` }
@@ -203,12 +211,13 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
   if (!available(reviewer)) return { ok: false, added: 0, summary: `reviewer CLI "${reviewer}" is unavailable`, changeId: request.id }
 
   const proposal = proposalFile(targetDir, request.id)
+  const brief = readPlanningFile(targetDir, '.yoke/plan.md', 80_000) ?? ''
   const plannerDir = changesDir(targetDir)
   mkdirSync(plannerDir, { recursive: true })
   rmSync(proposal, { force: true })
   const base = agentInvocation(
     opts.runner,
-    buildChangePrompt(request, proposal, existing),
+    buildChangePrompt(request, proposal, existing, brief),
     plannerDir,
     opts.permissions ?? 'safe',
     opts.selection,
@@ -216,7 +225,7 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
   const invocation = buildWatchdogInvocation(base, opts.timeoutMs ?? 0)
   const result = (opts.run ?? runAgent)(invocation)
   if (!result.success) return { ok: false, added: 0, summary: `planner failed: ${result.summary}`, changeId: request.id }
-  if (readFileSync(prdPath, 'utf8') !== existingText) {
+  if (readFileSync(prdPath, 'utf8') !== existingText || (readPlanningFile(targetDir, '.yoke/plan.md', 80_000) ?? '') !== brief) {
     return {
       ok: false,
       added: 0,
@@ -254,12 +263,18 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
     proposedIds.add(story.id)
   }
 
-  const appended = proposed.map(story => ({ ...story, sourceChange: request.id }))
+  let appended = proposed.map(story => ({ ...story, sourceChange: request.id }))
   const dependencyIssues = validateDependencies([...existing, ...appended])
   if (dependencyIssues.length > 0) {
     return { ok: false, added: 0, summary: `invalid combined dependency graph: ${dependencyIssues.join('; ')}`, changeId: request.id }
   }
   const reviewPath = reviewFile(targetDir, request.id)
+  const bound = bindAssessments([...existing, ...appended], brief)
+  appended = bound.slice(existing.length).map(s => ({ ...s, sourceChange: request.id }))
+  if (config?.routing?.assessmentPolicy === 'prepared') {
+    const issues = preparedProblems(bound, brief).filter(issue => appended.some(s => issue.startsWith(s.id + ':')))
+    if (issues.length) return { ok: false, added: 0, summary: issues.join('; '), changeId: request.id }
+  }
   rmSync(reviewPath, { force: true })
   const reviewBase = agentInvocation(
     reviewer,
@@ -273,7 +288,7 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
   if (!reviewResult.success) {
     return { ok: false, added: 0, summary: `coverage review failed: ${reviewResult.summary}`, changeId: request.id }
   }
-  if (readFileSync(prdPath, 'utf8') !== existingText) {
+  if (readFileSync(prdPath, 'utf8') !== existingText || (readPlanningFile(targetDir, '.yoke/plan.md', 80_000) ?? '') !== brief) {
     return {
       ok: false, added: 0,
       summary: 'PRD changed while the coverage reviewer was running; refusing to overwrite concurrent or out-of-contract edits',

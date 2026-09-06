@@ -14,6 +14,7 @@ import { runReview } from './review/command.js'
 import { scanDir } from './scan/design.js'
 import { runNew } from './new/command.js'
 import { runPrdDraft, runPrdCheck } from './prd/command.js'
+import { runPrdAssess } from './prd/assess.js'
 import { runLoopCleanup } from './loop/cleanup.js'
 import { runFlowSmoke } from './smoke/command.js'
 import { maybeNotifyUpdate, currentYokeVersion } from './update/check.js'
@@ -439,6 +440,11 @@ export function main(argv: string[]): number | Promise<number> {
     case 'prd': {
       const sub = rest[0]
       const targetDir = rest.slice(1).find(a => !a.startsWith('-')) ?? '.'
+      if (sub === 'assess') {
+        const runner = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
+        if (runner && !['codex', 'claude', 'gemini'].includes(runner)) { console.error('Invalid planning runner'); return 1 }
+        return runPrdAssess(targetDir, { runner: runner as Agent | undefined, story: rest.find(a => a.startsWith('--story='))?.slice('--story='.length), reassess: rest.includes('--reassess') })
+      }
       if (sub === 'draft') {
         const idea = rest.find(a => a.startsWith('--idea='))?.slice('--idea='.length)
         if (!idea) {
@@ -462,7 +468,7 @@ export function main(argv: string[]): number | Promise<number> {
         return runPrdDraft(targetDir, { idea, runner: runnerArg as Agent | undefined, force, timeoutMinutes })
       }
       if (sub === 'check') return runPrdCheck(targetDir)
-      console.log('usage: yoke prd <draft|check> [dir] [--idea="..."] [--runner=<claude|codex|gemini>] [--force] [--timeout=<minutes>]')
+      console.log('usage: yoke prd <draft|check|assess> [dir] [--idea="..."] [--runner=<claude|codex|gemini>] [--story=<id>] [--reassess] [--force] [--timeout=<minutes>]')
       return 1
     }
     case 'context': {
@@ -519,7 +525,7 @@ export function main(argv: string[]): number | Promise<number> {
       return runUpgrade()
     default:
       console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
-      console.log('usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | change <add|status> [dir] | prd <draft|check> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>')
+      console.log('usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | change <add|status> [dir] | prd <draft|check|assess> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>')
       return cmd ? 1 : 0
   }
 }

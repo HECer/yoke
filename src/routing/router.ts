@@ -9,10 +9,11 @@ import {
   contextBlockFor,
 } from '../loop/runner.js'
 import type { ModelCallUsage, TokenUsage } from '../loop/reporter.js'
-import { isAcceptanceCriterion } from '../loop/prd.js'
+import { isAcceptanceCriterion, criterionCommandProblem } from '../loop/prd.js'
 import { historyForWorkers, projectHash, readRoutingObservations, recordRoutingObservation, storyHash } from './registry.js'
-import { assessmentInstructions, assessmentKey, parseAssessment } from './assessment.js'
-import { chooseCapability, readAssessment, saveAssessment } from './capability.js'
+import { assessmentInstructions, parseAssessment, tiers, type CapabilityTier } from './assessment.js'
+import { chooseCapability, readAssessment, saveAssessment, routingAssessmentKey, knownInfrastructureFailure } from './capability.js'
+import { readPlanningFile } from './contracts.js'
 
 export interface RouteDecision {
   worker: 'SELF' | string
@@ -27,6 +28,10 @@ export interface AdaptiveRunnerOptions {
   strategy: RoutingStrategy
   maxCandidates: number
   maxAttempts?: number
+  planner?: { agent: Agent; selection: ModelSelection }
+  assessmentPolicy?: 'on-demand' | 'prepared'
+  fallback?: 'parent' | 'block'
+  maxTier?: CapabilityTier
   onDecision?: (storyId: string, decision: { profile: string; provider: Agent; model?: string; reasoningEffort?: string; reason: string; next: string; assessment?: import('./assessment.js').TaskAssessment }) => void
   rules?: RoutingRule[]
   idleTimeoutMs?: number
@@ -177,39 +182,57 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
   }))
 
   return function* (ctx: AgentContext): Generator<() => CapturedAgentRun | AgentResult | Promise<CapturedAgentRun | AgentResult>, AgentResult, CapturedAgentRun & AgentResult> {
+    const blocked = (summary: string): AgentResult => ({ success: false, summary, routing: { blocked: true, recordOutcome: () => undefined } })
+    if (options.strategy === 'capability' && options.assessmentPolicy === 'prepared') {
+      try {
+        const criteria = ctx.story.acceptance
+        if (criteria.length < 2 || criteria.length > 5 || criteria.some(c => !isAcceptanceCriterion(c) || criterionCommandProblem(c))) return blocked('Prepared routing requires 2-5 executable acceptance criteria')
+        if (!readAssessment(options.projectRoot ?? ctx.targetDir, ctx.story, true)) return blocked('Task assessment is missing or stale. Run yoke prd assess before execution.')
+      } catch (error) { return blocked(`Cannot read prepared assessment: ${(error as Error).message}`) }
+    }
     if (options.strategy === 'capability' && !options.rules?.some(rule => (!rule.area || rule.area === ctx.story.area) && (!rule.storyId || rule.storyId === ctx.story.id))) {
       const root = options.projectRoot ?? ctx.targetDir
-      let assessment = readAssessment(root, ctx.story)
+      let assessment
+      try { assessment = readAssessment(root, ctx.story, options.assessmentPolicy === 'prepared') }
+      catch (error) { return blocked(`Cannot read assessment: ${(error as Error).message}`) }
       let planning: CapturedAgentRun | undefined
       const calls: ModelCallUsage[] = []
       if (!assessment) {
+        const inputKey = routingAssessmentKey(root, ctx.story)
         const prompt = [assessmentInstructions, 'Use the supplied task contract and project context to produce a bounded plan. Do not implement or change files.',
+          'Approved planning brief:', readPlanningFile(root, '.yoke/plan.md', 80_000) ?? '',
           contextBlockFor(ctx.targetDir, ctx.story), JSON.stringify(ctx.story), 'Return exactly one line: YOKE_ASSESS {"taskClass":"implementation","difficulty":"medium","uncertainty":"low","risk":"low","scope":"low","testability":"high","reason":"evidence","approach":"steps and tests"}'].join('\n')
-        const selection = { ...options.parentSelection, nativeMultiAgent: false }
+        const planner = options.planner?.agent ?? options.parent
+        if (!available(planner)) return blocked('Configured planning provider is unavailable')
+        const selection = { ...(options.planner?.selection ?? options.parentSelection), nativeMultiAgent: false }
         const started = now()
-        planning = yield () => options.captureRoute ? options.captureRoute(options.parent, ctx, prompt, selection)
-          : runCapturedAgent(options.parent, buildWatchdogInvocation(runnerInvocation(options.parent, prompt, ctx.targetDir, true, 'read-only', selection), options.idleTimeoutMs ?? 0))
-        calls.push(callUsage('orchestrator', options.parent, selection, planning.tokens, now() - started))
+        planning = yield () => options.captureRoute ? options.captureRoute(planner, ctx, prompt, selection)
+          : runCapturedAgent(planner, buildWatchdogInvocation(runnerInvocation(planner, prompt, ctx.targetDir, true, 'read-only', selection), options.idleTimeoutMs ?? 0))
+        calls.push(callUsage('orchestrator', planner, selection, planning.tokens, now() - started))
+        if (routingAssessmentKey(root, ctx.story) !== inputKey) return { ...blocked('Planning inputs changed during assessment; retry planning with the current contract'), tokens: aggregateCalls(calls) }
         assessment = planning.success ? parseAssessment(planning.output) : undefined
-        if (assessment) saveAssessment(root, ctx.story, assessment, { provider: options.parent, model: planning.tokens?.model ?? selection.model })
+        if (assessment) saveAssessment(root, ctx.story, assessment, { provider: planner, model: planning.tokens?.model ?? selection.model })
       }
       if (!assessment) return { success: false, summary: 'Routing assessment unavailable or invalid; implementation was not started', tokens: aggregateCalls(calls), routing: { recordOutcome: () => undefined, blocked: true } }
-      const choice = chooseCapability({ root, story: ctx.story, assessment, workers: eligibleWorkers, parent: options.parent, parentSelection: options.parentSelection, maxAttempts: options.maxAttempts })
+      const choice = chooseCapability({ root, story: ctx.story, assessment, workers: eligibleWorkers, parent: options.parent, parentSelection: options.parentSelection, maxAttempts: options.maxAttempts, fallback: options.fallback, maxTier: options.maxTier })
       options.onDecision?.(ctx.story.id, { profile: choice.worker?.id ?? 'SELF', provider: choice.provider, model: choice.selection.model, reasoningEffort: choice.selection.reasoningEffort, reason: choice.reason, next: choice.next, assessment })
+      if (choice.blocked) return { ...blocked(choice.reason), tokens: aggregateCalls(calls) }
       if (choice.exhausted) return { success: false, summary: 'Routing attempt budget exhausted; replan this task before retrying', tokens: aggregateCalls(calls), routing: { recordOutcome: () => undefined, blocked: true } }
       const started = now()
-      const result = yield () => makeWorker(choice.provider, choice.selection)({ ...ctx, story: { ...ctx.story, assessment } })
+      const result = yield () => makeWorker(choice.provider, choice.selection)({ ...ctx, attempt: choice.failures + 1, story: { ...ctx.story, assessment } })
       calls.push(callUsage(choice.worker ? 'worker' : 'parent', choice.provider, choice.selection, result.tokens, now() - started, choice.worker?.id ?? 'SELF'))
       let recorded = false
+      const infrastructureFailure = result.infrastructureFailure || (!result.success && knownInfrastructureFailure(result.summary))
       return { ...result, summary: `route=${choice.worker?.id ?? 'SELF'} (${choice.reason}); ${result.summary}`,
+        ...(infrastructureFailure ? { success: false, infrastructureFailure: true } : {}),
         tokens: { ...aggregateCalls(calls), storyId: ctx.story.id, escalated: choice.failures > 1 },
-        routing: { canRetry: !result.infrastructureFailure && choice.failures + 1 < (options.maxAttempts ?? 5), recordOutcome: (verified, failureKind) => {
+        routing: { blocked: infrastructureFailure || undefined, canRetry: !infrastructureFailure && choice.failures + 1 < (options.maxAttempts ?? 5), recordOutcome: (verified, failureKind) => {
           if (recorded) return
           recorded = true
-          recordRoutingObservation({ projectHash: projectHash(root), storyHash: storyHash(projectHash(root), ctx.story.id), assessmentKey: assessmentKey(ctx.story), taskClass: assessment!.taskClass, requiredTier: choice.requiredTier,
+          recordRoutingObservation({ projectHash: projectHash(root), storyHash: storyHash(projectHash(root), ctx.story.id), assessmentKey: routingAssessmentKey(root, ctx.story), taskClass: assessment!.taskClass, requiredTier: choice.requiredTier,
             role: 'implementation', strategy: 'capability', selected: choice.worker?.id ?? 'SELF', provider: choice.provider, requestedModel: choice.selection.model, requestedReasoningEffort: choice.selection.reasoningEffort,
-            actualModel: result.tokens?.model, orchestratorProvider: options.parent, orchestratorModel: options.parentSelection?.model, orchestratorDurationMs: calls.filter(c => c.role === 'orchestrator').reduce((s,c) => s+c.durationMs,0), workerDurationMs: calls[calls.length-1].durationMs,
-            processSuccess: result.success, verificationSuccess: verified, failureKind: failureKind ?? (result.infrastructureFailure ? 'infrastructure' : 'implementation'), usageAvailable: result.tokens !== undefined && result.tokens.measurementComplete !== false,
+            actualModel: result.tokens?.model, orchestratorProvider: options.planner?.agent ?? options.parent, orchestratorModel: (options.planner?.selection ?? options.parentSelection)?.model, orchestratorDurationMs: calls.filter(c => c.role === 'orchestrator').reduce((s,c) => s+c.durationMs,0), workerDurationMs: calls[calls.length-1].durationMs,
+            processSuccess: result.success, verificationSuccess: infrastructureFailure ? false : verified, failureKind: infrastructureFailure ? 'infrastructure' : failureKind ?? 'implementation', usageAvailable: result.tokens !== undefined && result.tokens.measurementComplete !== false,
             inputTokens: result.tokens?.inputTokens ?? 0, outputTokens: result.tokens?.outputTokens ?? 0, totalCostUsd: result.tokens?.totalCostUsd })
         } } }
     }
@@ -224,6 +247,7 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
     const ruleWorker = rule && failedStories.has(ctx.story.id) ? rule.escalateTo ?? 'SELF' : rule?.worker
     const candidates = rule ? eligibleWorkers : rankWorkers(eligibleWorkers, options.strategy, options.maxCandidates)
     if (candidates.length === 0) {
+      if (options.fallback === 'block' || options.maxTier) return blocked('No eligible routing profiles; parent fallback is disabled')
       return yield () => makeWorker(options.parent, options.parentSelection ?? {})(ctx)
     }
 
@@ -245,6 +269,7 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
       : routeRun.success ? parseRouteDecision(routeRun.output, candidates.map(worker => worker.id)) : null
     const selected = decision?.worker ?? 'SELF'
     const worker = selected === 'SELF' ? undefined : candidates.find(candidate => candidate.id === selected)
+    if ((!worker && (options.fallback === 'block' || options.maxTier)) || (options.maxTier && (!worker?.tier || tiers.indexOf(worker.tier) > tiers.indexOf(options.maxTier)))) return blocked('Selected routing profile exceeds configured limits; execution blocked')
     const provider = worker?.agent ?? options.parent
     const selection: ModelSelection = worker
       ? { model: worker.model, reasoningEffort: worker.reasoningEffort, nativeMultiAgent: false, ...(provider !== 'gemini' ? { bare: options.parentSelection?.bare } : {}) }

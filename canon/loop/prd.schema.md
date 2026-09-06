@@ -34,6 +34,12 @@ belongs in a trusted `completion.command` journey suite.
 `sourceChange` is an optional Yoke-owned request ID. The change inbox uses it to append new
 stories idempotently; authors normally omit it.
 
+`assessment` holds the planner's task class, difficulty, uncertainty, risk, scope, testability,
+reason and approach. `assessmentFor` is a Yoke-generated SHA-256 binding to the task requirements,
+upstream contracts and approved brief. Do not copy a binding onto changed requirements.
+With `routing.assessmentPolicy: prepared`, use `yoke prd assess` after editing contracts;
+dispatch blocks missing or stale assessments. See [capability routing](../../docs/CAPABILITY-ROUTING.md).
+
 Stories without `needs`, `area`, or `agent` retain serial behavior. A story is ready only when
 every ID in `needs` passes. The scheduler orders ready work by priority, avoids simultaneously
 active areas, and uses `agent` as an affinity hint.

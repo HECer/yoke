@@ -1,6 +1,6 @@
 # Routing by task requirements
 
-Available in Yoke 1.9.0.
+Capability routing is available in Yoke 1.9.0. Batch preparation, separate planning settings and routing limits described below are local, unreleased additions.
 
 New setups use `routing.strategy: capability`. Existing explicit strategies and profiles remain unchanged. To opt an existing project into capability routing with its current profiles:
 
@@ -12,7 +12,35 @@ Give each existing worker a `tier: light|standard|strong|frontier`. Profiles wit
 
 ## Planning and selection
 
-The configured start provider/model plans new change requests. The planner supplies an `assessment` with the task class, difficulty, uncertainty, risk, scope, testability, rationale and implementation approach. Existing tasks without an assessment receive one read-only assessment call using the start model. This call does not use a cheaper orchestration override. Its result is cached under `.yoke/routing/`, keyed by the task contract. Changing the contract invalidates the cached assessment; toggling `passes` does not.
+The start provider/model remains the planning default. Optional `planning.agent`, `planning.model` and `planning.reasoningEffort` select a separate planner without changing the execution model. Draft and change-inbox planning request complete assessments in the same pass that creates the tasks. The inbox still performs its separate coverage review.
+
+New setups use `routing.assessmentPolicy: prepared` and `routing.fallback: block`. Before dispatch, each unfinished task must have 2–5 executable criteria and a current assessment. No per-task planning call runs in this mode. Existing configurations retain `on-demand` and `parent` unless explicitly changed; on-demand routing makes a read-only planning call for an unassessed task and caches its result.
+
+Run `yoke prd assess .` to assess all missing or stale unfinished tasks together. One invocation makes at most one read-only planner call, with exact task IDs and validated output, then atomically replaces the PRD. Invalid, incomplete or duplicate output leaves the PRD unchanged; concurrent input edits are preserved and the result is rejected. A current package uses zero model calls. `--story=ID` selects one unfinished task; `--reassess` also includes already-current assessments. The default package limit is 20 tasks (`planning.maxTasks`, range 1–50) and the prompt limit is 60,000 characters; oversized input is rejected before calling the provider.
+
+Yoke writes `assessmentFor` bindings over requirements, declared write scope/provider, transitive dependency contracts and `.yoke/plan.md`. Changes invalidate affected unfinished tasks; progress or priority changes do not. A changed brief invalidates all unfinished tasks. These hashes detect stale input, not authorship or semantic correctness. Source-code changes outside these contracts require explicit reassessment when relevant.
+
+Example settings alongside the project's existing worker profiles:
+
+```yaml
+runner:
+  agent: codex
+  model: gpt-5.6-terra
+planning:
+  agent: codex
+  model: gpt-6-astra
+  reasoningEffort: high
+  maxTasks: 20
+routing:
+  enabled: true
+  strategy: capability
+  assessmentPolicy: prepared
+  fallback: block
+  maxTier: strong
+  # Keep the existing workers list here.
+```
+
+`maxTier` limits automatic execution and escalation, including routing-rule selections. If a task needs frontier while the ceiling is strong, it blocks; Yoke does not lower the required capability. Planning itself may still use Astra. Explicit quality-role model overrides retain precedence. Goal execution retains its own protected manifest and budgets, uses the configured planner on demand, and honors routing fallback/tier limits; PRD preparation policy does not apply to synthetic goal tasks.
 
 An assessment is a planning judgment, not a measured success probability. High testability means executable checks can detect an incorrect implementation. High uncertainty, architecture work or high risk require the frontier tier; difficult or broadly coupled work requires strong; routine implementation requires standard. Light is reserved for clear, low-risk mechanical work with strong checks. Weak testability raises the minimum tier. Reviews and critics have a standard minimum even for light tasks.
 
@@ -28,7 +56,7 @@ assessment:
   approach: Extend the handler, cover the boundary cases, run contract tests
 ```
 
-Yoke chooses an eligible profile at or above the required tier, then compares declared cost tiers. Optional `roles: [implementation, reviewer, critic, repair]` limits a profile's uses. Task `agent` affinity restricts implementation to that provider. Explicit routing rules and explicit quality role models retain precedence. A missing suitable profile falls back to the start model (or the explicitly bound provider's default) and labels the fallback; it does not prove that the fallback has sufficient capability. An invalid assessment blocks implementation.
+Yoke chooses an eligible profile at or above the required tier, then compares declared cost tiers. Optional `roles: [implementation, reviewer, critic, repair]` limits a profile's uses. Task `agent` affinity restricts implementation to that provider. Explicit routing rules and explicit quality role models retain precedence. With legacy `fallback: parent` and no tier ceiling, a missing suitable profile falls back to the start model (or the explicitly bound provider's default) and labels the fallback; it does not prove sufficient capability. `fallback: block` or a configured tier ceiling prevents that fallback. An invalid assessment blocks implementation.
 
 ## Initial profiles
 

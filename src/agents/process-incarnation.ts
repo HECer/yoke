@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 
 export type ProcessIdentityQuery = (command: string, args: readonly string[], options?: { readonly env?: NodeJS.ProcessEnv }) => string
 
-const queryProcessIdentity: ProcessIdentityQuery = (command, args, options) => execFileSync(command, args, { stdio: 'pipe', ...options }).toString()
+const queryProcessIdentity: ProcessIdentityQuery = (command, args, options) => execFileSync(command, args, { stdio: 'pipe', timeout: 5000, windowsHide: true, ...options }).toString()
 
 export function processIncarnation(pid: number, platform: NodeJS.Platform = process.platform, query: ProcessIdentityQuery = queryProcessIdentity): string | undefined {
   try {

@@ -1,5 +1,6 @@
 import { loadConfig } from "../retrofit/config.js"
 import { makeAsyncAdaptiveRunner } from "../routing/router.js"
+import { resolvePlanner } from '../routing/planning.js'
 import type { AgentResult } from "../loop/runner.js"
 import type { TokenUsage } from "../loop/reporter.js"
 import { randomUUID } from 'node:crypto'
@@ -109,6 +110,7 @@ export async function runProjectGoal(root: string, options: GoalRunOptions = {})
     const execute = async (input: GoalExecutionInput): Promise<GoalExecutionResult> => {
       if (!config?.routing?.enabled || config.routing.strategy !== "capability") return rawExecute(input)
       const routed = makeAsyncAdaptiveRunner({ parent: provider, parentSelection: input.selection, projectRoot: root, workers: config.routing.workers, strategy: "capability", maxCandidates: config.routing.maxCandidates, maxAttempts: Math.min(goal!.maxAttempts, config.routing.maxAttempts ?? 5),
+        planner: resolvePlanner(config, provider, input.selection), fallback: config.routing.fallback, maxTier: config.routing.maxTier,
         captureRoute: async (agent, context, prompt, selection) => {
           const run = await startProviderProcess(agent, buildProviderInvocation(agent, prompt, root, "read-only", selection), { signal: input.signal, idleTimeoutMs: 20 * 60_000 }).completion
           return { success: run.kind === "succeeded", summary: run.kind, output: run.stdout, tokens: run.telemetry.tokens }

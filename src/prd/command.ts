@@ -1,8 +1,13 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Agent } from '../retrofit/config.js'
 import { loadConfig } from '../retrofit/config.js'
-import { acceptanceText, criterionCommandProblem, isAcceptanceCriterion, loadPrd, progress, type Story } from '../loop/prd.js'
+import { acceptanceText, criterionCommandProblem, isAcceptanceCriterion, loadPrd, savePrd, progress, type Story } from '../loop/prd.js'
+import { assessmentInstructions } from '../routing/assessment.js'
+import { bindAssessments, preparedProblems } from './assess.js'
+import { resolvePlanner } from '../routing/planning.js'
+import { readPlanningFile } from '../routing/contracts.js'
+import { acquireLock, releaseLock } from '../loop/lock.js'
 import {
   agentInvocation,
   buildWatchdogInvocation,
@@ -65,6 +70,9 @@ export function buildPrdDraftPrompt(idea: string, planningBrief?: string): strin
     '  Each criterion is an object with a stable id, behavioral text, and verify: [one or more approved test commands].',
     '  Every criterion id must appear in every verify command; use one test command without shell control operators.',
     '- passes: false',
+    '- writes: explicit relative write scopes for safe scheduling',
+    assessmentInstructions,
+    'Include a complete assessment on every story in this same planning pass. Do not choose worker model names; the scheduler does that.',
     '',
     'If the project has no source code yet, STORY-1 must scaffold the project skeleton with a runnable',
     'test suite, and its acceptance must include that the verify command (verify.command in',
@@ -111,7 +119,8 @@ export function runPrdDraft(targetDir: string, opts: PrdDraftOptions): number {
   }
   const available = opts.isAvailable ?? isAgentAvailable
   const config = loadConfig(targetDir)
-  const agent: Agent = resolveRunnerAgent(config, opts.runner, detectHostAgent())
+  const planner = resolvePlanner(config, resolveRunnerAgent(config, undefined, detectHostAgent()), config?.runner, opts.runner)
+  const agent = planner.agent
   if (!available(agent)) {
     console.error(`Agent CLI "${agent}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
     return 2
@@ -127,27 +136,44 @@ export function runPrdDraft(targetDir: string, opts: PrdDraftOptions): number {
     console.error(`Approved plan is too large (${planningBrief.length} characters; maximum ${MAX_PLANNING_BRIEF_CHARS}). Split or condense .yoke/plan.md before drafting the PRD.`)
     return 1
   }
-  const inv = agentInvocation(agent, buildPrdDraftPrompt(idea, planningBrief), targetDir)
+  const lock = acquireLock(targetDir)
+  if (!lock.acquired) { console.error('A loop or planner already owns this project'); return 1 }
+  try {
+  const before = readPlanningFile(targetDir, '.yoke/prd.yaml')
+  const rollback = () => { if (before === undefined) rmSync(path, { force: true }); else writeFileSync(path, before) }
+  const inv = agentInvocation(agent, buildPrdDraftPrompt(idea, planningBrief), targetDir, 'safe', planner.selection)
   console.log(`Drafting PRD with ${agent}...`)
   const run = opts.run ?? ((i: Invocation) => runAgent(buildWatchdogInvocation(i, idleMs)))
   const result = run(inv)
   if (!result.success) {
+    rollback()
     console.error(`PRD draft failed: ${result.summary}`)
     return 1
   }
   let count: number
   try {
-    count = loadPrd(path).length
+    if (readPlanningFile(targetDir, '.yoke/plan.md', MAX_PLANNING_BRIEF_BYTES) !== planningBrief) throw Error('Approved planning brief changed during drafting')
+    const drafted = bindAssessments(loadPrd(path), planningBrief)
+    count = drafted.length
+    if (config?.routing?.assessmentPolicy === 'prepared') {
+      if (drafted.some(s => s.passes)) throw Error('New stories must not already be passed')
+      const issues = preparedProblems(drafted, planningBrief)
+      if (issues.length) throw Error(issues.join('; '))
+    }
+    if (count) savePrd(path, drafted)
   } catch (e) {
+    rollback()
     console.error(`PRD draft produced an invalid PRD: ${(e as Error).message}`)
     return 1
   }
   if (count === 0) {
+    rollback()
     console.error('PRD draft failed: agent produced an empty PRD.')
     return 1
   }
   console.log(`Drafted ${count} stories → ${path}`)
   return 0
+  } finally { releaseLock(targetDir, lock.ownerToken) }
 }
 
 export function runPrdCheck(targetDir: string): number {
@@ -164,6 +190,7 @@ export function runPrdCheck(targetDir: string): number {
     return 1
   }
   const errors: string[] = []
+  if (loadConfig(targetDir)?.routing?.assessmentPolicy === 'prepared') errors.push(...preparedProblems(stories, readPlanningFile(targetDir, '.yoke/plan.md', 80_000) ?? ''))
   const requireCriteria = loadConfig(targetDir)?.verify?.requireCriteria ?? false
   if (stories.length === 0) errors.push('PRD has no stories')
   const seen = new Set<string>()

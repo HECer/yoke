@@ -19,6 +19,40 @@ beforeEach(() => {
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('realGitOps', () => {
+  it('ignores its own live lock and dashboard status without project ignore rules', () => {
+    mkdirSync(join(dir, '.yoke'))
+    for (const file of ['loop.lock', 'loop-status.json', 'runner.pid', 'story-durations.json']) {
+      writeFileSync(join(dir, '.yoke', file), '{}')
+    }
+    expect(realGitOps.isClean(dir)).toBe(true)
+    writeFileSync(join(dir, 'b.txt'), 'implementation')
+    realGitOps.commitAll(dir, 'implementation with live status')
+    const committed = execFileSync('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: dir }).toString()
+    expect(committed.trim()).toBe('b.txt')
+    expect(existsSync(join(dir, '.yoke', 'loop.lock'))).toBe(true)
+  })
+
+  it('commits source when runtime directories are already gitignored', () => {
+    writeFileSync(join(dir, '.gitignore'), '.yoke/events/\n.yoke/history/\n')
+    for (const name of ['events', 'history']) {
+      mkdirSync(join(dir, '.yoke', name), { recursive: true })
+      writeFileSync(join(dir, '.yoke', name, 'record.json'), '{}')
+    }
+    writeFileSync(join(dir, 'b.txt'), 'implementation')
+    realGitOps.commitAll(dir, 'implementation with ignored history')
+    expect(realGitOps.isClean(dir)).toBe(true)
+    expect(execFileSync('git', ['ls-files'], { cwd: dir }).toString()).not.toContain('.yoke/')
+  })
+
+  it('stages tracked deletions and literal filenames without expanding pathspec syntax', () => {
+    rmSync(join(dir, 'a.txt'))
+    writeFileSync(join(dir, '[draft] notes.txt'), 'literal filename')
+    realGitOps.commitAll(dir, 'delete and add literal file')
+    const files = execFileSync('git', ['ls-files', '-z'], { cwd: dir }).toString().split('\0').filter(Boolean)
+    expect(files).toEqual(['[draft] notes.txt'])
+    expect(realGitOps.isClean(dir)).toBe(true)
+  })
+
   it('isClean is true on a committed tree', () => {
     expect(realGitOps.isClean(dir)).toBe(true)
   })

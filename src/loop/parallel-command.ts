@@ -2,6 +2,7 @@ import { existsSync, rmSync } from 'node:fs'
 import { acceptanceProtectionProblem } from '../check/command.js'
 import type { Agent, YokeConfig } from '../retrofit/config.js'
 import { makeAsyncAdaptiveRunner } from '../routing/router.js'
+import { resolvePlanner } from '../routing/planning.js'
 import { startProviderProcess } from '../agents/process.js'
 import { runnerInvocation, isAgentAvailable } from './runner.js'
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
@@ -47,6 +48,7 @@ export type ParallelCommandInput = {
   readonly quality?: QualityCommandHooks
   readonly candidateCount?: number
   readonly routing?: YokeConfig['routing']
+  readonly planning?: YokeConfig['planning']
   readonly isAvailable?: (agent: Agent) => boolean
   readonly onCriticalDecision?: (decision: DecisionRequest) => void
 }
@@ -298,6 +300,10 @@ function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider,
       strategy: input.routing.strategy,
       maxCandidates: input.routing.maxCandidates,
       maxAttempts: input.routing.maxAttempts,
+      planner: resolvePlanner({ planning: input.planning }, input.runnerAgent, input.selection),
+      assessmentPolicy: input.routing.assessmentPolicy,
+      fallback: input.routing.fallback,
+      maxTier: input.routing.maxTier,
       onDecision: (id, decision) => input.reporter.routingDecision?.(id, decision),
       orchestratorSelection: input.routing.orchestrator,
       isAvailable: input.isAvailable ?? isAgentAvailable,

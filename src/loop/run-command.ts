@@ -23,6 +23,7 @@ import {
 import { makeAdaptiveRunner } from '../routing/router.js'
 import { makeActionRunner } from '../execution/actions.js'
 import { runChangeApply } from '../change/inbox.js'
+import { resolvePlanner } from '../routing/planning.js'
 import { createQualityCommandHooks, type QualityCommandRuntime } from '../quality/command.js'
 import { resolveQualityPolicy, type QualityPolicy, type QualityRunOverrides } from '../quality/types.js'
 import { runParallelLoopCommand } from './parallel-command.js'
@@ -68,9 +69,12 @@ export function loopStatus(targetDir: string, now: () => Date = () => new Date()
   if (!st) return `Loop: ${enabled ? 'enabled' : 'disabled'}\nPRD: ${prog}`
   const head = `Loop: ${st.state.toUpperCase()}${st.story ? ` on ${st.story}${st.storyTitle ? ` "${st.storyTitle}"` : ''}` : ''}`
   const pct = st.percent !== undefined ? ` (${st.percent}%)` : ''
-  const meta = [st.phase, `iteration ${st.iteration}`, `${st.progress.passed}/${st.progress.total}${pct}`, `updated ${relativeTime(st.updatedAt, now())}`]
+  const meta = [st.phase, `iteration ${st.iteration}`, `backlog ${st.progress.passed}/${st.progress.total}${pct}`, `updated ${relativeTime(st.updatedAt, now())}`]
     .filter(Boolean).join(' · ')
   const lines = [head, `  ${meta}`]
+  for (const process of st.supervision ?? []) {
+    lines.push(`  provider PID ${process.childPid ?? 'not started'}: ${process.state} · attempt ${process.retry + 1} · identity/liveness ${process.liveness ?? 'unknown'} · supervisor heartbeat ${relativeTime(process.heartbeatAt, now())} · last output ${process.lastOutputAt ? relativeTime(process.lastOutputAt, now()) : 'none'} · last successful tool/edit ${process.lastProgressAt ? relativeTime(process.lastProgressAt, now()) : 'none'}${process.reason ? ' · ' + process.reason : ''}`)
+  }
   if (st.state === 'running' && st.eta && st.eta.remainingStories > 0) {
     lines.push(`  ~${fmtDuration(st.eta.etaMs)} remaining (Ø ${fmtDuration(st.eta.avgStoryMs)}/story)`)
   }
@@ -308,7 +312,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   }
   const permissions = opts.permissions ?? config.runner?.permissions ?? 'safe'
   const routingRequested = opts.routing ?? config.routing?.enabled ?? true
-  const routingEnabled = routingRequested && Boolean(config.routing?.workers.length)
+  const routingEnabled = routingRequested && Boolean(config.routing && (config.routing.workers.length || config.routing.fallback === 'block' || config.routing.maxTier || config.routing.assessmentPolicy === 'prepared'))
   const runnerSelection = {
     model: config.runner?.model,
     reasoningEffort: config.runner?.reasoningEffort,
@@ -397,6 +401,10 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
           strategy: config.routing.strategy,
           maxCandidates: config.routing.maxCandidates,
           maxAttempts: config.routing.maxAttempts,
+          planner: resolvePlanner(config, runnerAgent, runnerSelection),
+          assessmentPolicy: config.routing.assessmentPolicy,
+          fallback: config.routing.fallback,
+          maxTier: config.routing.maxTier,
           onDecision: (id, decision) => executionReporter?.routingDecision?.(id, decision),
           idleTimeoutMs: idleMs,
           permissions,
@@ -516,6 +524,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       providers: parallelProviders,
       affinityProviders: parallelAffinityProviders,
       routing: routingEnabled ? config.routing : undefined,
+      planning: config.planning,
       isAvailable: available,
       onAmbiguity: ambiguityPolicy,
       git: opts.git,

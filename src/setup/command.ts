@@ -117,6 +117,8 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
       enabled: routing,
       strategy: opts.routingStrategy ?? config.routing?.strategy ?? 'capability',
       maxCandidates: config.routing?.maxCandidates ?? 3,
+      assessmentPolicy: existing?.routing?.assessmentPolicy ?? (existing ? 'on-demand' : 'prepared'),
+      fallback: existing?.routing?.fallback ?? (existing ? 'parent' : 'block'),
       ...(config.routing?.orchestrator ? { orchestrator: config.routing.orchestrator } : {}),
       workers: existingWorkers.length > 0 && !opts.routingPreset ? existingWorkers : defaultRoutingWorkers(agents),
     }

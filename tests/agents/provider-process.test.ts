@@ -199,20 +199,18 @@ describe('startProviderProcess', { timeout: 15_000 }, () => {
     expect(existsSync(handle.recordPath)).toBe(true)
   })
 
-  it('uses argv arrays and shells only Windows command shims', () => {
+  it('uses native argv arrays and rejects unavailable Windows launchers', () => {
     // Given: one provider invocation.
     const inv = invocation('process.exit(0)', '/tmp/project')
 
     // When: spawn options are derived for each platform contract.
     const unix = providerSpawnOptions(inv, 'linux')
-    const windows = providerSpawnOptions({ ...inv, command: 'provider-shim.cmd' }, 'win32')
+    expect(() => providerSpawnOptions({ ...inv, command: 'provider-shim.cmd' }, 'win32')).toThrow('unavailable')
 
     // Then: neither platform receives an interpolated command string.
     expect(unix).toMatchObject({ command: inv.command, args: inv.args, shell: false })
-    expect(windows).toMatchObject({ command: 'provider-shim.cmd', args: inv.args, shell: true })
     expect(providerSpawnOptions(inv, 'win32')).toMatchObject({ command: inv.command, args: inv.args, shell: false })
-    expect(providerSpawnOptions({ ...inv, command: 'node' }, 'win32')).toMatchObject({ command: 'node', args: inv.args, shell: true })
-    expect(providerSpawnOptions({ ...inv, command: '/opt/node/bin/node' }, 'win32')).toMatchObject({ command: '/opt/node/bin/node', args: inv.args, shell: false })
+    expect(providerSpawnOptions({ ...inv, command: 'node' }, 'win32')).toMatchObject({ command: process.execPath, args: inv.args, shell: false })
   })
 
   it('records independent scoped PIDs for concurrent provider calls', async () => {

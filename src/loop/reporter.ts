@@ -1,3 +1,4 @@
+import { readSupervision } from "../agents/supervision.js"
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, appendFileSync, statSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -142,6 +143,7 @@ export interface TokenUsage {
 }
 
 export interface LoopStatus {
+  supervision?: import('../agents/supervision.js').SupervisionState[]
   routingDecisions?: Record<string, { profile: string; provider: string; model?: string; reasoningEffort?: string; reason: string; next: string; assessment?: import("../routing/assessment.js").TaskAssessment }>
 
   execution?: { provider: string; requestedModel?: string; startedAt: string }
@@ -178,7 +180,9 @@ export function readStatus(dir: string): LoopStatus | null {
   const file = statusPath(dir)
   if (!existsSync(file)) return null
   try {
-    return JSON.parse(readFileSync(file, 'utf8')) as LoopStatus
+    const status = JSON.parse(readFileSync(file, 'utf8')) as LoopStatus
+    const supervision = readSupervision(dir, status.startedAt)
+    return supervision.length ? { ...status, supervision } : status
   } catch {
     return null
   }

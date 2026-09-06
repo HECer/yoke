@@ -1,6 +1,27 @@
 # Changelog
 
-## Unreleased
+## 1.10.0 — 2026-09-06
+
+### Added
+- Adopt the Yoke wordmark in the GitHub and npm README.
+- Prepare task assessments in one bounded planning call with `yoke prd assess`; draft and inbox planning bind assessments to requirements, upstream dependencies and the approved brief.
+- Separate `planning.agent`/`model`/`reasoningEffort` from execution settings. New setups require prepared assessments and block missing worker profiles; existing configurations retain on-demand planning and parent fallback.
+- Add selective reassessment, planning input limits and `routing.maxTier` to bound automatic model selection and escalation.
+- Add attention-first project search and status filters, with separate goal/loop states and explicit stale activity warnings.
+- Restore dashboard views and UTC period controls through URL links, browser history and refresh; cancel obsolete requests and bound project comparison concurrency.
+- Compare recorded tokens, accepted tasks and reported costs against the preceding equal-duration period without inventing missing measurements or percentages from zero baselines.
+
+### Fixed
+- Fix Windows safe-mode Codex execution by screening Store PowerShell/aliases and probing a native shell under the same sandbox before model work; keep permissions intact.
+- Launch Windows provider executables/npm entry points with literal argv; bound preflight and provider lifetime, recognize streamed infrastructure failures, retain failed-worktree/process evidence, and guard against unconfirmed termination before another worker starts.
+- Separate provider liveness, supervisor heartbeat, output and successful-tool progress in status/dashboard; label backlog percentages and preserve explicit bare startup through capability routing. See [Windows runner validation](docs/WINDOWS-RUNNER-VALIDATION.md).
+- Keep local loop locks and dashboard status out of implementation commits and clean-worktree checks.
+- Stage implementation files safely when runtime history directories are already ignored, including literal filenames and tracked deletions, for serial commits and parallel candidate snapshots.
+
+### Migration and validation limits
+- Existing routing configurations retain on-demand assessment and parent fallback. Use `yoke prd assess` to prepare task packages; configure `planning.agent`, `planning.model`, `planning.reasoningEffort` and `routing.maxTier` to separate planning from bounded execution. New setups require prepared assessments and block missing profiles.
+- Update installed packages and restart the dashboard/runner to use the new code. Existing running processes are not upgraded or instrumented retroactively. Windows preflight preserves sandbox permissions and changes only the provider environment.
+- Dashboard comparisons report recorded measurements, not reconstructed history or calibrated savings. Tokens per minute are consumption rates, not generation speed. Live routed Windows validation covered Codex on the documented machine; cross-provider performance and universal Windows compatibility are not established. See the linked dashboard, batch-planning and runner validation records.
 
 ## 1.9.0 — 2026-09-06
 

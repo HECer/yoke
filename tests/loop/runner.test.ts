@@ -495,7 +495,7 @@ describe('makeRunner with tokenReport', () => {
     rmSync(d, { recursive: true, force: true })
     expect(captured).toBe(1)
     expect(invs).toHaveLength(1)
-    expect(invs[0].args).toEqual(['exec', '--approve-for-me', '--json'])
+    expect(invs[0].args.slice(-4)).toEqual(['codex', 'exec', '--approve-for-me', '--json'])
     expect(res.success).toBe(true)
     expect(res.tokens).toMatchObject({ inputTokens: 4, outputTokens: 2, model: 'gpt-5' })
   })

@@ -10,6 +10,8 @@ import {
 } from './process-record.js'
 import { createBoundedOutput, createTelemetryAccumulator } from './process-streams.js'
 import { processIncarnation } from './process-incarnation.js'
+import { prepareWindowsInvocation, resolveWindowsCommand } from './windows-launch.js'
+import { createSupervision, supervisionLimits, assertPreviousProvidersStopped } from './supervision.js'
 
 export type ProviderProcessOutput = {
   readonly stream: 'stdout' | 'stderr'
@@ -17,7 +19,10 @@ export type ProviderProcessOutput = {
 }
 
 export type ProviderProcessOptions = {
+  readonly attempt?: number
   readonly idleTimeoutMs?: number
+  readonly totalTimeoutMs?: number
+  readonly progressTimeoutMs?: number
   readonly terminationGraceMs?: number
   readonly outputLimitBytes?: number
   readonly workerId?: string
@@ -71,30 +76,47 @@ function cancellationReason(signal: AbortSignal): string {
 }
 
 export function providerSpawnOptions(invocation: AgentInvocation, platform: NodeJS.Platform = process.platform): ProviderSpawnOptions {
-  const windowsCommandShim = !/[\\/]/u.test(invocation.command) || /\.(?:bat|cmd)$/iu.test(invocation.command)
+  const resolved = platform === 'win32' ? resolveWindowsCommand(invocation.command, invocation.args) : invocation
   return {
-    command: invocation.command,
-    args: invocation.args,
+    command: resolved.command,
+    args: resolved.args,
     cwd: invocation.cwd,
-    shell: platform === 'win32' && windowsCommandShim,
+    shell: false,
     detached: platform !== 'win32',
   }
 }
 
 export function startProviderProcess(agent: Agent, invocation: AgentInvocation, options: ProviderProcessOptions = {}): ProviderProcessHandle {
-  const spawnOptions = providerSpawnOptions(invocation)
+  let failure: (reason: string) => void = () => {}
+  let progress: () => void = () => {}
+  const limits = supervisionLimits(invocation.cwd)
+  const supervision = createSupervision(invocation.cwd, reason => failure(reason), () => progress(), options.attempt)
+  let prepared
+  try { assertPreviousProvidersStopped(invocation.cwd); prepared = process.platform === 'win32' ? prepareWindowsInvocation(invocation) : { command: invocation.command, args: invocation.args, env: process.env } }
+  catch (error) {
+    const message = (error as Error).message; supervision.stop(message)
+    return { pid: undefined, invocation, recordPath: '', cancel: () => false, completion: Promise.resolve({ kind: 'spawn-failed', error: message, invocation, pid: undefined, stdout: '', stderr: '', stdoutTruncated: false, stderrTruncated: false, telemetry: { usageAvailable: false } }) }
+  }
+  const spawnOptions = { ...prepared, cwd: invocation.cwd, shell: false, detached: process.platform !== 'win32' }
   const child = spawn(spawnOptions.command, [...spawnOptions.args], {
     cwd: spawnOptions.cwd,
     shell: spawnOptions.shell,
     stdio: ['pipe', 'pipe', 'pipe'],
     detached: spawnOptions.detached,
+    env: prepared.env,
+    windowsHide: true,
   })
   const targetDir = resolve(invocation.cwd)
   const pid = child.pid
   const startedAt = pid === undefined ? `unverified:${new Date().toISOString()}` : processIncarnation(pid) ?? `unverified:${new Date().toISOString()}`
+  supervision.start(pid, 'shell' in prepared ? prepared.shell : undefined, startedAt.startsWith('unverified:') ? undefined : startedAt)
   const record = createProviderProcessRecord(targetDir, pid ?? 0, options.workerId, startedAt)
   const recordAdapter = options.recordAdapter ?? filesystemProviderProcessRecordAdapter
-  const terminateProcessTree = options.terminateProcessTree ?? ((processPid: number) => killProcessTreeForCleanup(processPid))
+  const terminateProcessTree = options.terminateProcessTree ?? ((processPid: number) => {
+    try { process.kill(processPid, 0) } catch { return true }
+    if (startedAt.startsWith('unverified:') || processIncarnation(processPid) !== startedAt) return false
+    return killProcessTreeForCleanup(processPid)
+  })
   let recordPublished = false
 
   const stdout = createBoundedOutput(options.outputLimitBytes ?? 1_048_576)
@@ -105,6 +127,9 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   let termination: ProcessTermination | undefined
   let idleTimer: ReturnType<typeof setTimeout> | undefined
   let forceTimer: ReturnType<typeof setTimeout> | undefined
+  let totalTimer: ReturnType<typeof setTimeout> | undefined
+  let progressTimer: ReturnType<typeof setTimeout> | undefined
+  let completionTimer: ReturnType<typeof setTimeout> | undefined
   let recordFailure: string | undefined
   let terminationConfirmed = false
   let settled = false
@@ -120,6 +145,9 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   const clearTimers = (): void => {
     if (idleTimer) clearTimeout(idleTimer)
     if (forceTimer) clearTimeout(forceTimer)
+    if (totalTimer) clearTimeout(totalTimer)
+    if (progressTimer) clearTimeout(progressTimer)
+    if (completionTimer) clearTimeout(completionTimer)
     idleTimer = undefined
     forceTimer = undefined
   }
@@ -127,6 +155,7 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     if (settled) return
     settled = true
     clearTimers()
+    supervision.stop(termination?.reason ?? (result.kind === 'succeeded' ? 'provider-exited' : 'provider-failed'), !termination || terminationConfirmed)
     options.signal?.removeEventListener('abort', onAbort)
     if (!termination || terminationConfirmed) removeRecord()
     resolveCompletion(result)
@@ -141,6 +170,8 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     telemetry: telemetry.finish(),
   })
   const finalize = (exitCode: number | null): void => {
+    if (settled) return
+    supervision.flush()
     // Windows can emit close before taskkill's process-tree state is observable.
     // Reconfirm here so successful termination does not leave a stale ownership record.
     if (termination && pid !== undefined && !terminationConfirmed) {
@@ -171,6 +202,13 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     if (pid !== undefined) terminationConfirmed = terminateProcessTree(pid, false)
     forceTimer = setTimeout(() => {
       if (pid !== undefined && !settled) terminationConfirmed = terminateProcessTree(pid, true)
+      // Allow close/pipe draining to confirm termination before the bounded fallback.
+      if (!settled) completionTimer = setTimeout(() => {
+        if (settled) return
+        // A killer's return value is not an observed process exit.
+        if (pid !== undefined) { try { process.kill(pid, 0); terminationConfirmed = false } catch { /* exited */ } }
+        finalize(null)
+      }, 5000)
     }, terminationGraceMs)
     return true
   }
@@ -193,7 +231,13 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
       stderr.append(text)
     }
     options.onOutput?.({ stream, text })
+    supervision.output(stream, text)
     armIdleTimer()
+  }
+  failure = reason => { terminate({ kind: 'cancelled', reason }) }
+  progress = () => {
+    if (progressTimer) clearTimeout(progressTimer)
+    if ((options.progressTimeoutMs ?? limits.progressMs) > 0) progressTimer = setTimeout(() => terminate({ kind: 'timed-out', reason: 'provider-progress-timeout' }), options.progressTimeoutMs ?? limits.progressMs)
   }
 
   child.stdout?.on('data', chunk => { onOutput('stdout', chunk) })
@@ -229,6 +273,8 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   if (options.signal?.aborted) onAbort()
   else options.signal?.addEventListener('abort', onAbort, { once: true })
   armIdleTimer()
+  if ((options.totalTimeoutMs ?? limits.totalMs) > 0) totalTimer = setTimeout(() => terminate({ kind: 'timed-out', reason: 'provider-total-timeout' }), options.totalTimeoutMs ?? limits.totalMs)
+  progress()
 
   return handle
 }

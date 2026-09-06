@@ -210,7 +210,8 @@ export async function runStoryWorker(input: StoryWorkerInput): Promise<StoryWork
     })
   }
   if (implementation.tokens) input.reporter?.addTokens(implementation.tokens)
-  if (implementation.routing?.blocked) return finalResult(input, { ...baseResult(input, evidence, implementation.summary), kind: "mechanical-failure", stage: "implementation" })
+  if (implementation.infrastructureFailure) implementation.routing?.recordOutcome(false, 'infrastructure')
+  if (implementation.infrastructureFailure || implementation.routing?.blocked) return finalResult(input, { ...baseResult(input, evidence, implementation.summary), kind: "mechanical-failure", stage: "implementation" })
 
   const afterImplementationCancellation = cancellationReason(input.cancellation)
   if (afterImplementationCancellation) {
@@ -306,7 +307,10 @@ async function runWorkerImplementation(input: StoryWorkerInput, context: AgentCo
     if (["decision-request.yaml", "ambiguity.md", "loop.pause"].some(name => existsSync(join(context.targetDir, ".yoke", name))) || acceptanceProtectionProblem(context.targetDir)) return result
     const gates = runMechanicalGates(input, context, evidence)
     if (gates.kind !== "failed") return result
-    if (knownInfrastructureFailure(gates.summary)) { result.routing.recordOutcome(false, "infrastructure"); return result }
+    if (knownInfrastructureFailure(gates.summary)) {
+      result.routing.recordOutcome(false, 'infrastructure')
+      return { ...result, success: false, infrastructureFailure: true, summary: gates.summary, routing: { ...result.routing, blocked: true, canRetry: false } }
+    }
     result.routing.recordOutcome(false)
     if (result.tokens) input.reporter?.addTokens(result.tokens)
     feedback = gates.summary

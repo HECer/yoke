@@ -2,8 +2,17 @@ import { execFileSync } from 'node:child_process'
 import type { GitOps } from './gates.js'
 import { sanitizeCommitMessage, type CommitIdentity } from './identity.js'
 
-export const RUNTIME_PATHS = ['.yoke/artifacts', '.yoke/events', '.yoke/history', '.yoke/routing', '.yoke/checks', '.yoke/goal.json', '.yoke/goal.pause']
-export const RUNTIME_EXCLUDES = RUNTIME_PATHS.map(path => `:(exclude)${path}${path.endsWith('.json') || path.endsWith('.pause') ? '' : '/**'}`)
+export const RUNTIME_PATHS = [".yoke/supervision", ".yoke/provider-processes", '.yoke/artifacts', '.yoke/events', '.yoke/history', '.yoke/routing', '.yoke/checks', '.yoke/goal.json', '.yoke/goal.pause', '.yoke/loop-status.json', '.yoke/loop.lock', '.yoke/loop.lock.takeover', '.yoke/loop.lock.takeover.recovery', '.yoke/runner.pid', '.yoke/story-durations.json']
+// Directory pathspecs include descendants and also exclude the directory entry.
+export const RUNTIME_EXCLUDES = RUNTIME_PATHS.map(path => `:(exclude)${path}`)
+
+export function stageImplementation(dir: string): void {
+  execFileSync('git', ['reset', '--quiet', '--', ...RUNTIME_PATHS], { cwd: dir, stdio: 'pipe' })
+  // Negative ignored pathspecs can make git add fail. Enumerate eligible files
+  // first, including tracked deletions, and preserve literal names with NULs.
+  const paths = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '.', ...RUNTIME_EXCLUDES], { cwd: dir, maxBuffer: 16 * 1024 * 1024 })
+  if (paths.length) execFileSync('git', ['--literal-pathspecs', 'add', '-A', '--pathspec-from-file=-', '--pathspec-file-nul'], { cwd: dir, input: paths, stdio: ['pipe', 'pipe', 'pipe'] })
+}
 
 export const realGitOps: GitOps = {
   isClean(dir: string): boolean {
@@ -11,8 +20,7 @@ export const realGitOps: GitOps = {
     return out.trim() === ''
   },
   commitAll(dir: string, message: string, identity?: CommitIdentity): void {
-    execFileSync('git', ['reset', '--quiet', '--', ...RUNTIME_PATHS], { cwd: dir, stdio: 'pipe' })
-    execFileSync('git', ['add', '-A', '--', '.', ...RUNTIME_EXCLUDES], { cwd: dir, stdio: 'pipe' })
+    stageImplementation(dir)
     const staged = execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: dir }).toString().trim()
     if (staged === '') {
       throw new Error('nothing to commit after agent run')

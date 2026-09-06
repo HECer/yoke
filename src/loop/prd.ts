@@ -51,6 +51,8 @@ export const StorySchema = z.object({
   sourceChange: z.string().min(1).optional(),
   quality: StoryQualityDeclarationSchema.optional(),
   assessment: AssessmentSchema.optional(),
+  /** Binding to the task, upstream contracts and approved planning brief. */
+  assessmentFor: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 }).superRefine((story, ctx) => {
   const structured = story.acceptance.filter(isAcceptanceCriterion)
   const ids = structured.map(criterion => criterion.id)

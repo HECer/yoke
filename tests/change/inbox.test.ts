@@ -110,7 +110,8 @@ describe('change inbox', () => {
     })
 
     expect(result).toMatchObject({ ok: true, added: 1, changeId: request.id })
-    expect(invocation?.command).toBe(agent)
+    expect(invocation?.command).toBe(agent === 'gemini' ? process.execPath : agent)
+    if (agent === 'gemini') expect(invocation?.args[0]).toContain('bounded-gemini.mjs')
     expect(invocation?.cwd).toBe(join(dir, '.yoke', 'changes'))
     expect(invocation?.input).toContain('append-only')
     expect(invocation?.input).toMatch(/criterion id.*verify command/i)

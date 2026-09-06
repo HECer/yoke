@@ -14,9 +14,12 @@ import { parseProviderResult, parseProviderTelemetry } from '../agents/telemetry
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
 import type { ProviderProcessHandle, ProviderProcessOptions } from '../agents/process.js'
 import { formatReviewContract, formatReviewStdoutContract, parseReviewVerdict, type ReviewVerdict } from '../review/verdict.js'
+import { prepareWindowsInvocation } from '../agents/windows-launch.js'
+import { readSupervision } from '../agents/supervision.js'
 import type { ReviewOutcome } from '../quality/repair.js'
 
 export interface AgentContext {
+  attempt?: number
   targetDir: string
   story: Story
   feedback?: string
@@ -236,8 +239,8 @@ function watchdogArgs(): string[] {
 // killing by process-name/command-line pattern takes down other projects'
 // runners too. (Plain repos, e.g. `yoke review` outside a yoke project, get
 // no pid file rather than a littered .yoke dir.)
-export function buildWatchdogInvocation(inv: Invocation, idleTimeoutMs: number, ownershipRoot: string = inv.cwd): Invocation {
-  if (idleTimeoutMs <= 0) return inv
+export function buildWatchdogInvocation(inv: Invocation, idleTimeoutMs: number, ownershipRoot: string = inv.cwd, force = false): Invocation {
+  if (idleTimeoutMs <= 0 && !force) return inv
   const yokeDir = join(ownershipRoot, '.yoke')
   const pidArgs = existsSync(yokeDir) ? [`--pid-file=${join(yokeDir, 'runner.pid')}`] : []
   return {
@@ -263,19 +266,14 @@ export function win32CommandString(command: string, args: string[]): string {
 }
 
 function runCli(inv: Invocation): void {
-  if (process.platform === 'win32' && !/\.(?:exe|com)$/iu.test(inv.command) && inv.command !== process.execPath && inv.command !== 'node') {
-    execSync(win32CommandString(inv.command, inv.args), {
+    const launch = process.platform === 'win32' ? prepareWindowsInvocation(inv) : inv
+    execFileSync(launch.command, launch.args, {
       cwd: inv.cwd,
       input: inv.input,
       stdio: ['pipe', 'inherit', 'inherit'],
+      ...('env' in launch ? { env: launch.env } : {}),
+      windowsHide: true,
     })
-  } else {
-    execFileSync(inv.command, inv.args, {
-      cwd: inv.cwd,
-      input: inv.input,
-      stdio: ['pipe', 'inherit', 'inherit'],
-    })
-  }
 }
 
 // Like runCli, but with stdout PIPED and returned (stderr stays inherited) — for
@@ -284,9 +282,8 @@ function runCli(inv: Invocation): void {
 // through it. Throws on a non-zero exit; the error carries the partial stdout.
 function runCliCapture(inv: Invocation): string {
   const opts = { cwd: inv.cwd, input: inv.input, stdio: ['pipe', 'pipe', 'inherit'] as ['pipe', 'pipe', 'inherit'], encoding: 'utf8' as const, maxBuffer: 64 * 1024 * 1024 }
-  return process.platform === 'win32' && !/\.(?:exe|com)$/iu.test(inv.command) && inv.command !== process.execPath && inv.command !== 'node'
-    ? execSync(win32CommandString(inv.command, inv.args), opts)
-    : execFileSync(inv.command, inv.args, opts)
+  const launch = process.platform === 'win32' ? prepareWindowsInvocation(inv) : inv
+  return execFileSync(launch.command, launch.args, { ...opts, ...('env' in launch ? { env: launch.env } : {}), windowsHide: true })
 }
 
 // Reviews have a machine-readable result file, so their console stream is not
@@ -302,8 +299,8 @@ function runReviewCli(inv: Invocation): void {
     encoding: 'utf8' as const,
     maxBuffer: 64 * 1024 * 1024,
   }
-  if (process.platform === 'win32' && !/\.(?:exe|com)$/iu.test(inv.command) && inv.command !== process.execPath && inv.command !== 'node') execSync(win32CommandString(inv.command, inv.args), opts)
-  else execFileSync(inv.command, inv.args, opts)
+  const launch = process.platform === 'win32' ? prepareWindowsInvocation(inv) : inv
+  execFileSync(launch.command, launch.args, { ...opts, ...('env' in launch ? { env: launch.env } : {}), windowsHide: true })
 }
 
 function processFailureSummary(error: unknown): string {
@@ -416,7 +413,7 @@ export function makeAsyncRunner(agent: Agent, opts: AsyncRunnerOpts = {}): Async
       opts.permissions ?? 'safe',
       opts.selection,
     ),
-    opts.process,
+    { ...opts.process, attempt: ctx.attempt },
   )
 }
 
@@ -430,7 +427,8 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
     const started = Date.now()
     const attributed = (tokens: TokenUsage | undefined): TokenUsage | undefined => tokens ? { ...tokens, provider: agent, role: 'parent', storyId: ctx.story.id, durationMs: Date.now() - started } : undefined
     const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story) + (ctx.feedback ? "\nPrior independent failure; preserve useful existing changes and fix the root cause:\n" + ctx.feedback.slice(0, 8000) : ""), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe', opts.selection)
-    const inv = buildWatchdogInvocation(base, idleTimeoutMs)
+    const inv = buildWatchdogInvocation(base, idleTimeoutMs, ctx.targetDir, true)
+    if (ctx.attempt) inv.args.splice(inv.args.indexOf('--'), 0, `--attempt=${ctx.attempt}`)
     if (captureTokens) {
       const capture = opts.execCapture ?? runCliCapture
       try {
@@ -441,7 +439,8 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
         // Salvage usage from whatever the agent streamed before dying — those tokens were spent.
         const partial = (e as { stdout?: unknown }).stdout
         const tokens = partial == null ? undefined : parseProviderTelemetry(agent, String(partial).split(/\r?\n/)).tokens
-        return { success: false, infrastructureFailure: true, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}`, tokens: attributed(tokens) }
+        const reason = readSupervision(ctx.targetDir, new Date(started).toISOString())[0]?.reason
+        return { success: false, infrastructureFailure: true, summary: `${agent} failed on ${ctx.story.id}: ${reason ?? (e as Error).message}`, tokens: attributed(tokens) }
       }
     }
     try {

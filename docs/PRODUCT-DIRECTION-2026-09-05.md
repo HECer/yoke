@@ -207,3 +207,21 @@ Der Nutzer hat die Umsetzung der vorgeschlagenen Fähigkeitsauswahl ausdrücklic
 ### Releaseauftrag 1.9.0
 
 Der Nutzer hat die Veröffentlichung des Capability-Routing-Ausbaus ausdrücklich beauftragt. Releaseziel ist 1.9.0. Der datierte Changelog und CAPABILITY-ROUTING.md beschreiben Verhalten, Migration und Grenzen; frühere Hinweise auf den lokalen Zwischenstand bleiben historische Sitzungsnotizen.
+
+## Dashboard-Eigengebrauch am 2026-09-06 nach Release 1.9.0
+
+Der Nutzer hat eine vollständige Weiterentwicklung des Dashboards durch tatsächlichen Einsatz der neuesten Yoke-Version mit Routing beauftragt. Die global installierte Version 1.9.0 wurde verifiziert und im separaten Checkout `G:/NN-Developed/Yoke-dashboard` mit Capability-Routing eingesetzt; die zusammenhängende UI-Aufgabe wurde anhand ihrer gespeicherten Bewertung auf `codex-strong` / `gpt-5.6-sol` mit hoher Denktiefe geroutet. Ein einzelner serieller Auftrag vermeidet konkurrierende Änderungen an derselben Frontend-Navigation; das allgemeine Automatikmaximum bleibt drei Worker.
+
+Der lokale Ausbau ergänzt Statusvorrang für blockierte/laufende Loops trotz abgeschlossenem Ziel, Kennzeichnung veralteter Meldungen, Projektsuche und Statusfilter, aktuelle Aufgabe und Blocker auf Projektkarten, wiederherstellbare URL-Ansichten und UTC-Zeiträume, abbrechbare Projektvergleiche mit maximal drei gleichzeitigen Anfragen sowie Vorperiodenvergleiche mit sichtbaren Messlücken. Der Eigengebrauch deckte außerdem Fehler beim Umgang mit Git-Laufzeitdateien auf; Status/Sperren werden ausgeschlossen und Implementierungsdateien auch bei ignorierten Historienordnern sicher gestagt. Bedienung und Grenzen: [DASHBOARD-EVOLUTION.md](DASHBOARD-EVOLUTION.md).
+
+Unabhängige Browserprüfungen verwendeten synthetische Projekte gegen den echten lokalen HTTP-Server, einschließlich mobiler Darstellung, History-Navigation und verzögerter Antworten. Dieser Auftrag umfasst lokale Entwicklung; eine neue Paketversion oder Veröffentlichung wurde dabei nicht beauftragt. Kein behaupteter Modellbenchmark, keine berechnete Kostenersparnis und keine Rekonstruktion unbekannter Verbrauchsdaten. Diese Sitzungsnotiz wurde vom KI-Assistenten erstellt.
+
+## Batch-Planung nach 1.9.0 am 2026-09-06
+
+Der Nutzer hat den nächsten Ausbau beauftragt: vollständig vorbereitete Aufgabenpakete, getrennte Planungs-/Ausführungsmodelle, begrenzter Fallback und gezielte Neubewertung geänderter Verträge. Lokal implementiert sind prd assess, assessmentFor-Bindungen einschließlich Abhängigkeiten/Plan, planning-Einstellungen und Routing-Grenzen. Neue Setups verlangen vorbereitete Assessments und blockieren fehlende Profile; bestehende Konfigurationen bleiben kompatibel. Ein tatsächlicher Yoke-Lauf prüfte die Batch-Befehle mit einem auf Terra gerouteten Worker. Details, Messwerte und Grenzen: [BATCH-PLANNING-VALIDATION.md](BATCH-PLANNING-VALIDATION.md).
+
+Der zusätzliche Windows-Runner-Handoff wurde gelesen, Issue #5 geprüft und eine Teilkorrektur der Infrastrukturklassifikation samt begrenztem Abbruch ergänzt. Sandbox-Preflight und weitergehende Prozessaufsicht bleiben ausdrücklich offen; keine Reproduktion oder Behebung der ursprünglichen Windows-Ursache wird behauptet. Keine neue Version veröffentlicht. Diese Notiz wurde vom KI-Assistenten erstellt.
+
+## Vollständiger Runner-Folgeauftrag am 2026-09-06
+
+Auf ausdrücklichen Nutzerauftrag wurde Issue #5 weiterbearbeitet. Der Store-PowerShell-Fehler wurde modellfrei mit dem exakten Fehlercode reproduziert; native PowerShell bestand denselben Sandbox-Test. Der lokale Ausbau prüft den Shell-Start vor dem Modell, entfernt ungeeignete Store-Aliase nur aus der Provider-Umgebung, nutzt argv-sichere Windows-Starts und überwacht Laufzeit, Ausgabe, erfolgreichen Tool-Fortschritt und Prozessidentität getrennt. Ein echter Yoke-Lauf mit Luna, Routing und sicherer Isolation endete nach 3m8s erfolgreich einschließlich Abnahmetests und Commit-Integration. Protokoll, Grenzen und Konfiguration: [WINDOWS-RUNNER-VALIDATION.md](WINDOWS-RUNNER-VALIDATION.md). Die alte DeviceLane-Instanz wurde nicht verändert; Veröffentlichung oder rückwirkende Instrumentierung wird nicht behauptet. Diese Notiz wurde vom KI-Assistenten erstellt.

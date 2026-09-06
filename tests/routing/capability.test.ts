@@ -80,6 +80,19 @@ it('does not escalate infrastructure failures or inherit another project outcome
   expect(choice.selection.model).toBe('gpt-5.6-luna')
 })
 
+it.each(['CreateProcessAsUserW failed: -1073283067', 'AuthRequired: No access token was provided'])('stops a worker on infrastructure evidence without repair or model escalation: %s', async failure => {
+  let attempts = 0
+  const planned = { ...story, assessment }
+  const runner = makeAsyncAdaptiveRunner({ ...options(), makeWorker: () => async () => {
+    attempts++; return { success: true, summary: 'provider exited zero' }
+  } })
+  const result = await runStoryWorker({ story: planned, worktree: root, baseCommit: 'base', provider: { provider: 'codex', role: 'worker' }, runner,
+    verify: () => ({ passed: false, summary: failure }) })
+  expect(result.kind).toBe('mechanical-failure')
+  expect(attempts).toBe(1)
+  expect(chooseCapability({ root, story: planned, assessment, workers, parent: 'codex' }).failures).toBe(0)
+})
+
 it('respects provider affinity and role floors without truncating away strong profiles', () => {
   const choice = chooseCapability({ root, story: { ...story, agent: 'claude' }, assessment: { ...assessment, risk: 'high' }, workers: defaultRoutingWorkers(['codex', 'claude', 'gemini']), parent: 'codex', role: 'critic' })
   expect(choice.provider).toBe('claude')

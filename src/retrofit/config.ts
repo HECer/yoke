@@ -58,6 +58,8 @@ export const YokeConfigSchema = z.object({
     parallel: z.union([z.literal('auto'), z.number().int().positive()]).optional(),
     isolate: z.boolean().optional(),
     timeoutMinutes: z.number().optional(),
+    maxCallMinutes: z.number().positive().max(1440).optional(),
+    progressTimeoutMinutes: z.number().positive().max(1440).optional(),
     decisionPolicy: z.enum(['auto', 'critical']).optional(),
     // Ambiguous acceptance criteria: 'resolve' (default — agent decides and continues)
     // or 'abort' (agent stops the story via .yoke/ambiguity.md for a human decision).
@@ -70,10 +72,19 @@ export const YokeConfigSchema = z.object({
     bare: z.boolean().optional(),
     permissions: PermissionProfileSchema.optional(),
   }).optional(),
+  planning: z.object({
+    agent: AgentSchema.optional(),
+    model: z.string().min(1).optional(),
+    reasoningEffort: z.string().min(1).optional(),
+    maxTasks: z.number().int().min(1).max(50).optional(),
+  }).optional(),
   routing: z.object({
     enabled: z.boolean(),
     strategy: z.enum(['balanced', 'cost', 'speed', 'quality', 'capability']).default('balanced'),
     maxAttempts: z.number().int().min(1).max(8).optional(),
+    assessmentPolicy: z.enum(['on-demand', 'prepared']).optional(),
+    fallback: z.enum(['parent', 'block']).optional(),
+    maxTier: z.enum(['light', 'standard', 'strong', 'frontier']).optional(),
     maxCandidates: z.number().int().min(1).max(5).default(3),
     orchestrator: z.object({
       model: z.string().min(1).optional(),
@@ -133,12 +144,16 @@ export interface YokeConfig {
   actions?: ToolAction[]
   canonVersion: string
   agents: Agent[]
-  loop: { enabled: boolean; parallel?: 'auto' | number; isolate?: boolean; timeoutMinutes?: number; decisionPolicy?: DecisionPolicy; onAmbiguity?: 'resolve' | 'abort' }
+  loop: { enabled: boolean; parallel?: 'auto' | number; isolate?: boolean; timeoutMinutes?: number; maxCallMinutes?: number; progressTimeoutMinutes?: number; decisionPolicy?: DecisionPolicy; onAmbiguity?: 'resolve' | 'abort' }
   runner?: { agent?: Agent; model?: string; reasoningEffort?: string; bare?: boolean; permissions?: PermissionProfile }
+  planning?: { agent?: Agent; model?: string; reasoningEffort?: string; maxTasks?: number }
   routing?: {
     enabled: boolean
     strategy: RoutingStrategy
     maxAttempts?: number
+    assessmentPolicy?: 'on-demand' | 'prepared'
+    fallback?: 'parent' | 'block'
+    maxTier?: 'light' | 'standard' | 'strong' | 'frontier'
     maxCandidates: number
     orchestrator?: { model?: string; reasoningEffort?: string }
     workers: RoutingWorker[]

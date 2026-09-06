@@ -1,9 +1,9 @@
 <div align="center">
 
-# 🐂 Yoke
+<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.10.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
 
-<!-- yoke:version:start -->1.9.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1134<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.10.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->1173<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1134%20defined-blue.svg)
+![Tests](https://img.shields.io/badge/tests-1173%20defined-blue.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -27,7 +27,7 @@
 
 > **TL;DR** — `yoke setup .` asks six questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. Add `--parallel=N` for dependency-aware workers, or declare a reference and add `--quality` for a bounded critic/repair gauntlet. If any blocking gate is red, nothing is committed. Proof lives in `.yoke/proof/<story>/`.
 
-**New in 1.9.0:** [routing by task requirements](docs/CAPABILITY-ROUTING.md). Keep planning on the start model, select execution models and effort from saved task assessments, and use bounded repair and escalation with independent checks. The dashboard explains model selection; existing routing settings remain authoritative.
+**New in 1.10.0:** [dashboard search, filters and period comparisons](docs/DASHBOARD-EVOLUTION.md), [batch task assessments with separate planning models](docs/CAPABILITY-ROUTING.md), and [Windows sandbox preflight and process supervision](docs/WINDOWS-RUNNER-VALIDATION.md). Existing routing settings remain authoritative. See the [changelog](CHANGELOG.md) for migration and validation limits.
 
 ### One dashboard, multiple projects
 
@@ -39,6 +39,8 @@ yoke dashboard --no-register
 ```
 
 Open the printed `http://127.0.0.1:...` URL. Each registered project has its own goals, tasks and evidence. The dashboard shows available worker state, per-task duration estimates, planned start offsets, input/output tokens, costs and unknown measurements. You can request a goal pause at a safe boundary.
+
+The dashboard includes attention-first project search and filters, restorable view links, and usage comparisons against the preceding period. See [dashboard behavior and measurement limits](docs/DASHBOARD-EVOLUTION.md).
 
 Projects are registered explicitly; this version does not automatically discover every process or aggregate other computers. Start/resume and budget changes use the CLI. Missing history appears as unknown; time ranges are empirical estimates, not exact deadlines.
 
@@ -895,7 +897,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1134 tests)
+npm test          # vitest (1173 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```
