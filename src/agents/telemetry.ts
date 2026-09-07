@@ -50,6 +50,9 @@ export function parseProviderResult(agent: Agent, output: string): unknown {
       case 'gemini':
         if (event.type === 'message' && event.role === 'assistant' && typeof event.content === 'string') fragments.push(event.content)
         break
+      case 'qwen':
+        if (event.type === 'message' && event.role === 'assistant' && typeof event.content === 'string') fragments.push(event.content)
+        break
     }
   }
 
@@ -100,6 +103,30 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
     // only when every model measured it; a missing measurement is not zero.
     let source = usage ?? nestedModelTokens ?? modelUsage
     if (agent === 'gemini' && modelEntries.length > 0) {
+      reportedModels = modelEntries.map(([name]) => name)
+      model = firstModel?.[0]
+      const fields = {
+        input_tokens: ['input_tokens', 'inputTokens', 'promptTokenCount', 'input'],
+        output_tokens: ['output_tokens', 'outputTokens', 'candidatesTokenCount', 'output'],
+        cached_input_tokens: ['cached_input_tokens', 'cachedInputTokens', 'cachedContentTokenCount', 'cached'],
+        reasoning_output_tokens: ['reasoning_output_tokens', 'reasoningOutputTokens', 'thoughtsTokenCount', 'thoughts'],
+      }
+      const totals: Record<string, number> = {}
+      for (const [field, aliases] of Object.entries(fields)) {
+        const aggregate = aliases.map(key => finite(usage?.[key])).find(value => value !== undefined)
+        if (aggregate !== undefined) { totals[field] = aggregate; continue }
+        const values = modelEntries.map(([, value]) => {
+          const entry = isRecord(value) ? value : {}
+          const tokens = isRecord(entry.tokens) ? entry.tokens : entry
+          return aliases.map(key => finite(tokens[key])).find(value => value !== undefined)
+        })
+        if (values.every(value => value !== undefined)) totals[field] = values.reduce<number>((sum, value) => sum + value!, 0)
+      }
+      source = { ...totals, ...usage }
+      const aggregateCached = finite(usage?.cached_input_tokens ?? usage?.cached)
+      if (aggregateCached !== undefined) source.cached_input_tokens = aggregateCached
+    }
+    if (agent === 'qwen' && modelEntries.length > 0) {
       reportedModels = modelEntries.map(([name]) => name)
       model = firstModel?.[0]
       const fields = {

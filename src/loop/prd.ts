@@ -46,7 +46,7 @@ export const StorySchema = z.object({
   area: z.string().min(1).optional(),
   /** Advisory relative file/directory scopes; not a filesystem permission boundary. */
   writes: z.array(z.string().min(1).max(500).refine(validWriteScope, 'Write scopes must be relative non-glob paths without traversal')).max(100).optional(),
-  agent: z.enum(['claude', 'codex', 'gemini']).optional(),
+  agent: z.enum(['claude', 'codex', 'gemini', 'qwen']).optional(),
   /** Inbox request that created this story. Used for idempotent append-only intake. */
   sourceChange: z.string().min(1).optional(),
   quality: StoryQualityDeclarationSchema.optional(),

@@ -71,7 +71,7 @@ describe('change inbox', () => {
     expect(readFileSync(join(dir, '.yoke', 'prd.yaml'), 'utf8')).toBe(before)
   })
 
-  it.each(['claude', 'codex', 'gemini'] as const)('uses the generic %s provider to append only new strict stories', agent => {
+  it.each(['claude', 'codex', 'gemini', 'qwen'] as const)('uses the generic %s provider to append only new strict stories', agent => {
     const request = queueChange(dir, 'Add team invitations', { id: `change-${agent}` })
     let invocation: Invocation | undefined
     const result = runChangeApply(dir, {

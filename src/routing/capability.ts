@@ -75,7 +75,7 @@ export function chooseCapability(input: {
   const worker = reliable[0]
   const blocked = !worker && (input.fallback === 'block' || input.maxTier !== undefined)
   const provider = worker?.agent ?? input.story.agent ?? input.parent
-  const selection: ModelSelection = worker ? { model: worker.model, reasoningEffort: worker.reasoningEffort, nativeMultiAgent: false, ...(provider !== 'gemini' && input.parentSelection?.bare !== undefined ? { bare: input.parentSelection.bare } : {}) }
+  const selection: ModelSelection = worker ? { model: worker.model, reasoningEffort: worker.reasoningEffort, nativeMultiAgent: false, ...(provider !== 'gemini' && provider !== 'qwen' && input.parentSelection?.bare !== undefined ? { bare: input.parentSelection.bare } : {}) }
     : { ...(provider === input.parent ? input.parentSelection : {}), nativeMultiAgent: false }
   const reason = `${role}: ${tiers[level]}; ${input.assessment.reason}${failures.length ? `; ${failures.length} verified failure(s), ${failures.length === 1 ? 'one targeted repair' : 'escalated'}` : ''}${worker ? '' : '; no eligible profile, parent/provider fallback'}`
   return { worker, provider, selection, reason: blocked ? `${role}: no eligible profile within routing limits; execution blocked` : reason, blocked, requiredTier: baseTier, selectedTier: tiers[level], failures: failures.length, exhausted, next: input.maxTier && level >= tiers.indexOf(input.maxTier) ? 'stop at configured tier limit' : level < 3 ? tiers[level + 1] : 'stop after bounded attempts' }

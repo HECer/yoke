@@ -26,6 +26,12 @@ const argsFor = (agent: Agent, permissions: PermissionProfile): string[] => {
     // Automatic review already selects workspace-write and conflicts with --sandbox.
     return ['exec', '--approve-for-me', '--json']
   }
+  // Qwen CLI is a Gemini fork with similar arguments
+  if (agent === 'qwen') {
+    if (permissions === 'unsafe') return ['--yolo', '--output-format', 'stream-json']
+    const approval = permissions === 'read-only' ? 'plan' : 'auto_edit'
+    return ['--approval-mode', approval, '--sandbox', '--output-format', 'stream-json']
+  }
   if (permissions === 'unsafe') return ['--yolo', '--output-format', 'stream-json']
   const approval = permissions === 'read-only' ? 'plan' : 'auto_edit'
   return ['--approval-mode', approval, '--sandbox', '--output-format', 'stream-json']
@@ -43,6 +49,9 @@ export function buildProviderInvocation(
   if (agent === 'gemini' && parsedSelection.bare) throw new Error('Gemini does not support the bare startup selection')
   if (agent === 'gemini' && parsedSelection.reasoningEffort) throw new Error('Gemini does not support the reasoningEffort selection')
   if (agent === 'gemini' && parsedSelection.nativeMultiAgent === true) throw new Error('Gemini does not support enabling the nativeMultiAgent selection')
+  if (agent === 'qwen' && parsedSelection.bare) throw new Error('Qwen does not support the bare startup selection')
+  if (agent === 'qwen' && parsedSelection.reasoningEffort) throw new Error('Qwen does not support the reasoningEffort selection')
+  if (agent === 'qwen' && parsedSelection.nativeMultiAgent === true) throw new Error('Qwen does not support enabling the nativeMultiAgent selection')
   const args = argsFor(agent, permissions)
   if (output.schemaFile !== undefined || output.jsonSchema !== undefined) {
     if (agent === 'codex' && output.schemaFile && output.jsonSchema === undefined) {

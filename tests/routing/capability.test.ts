@@ -94,7 +94,7 @@ it.each(['CreateProcessAsUserW failed: -1073283067', 'AuthRequired: No access to
 })
 
 it('respects provider affinity and role floors without truncating away strong profiles', () => {
-  const choice = chooseCapability({ root, story: { ...story, agent: 'claude' }, assessment: { ...assessment, risk: 'high' }, workers: defaultRoutingWorkers(['codex', 'claude', 'gemini']), parent: 'codex', role: 'critic' })
+  const choice = chooseCapability({ root, story: { ...story, agent: 'claude' }, assessment: { ...assessment, risk: 'high' }, workers: defaultRoutingWorkers(['codex', 'claude', 'gemini', 'qwen']), parent: 'codex', role: 'critic' })
   expect(choice.provider).toBe('claude')
   expect(choice.selection.model).toBe('opus')
 })

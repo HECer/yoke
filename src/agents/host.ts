@@ -8,9 +8,11 @@ export function detectHostAgent(env: Environment = process.env): Agent | undefin
   if (env.CODEX_THREAD_ID || env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE) return 'codex'
   if (env.CLAUDECODE || env.CLAUDE_CODE_ENTRYPOINT) return 'claude'
   if (env.GEMINI_CLI) return 'gemini'
+  if (env.QWEN_CLI) return 'qwen'
   if (env.CODEX_HOME) return 'codex'
   if (env.CLAUDE_CONFIG_DIR) return 'claude'
   if (env.GEMINI_CLI_HOME) return 'gemini'
+  if (env.QWEN_CLI_HOME) return 'qwen'
   return undefined
 }
 

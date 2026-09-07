@@ -19,7 +19,7 @@ export interface SetupOptions {
   ask?: (question: string) => Promise<string>
 }
 
-const ALL_AGENTS: Agent[] = ['claude', 'codex', 'gemini']
+const ALL_AGENTS: Agent[] = ['claude', 'codex', 'gemini', 'qwen']
 
 export function defaultRoutingWorkers(agents: Agent[]): RoutingWorker[] {
   const workers: Record<Agent, RoutingWorker[]> = {
@@ -40,6 +40,12 @@ export function defaultRoutingWorkers(agents: Agent[]): RoutingWorker[] {
       { id: 'gemini-standard', agent: 'gemini', model: 'gemini-2.5-pro', tier: 'standard', costTier: 'medium', capabilities: ['implementation'] },
       { id: 'gemini-strong', agent: 'gemini', model: 'gemini-2.5-pro', tier: 'strong', costTier: 'medium', capabilities: ['debugging'] },
       { id: 'gemini-frontier', agent: 'gemini', model: 'gemini-2.5-pro', tier: 'frontier', costTier: 'high', capabilities: ['architecture'] },
+    ],
+    qwen: [
+      { id: 'qwen-light', agent: 'qwen', model: 'qwen-turbo-latest', tier: 'light', costTier: 'low', capabilities: ['mechanical', 'tests'] },
+      { id: 'qwen-standard', agent: 'qwen', model: 'qwen3-coder-plus', tier: 'standard', costTier: 'medium', capabilities: ['implementation'] },
+      { id: 'qwen-strong', agent: 'qwen', model: 'qwen3-coder-plus', tier: 'strong', costTier: 'medium', capabilities: ['debugging'] },
+      { id: 'qwen-frontier', agent: 'qwen', model: 'qwen3-235b-a22b', tier: 'frontier', costTier: 'high', capabilities: ['architecture'] },
     ],
   }
   return agents.flatMap(agent => workers[agent])
@@ -93,11 +99,11 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
     let decisionPolicy = defaultPolicy
     let routing = defaultRouting
     if (interactive && ask) {
-      agents = parseAgents(await ask(`Agents [${defaultAgents.join(',')}] (claude,codex,gemini|all): `), defaultAgents)
+      agents = parseAgents(await ask(`Agents [${defaultAgents.join(',')}] (claude,codex,gemini,qwen|all): `), defaultAgents)
       const graphAnswer = (await ask(`Code graph [${defaultGraph}] (graphify|serena): `)).trim().toLowerCase()
       if (graphAnswer === 'graphify' || graphAnswer === 'serena') codeGraph = graphAnswer
       loop = yes(await ask(`Enable autonomous loop? [${defaultLoop ? 'yes' : 'no'}]: `), defaultLoop)
-      const runnerAnswer = (await ask(`Default runner [${runner}] (claude|codex|gemini): `)).trim().toLowerCase()
+      const runnerAnswer = (await ask(`Default runner [${runner}] (claude|codex|gemini|qwen): `)).trim().toLowerCase()
       if (ALL_AGENTS.includes(runnerAnswer as Agent)) runner = runnerAnswer as Agent
       const policyAnswer = (await ask(`Decision mode [${decisionPolicy}] (auto|critical): `)).trim().toLowerCase()
       if (policyAnswer === 'auto' || policyAnswer === 'critical') decisionPolicy = policyAnswer

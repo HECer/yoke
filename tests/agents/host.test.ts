@@ -6,12 +6,12 @@ describe('host-aware agent selection', () => {
   it('detects Codex, Claude, and Gemini host environments', () => {
     expect(detectHostAgent({ CODEX_THREAD_ID: 'thread' })).toBe('codex')
     expect(detectHostAgent({ CLAUDECODE: '1' })).toBe('claude')
-    expect(detectHostAgent({ GEMINI_CLI: '1' })).toBe('gemini')
+    expect(detectHostAgent({ QWEN_CLI: '1' })).toBe('qwen')
   })
 
   it('prefers an active session marker over another provider home directory', () => {
     expect(detectHostAgent({ CODEX_HOME: 'C:/codex', CLAUDECODE: '1' })).toBe('claude')
-    expect(detectHostAgent({ CLAUDE_CONFIG_DIR: 'C:/claude', GEMINI_CLI: '1' })).toBe('gemini')
+    expect(detectHostAgent({ CLAUDE_CONFIG_DIR: 'C:/claude', QWEN_CLI: '1' })).toBe('qwen')
   })
 
   it('prefers an explicit flag, then configured runner, then current host', () => {
@@ -22,7 +22,7 @@ describe('host-aware agent selection', () => {
   })
 
   it('ignores an unconfigured host and falls back to the first configured agent', () => {
-    const cfg = { ...defaultConfig('1.1.0'), agents: ['claude', 'gemini'] as const }
+    const cfg = { ...defaultConfig('1.1.0'), agents: ['claude', 'qwen'] as const }
     expect(resolveRunnerAgent(cfg, undefined, 'codex')).toBe('claude')
   })
 

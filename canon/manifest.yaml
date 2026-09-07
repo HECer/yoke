@@ -1,6 +1,6 @@
 name: yoke-canon
 version: 1.7.0
-agents: [claude, codex, gemini]
+agents: [claude, codex, gemini, qwen]
 skills:
   - { id: tdd, path: skills/tdd, kind: methodology, invocation: auto }
   - { id: yoke-retrofit, path: skills/yoke-retrofit, kind: methodology, invocation: auto }

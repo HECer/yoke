@@ -71,7 +71,7 @@ const RichClaimSchema = LegacyClaimSchema.extend({
   heartbeatAt: z.string().min(1),
   baseCommit: z.string().min(1).optional(),
   worktree: z.string().min(1).optional(),
-  provider: z.enum(['claude', 'codex', 'gemini']).optional(),
+  provider: z.enum(['claude', 'codex', 'gemini', 'qwen']).optional(),
   model: z.string().min(1).optional(),
   role: z.enum(['implementation', 'quality', 'repair', 'review']).optional(),
   cancellation: z.object({

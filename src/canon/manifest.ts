@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { parse } from 'yaml'
 import { readFileSync } from 'node:fs'
 
-export const AgentSchema = z.enum(['claude', 'codex', 'gemini'])
+export const AgentSchema = z.enum(['claude', 'codex', 'gemini', 'qwen'])
 export const InvocationSchema = z.enum(['auto', 'manual'])
 
 export const SkillEntrySchema = z.object({

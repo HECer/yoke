@@ -14,7 +14,7 @@ function harness(overrides: {
   available?: Agent[]
   succeed?: boolean
 } = {}) {
-  const available = new Set(overrides.available ?? ['codex', 'gemini', 'claude'])
+  const available = new Set(overrides.available ?? ['codex', 'gemini', 'qwen', 'claude'])
   const calls: Invocation[] = []
   const run = (inv: Invocation) => {
     calls.push(inv)

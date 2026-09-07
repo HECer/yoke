@@ -109,7 +109,7 @@ export function main(argv: string[]): number | Promise<number> {
   switch (cmd) {
     case 'setup': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
-      const valid: Agent[] = ['claude', 'codex', 'gemini']
+      const valid: Agent[] = ['claude', 'codex', 'gemini', 'qwen']
       const hostArg = rest.find(a => a.startsWith('--host='))?.slice('--host='.length)
       if (hostArg && !valid.includes(hostArg as Agent)) { console.error(`Invalid --host value: ${hostArg}`); return 1 }
       const agentArg = rest.find(a => a.startsWith('--agent='))?.slice('--agent='.length)
@@ -180,7 +180,7 @@ export function main(argv: string[]): number | Promise<number> {
         if (sub === 'pause') { pauseProjectGoal(targetDir); console.log('Pause requested at next safe boundary'); return 0 }
         if (sub === 'run' || sub === 'resume') {
           const provider = value('runner') ?? 'codex'
-          if (!['codex', 'claude', 'gemini'].includes(provider)) throw new Error('Unknown runner')
+          if (!['codex', 'claude', 'gemini', 'qwen'].includes(provider)) throw new Error('Unknown runner')
           return runProjectGoal(targetDir, { provider: provider as Agent, selection: { model: value('model') } }).then(goal => {
             console.log(JSON.stringify(goal)); return goal.status === 'complete' ? 0 : 1
           }).catch(error => { console.error(`Goal: ${(error as Error).message}`); return 2 })
@@ -211,7 +211,7 @@ export function main(argv: string[]): number | Promise<number> {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
       const loop = rest.includes('--loop')
       const agentArg = rest.find(a => a.startsWith('--agent='))?.slice('--agent='.length)
-      const all: Agent[] = ['claude', 'codex', 'gemini']
+      const all: Agent[] = ['claude', 'codex', 'gemini', 'qwen']
       const agents = !agentArg || agentArg === 'all'
         ? (agentArg === 'all' ? all : undefined)
         : agentArg.split(',').filter((a): a is Agent => (all as string[]).includes(a))
@@ -366,10 +366,10 @@ export function main(argv: string[]): number | Promise<number> {
           return 1
         }
         const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
-        const valid = ['claude', 'codex', 'gemini']
+        const valid = ['claude', 'codex', 'gemini', 'qwen']
         const agent = runnerArg && valid.includes(runnerArg) ? (runnerArg as Agent) : undefined
         if (runnerArg && !agent) {
-          console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini)`)
+          console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini|qwen)`)
           return 1
         }
         const isolate = rest.includes('--isolate') ? true : rest.includes('--no-isolate') ? false : undefined
@@ -423,7 +423,7 @@ export function main(argv: string[]): number | Promise<number> {
       const idea = rest.find(a => a.startsWith('--idea='))?.slice('--idea='.length)
       const loop = rest.includes('--loop')
       const agentArg = rest.find(a => a.startsWith('--agent='))?.slice('--agent='.length)
-      const all: Agent[] = ['claude', 'codex', 'gemini']
+      const all: Agent[] = ['claude', 'codex', 'gemini', 'qwen']
       const agents = !agentArg || agentArg === 'all'
         ? (agentArg === 'all' ? all : undefined)
         : agentArg.split(',').filter((a): a is Agent => (all as string[]).includes(a))
@@ -442,7 +442,7 @@ export function main(argv: string[]): number | Promise<number> {
       const targetDir = rest.slice(1).find(a => !a.startsWith('-')) ?? '.'
       if (sub === 'assess') {
         const runner = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
-        if (runner && !['codex', 'claude', 'gemini'].includes(runner)) { console.error('Invalid planning runner'); return 1 }
+        if (runner && !['codex', 'claude', 'gemini', 'qwen'].includes(runner)) { console.error('Invalid planning runner'); return 1 }
         return runPrdAssess(targetDir, { runner: runner as Agent | undefined, story: rest.find(a => a.startsWith('--story='))?.slice('--story='.length), reassess: rest.includes('--reassess') })
       }
       if (sub === 'draft') {
@@ -451,10 +451,10 @@ export function main(argv: string[]): number | Promise<number> {
           console.error('usage: yoke prd draft [dir] --idea="..." [--runner=<claude|codex|gemini>] [--force] [--timeout=<minutes>]')
           return 1
         }
-        const valid = ['claude', 'codex', 'gemini']
+        const valid = ['claude', 'codex', 'gemini', 'qwen']
         const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
         if (runnerArg && !valid.includes(runnerArg)) {
-          console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini)`)
+          console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini|qwen)`)
           return 1
         }
         const force = rest.includes('--force')

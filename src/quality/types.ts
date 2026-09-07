@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { RepairLimits } from './repair.js'
 
 const QualityPolicySchema = z.enum(['blocking', 'advisory'])
-const QualityAgentSchema = z.enum(['claude', 'codex', 'gemini'])
+const QualityAgentSchema = z.enum(['claude', 'codex', 'gemini', 'qwen'])
 const RelativePathSchema = z.string().min(1).refine(value => !/^(?:[A-Za-z]:[\\/]|[\\/])/.test(value) && !value.split(/[\\/]+/).includes('..'), 'path must stay within the project')
 
 const QualityReferenceSchema = z.object({

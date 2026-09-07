@@ -20,7 +20,7 @@ describe('loadManifest', () => {
     const file = withManifest(`
 name: yoke-canon
 version: 0.1.0
-agents: [claude, codex, gemini]
+agents: [claude, codex, gemini, qwen]
 skills:
   - { id: tdd, path: skills/tdd, kind: methodology }
 policy:
@@ -31,7 +31,7 @@ tools:
 `)
     const m = loadManifest(file)
     expect(m.name).toBe('yoke-canon')
-    expect(m.agents).toEqual(['claude', 'codex', 'gemini'])
+    expect(m.agents).toEqual(['claude', 'codex', 'gemini', 'qwen'])
     expect(m.skills[0]).toMatchObject({ id: 'tdd', kind: 'methodology', invocation: 'auto' })
   })
 

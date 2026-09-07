@@ -71,9 +71,9 @@ export const DecisionResumeSchema = z.object({
   answered: z.boolean().optional(),
   /** Absent preserves the default unlimited run across a critical-decision resume. */
   maxIterations: z.number().int().positive().optional(),
-  agent: z.enum(['claude', 'codex', 'gemini']).optional(),
+  agent: z.enum(['claude', 'codex', 'gemini', 'qwen']).optional(),
   isolate: z.boolean().optional(),
-  reviewer: z.enum(['claude', 'codex', 'gemini']).optional(),
+  reviewer: z.enum(['claude', 'codex', 'gemini', 'qwen']).optional(),
   review: z.boolean().optional(),
   allowSelfReview: z.boolean().optional(),
   timeoutMinutes: z.number().nonnegative().optional(),
