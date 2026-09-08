@@ -1,6 +1,7 @@
 import { planClaude } from './planners/claude.js'
 import { planCodex } from './planners/codex.js'
 import { planGemini } from './planners/gemini.js'
+import { planQwen } from './planners/qwen.js'
 import { baseContextActions } from './context-actions.js'
 import type { Agent, CodeGraph } from './config.js'
 
@@ -24,6 +25,7 @@ export const PLANNERS: Record<Agent, AgentPlanner> = {
   claude: (c, t, cg) => planClaude(c, t, undefined, cg),
   codex: planCodex,
   gemini: planGemini,
+  qwen: planQwen,
 }
 
 export function planRetrofit(canonDir: string, targetDir: string, agents: Agent[], codeGraph: CodeGraph = 'graphify'): Action[] {

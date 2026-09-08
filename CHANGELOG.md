@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.11.0 — 2026-09-07
+
+### Added
+- Add Qwen Code (Alibaba) as fourth supported provider alongside Claude, Codex and Gemini.
+- Detect Qwen host environment via `QWEN_CLI` and `QWEN_CLI_HOME` environment variables.
+- Add Qwen routing workers with four capability tiers: `qwen-turbo-latest` (light), `qwen3-coder-plus` (standard/strong), `qwen3-235b-a22b` (frontier).
+- Parse Qwen streaming telemetry for token usage and model reporting.
+- Support Qwen in all CLI commands: `setup`, `loop`, `review`, `prd draft`, `prd assess`, `goal run`.
+
+### Changed
+- Update project description from "three agents" to "four agents" to reflect Qwen support.
+- Extend review resolution order to include Qwen for cross-model reviews.
+- Update setup prompts to offer Qwen as agent and runner option.
+
+### Migration and validation limits
+- Existing configurations remain compatible. New setups can select Qwen as agent/runner.
+- Qwen CLI uses Gemini-style arguments (`--approval-mode`, `--output-format stream-json`). `bare`, `reasoningEffort` and `nativeMultiAgent` selections are not supported (like Gemini).
+- Qwen routing profiles are configurable hypotheses, not authenticated benchmarks. Update installed packages and restart the dashboard/runner.
+
 ## 1.10.0 — 2026-09-06
 
 ### Added
