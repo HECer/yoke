@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 2026-09-08
+## 1.12.0 — 2026-09-08
 
 ### Fixed
 - Parse Qwen Code's native assistant/result/structured-result output and cumulative native model statistics, ignoring nested subagent results and refusing terminal-error verdicts.
@@ -16,7 +16,7 @@
 ### Migration and validation limits
 - Fresh Qwen setups now use one standard profile with the user's configured model. Existing workers remain unchanged unless reset with `--routing-preset`; configure stronger profiles for stronger assessments.
 - API presets require separately configured credentials and are not model-quality or cost benchmarks. Read [Qwen model support](docs/QWEN-MODEL-SUPPORT.md) for exact behavior and migration.
-- Tested with regression fixtures and real Qwen Code 0.23.0 against a synthetic local tool-calling server; no authenticated provider benchmarks or production sandbox validation. No new npm version is published by this change.
+- Tested with regression fixtures and real Qwen Code 0.23.0 against a synthetic local tool-calling server; no authenticated provider benchmarks or production sandbox validation. This release targets npm package 1.12.0; publication is triggered by the published GitHub release and verified separately.
 
 ## 1.11.0 — 2026-09-07
 
