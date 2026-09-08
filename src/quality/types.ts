@@ -1,8 +1,9 @@
 import { z } from 'zod'
 import type { RepairLimits } from './repair.js'
+import { AgentSchema } from '../agents/contracts.js'
 
 const QualityPolicySchema = z.enum(['blocking', 'advisory'])
-const QualityAgentSchema = z.enum(['claude', 'codex', 'gemini', 'qwen'])
+const QualityAgentSchema = AgentSchema
 const RelativePathSchema = z.string().min(1).refine(value => !/^(?:[A-Za-z]:[\\/]|[\\/])/.test(value) && !value.split(/[\\/]+/).includes('..'), 'path must stay within the project')
 
 const QualityReferenceSchema = z.object({
@@ -34,13 +35,17 @@ export const ProjectQualityDefaultsSchema = z.object({
   repairReasoningEffort: z.string().min(1).optional(),
   critic: z.object({
     agent: QualityAgentSchema.optional(),
+    provider: z.string().min(1).optional(),
     model: z.string().min(1).optional(),
     reasoningEffort: z.string().min(1).optional(),
+    variant: z.string().min(1).optional(),
   }).optional(),
   repair: z.object({
     agent: QualityAgentSchema.optional(),
+    provider: z.string().min(1).optional(),
     model: z.string().min(1).optional(),
     reasoningEffort: z.string().min(1).optional(),
+    variant: z.string().min(1).optional(),
   }).optional(),
 })
 

@@ -23,6 +23,15 @@ export function mcpServers(codeGraph: CodeGraph = 'graphify'): Record<string, Mc
   }
 }
 
+/** OpenCode-family CLIs use an object with a local command array, not Claude's mcpServers shape. */
+export function openCodeMcpServers(codeGraph: CodeGraph = 'graphify'): Record<string, { type: 'local'; command: string[]; enabled: true }> {
+  return Object.fromEntries(Object.entries(mcpServers(codeGraph)).map(([name, server]) => [name, {
+    type: 'local' as const,
+    command: [server.command, ...server.args],
+    enabled: true as const,
+  }]))
+}
+
 // rtk has no transparent-rewrite hook on Codex/Gemini; those agents get this
 // instruction instead. On Claude (Windows) it is also the WSL-less fallback.
 export function rtkInstruction(): string {

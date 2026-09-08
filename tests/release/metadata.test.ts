@@ -67,6 +67,12 @@ describe('release metadata', () => {
     ].join('\n'))
   })
 
+  it('uses harness display names instead of lowercased product spellings', () => {
+    const readme = '<!-- yoke:version:start -->old<!-- yoke:version:end -->\n<!-- yoke:tests:start -->0<!-- yoke:tests:end -->\n<!-- yoke:skills:start -->0<!-- yoke:skills:end -->\n<!-- yoke:agents:start -->old<!-- yoke:agents:end -->'
+    expect(updateReadme(readme, { version: '1.0.0', testCount: 1, skillCount: 1, agents: ['opencode', 'kilo', 'pi'] }))
+      .toContain('<!-- yoke:agents:start -->OpenCode | Kilo | Pi<!-- yoke:agents:end -->')
+  })
+
   it('ships the documented output compaction benchmark', () => {
     const root = process.cwd()
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { files: string[] }

@@ -37,11 +37,12 @@ export function collectMetadata(root, testSummary) {
 }
 
 export function updateReadme(readme, metadata) {
+  const displayNames = { opencode: 'OpenCode' }
   const values = {
     version: metadata.version,
     tests: String(metadata.testCount),
     skills: String(metadata.skillCount),
-    agents: metadata.agents.map(a => a[0].toUpperCase() + a.slice(1)).join(' | '),
+    agents: metadata.agents.map(a => displayNames[a] ?? a[0].toUpperCase() + a.slice(1)).join(' | '),
   }
   let next = readme
   for (const [marker, key] of Object.entries(MARKERS)) {

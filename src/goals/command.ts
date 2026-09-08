@@ -12,12 +12,13 @@ import { acquireLock, releaseLock, isPidAlive } from '../loop/lock.js'
 import { reapProviderProcesses, isProviderTreeAlive } from '../loop/cleanup.js'
 import { killProcessTreeForCleanup } from '../loop/watchdog.js'
 import { buildProviderInvocation, startProviderProcess } from '../agents/providers.js'
+import { AgentSchema } from '../agents/contracts.js'
 import type { Agent, ModelSelection } from '../agents/contracts.js'
 import { appendEvent } from '../observability/events.js'
 import { statePath } from '../workspace/state.js'
 
-const Attempt = z.object({ provider: z.enum(['codex', 'claude', 'gemini', 'qwen']), model: z.string().optional(), startedAt: z.string(), durationMs: z.number().nonnegative(), success: z.boolean(), summary: z.string(), checkId: z.string(), inputTokens: z.number().nonnegative().optional(), outputTokens: z.number().nonnegative().optional() })
-const Goal = z.object({ version: z.literal(1), id: z.string().uuid(), objective: z.string().trim().min(1).max(16000), status: z.enum(['active', 'running', 'paused', 'blocked', 'complete']), createdAt: z.string(), updatedAt: z.string(), maxAttempts: z.number().int().min(1).max(20), maxMinutes: z.number().positive().max(1440), tokenBudget: z.number().int().positive().optional(), attempts: z.array(Attempt), reason: z.string().optional(), lastCheck: z.string().optional(), pendingAttempt: z.object({ provider: z.enum(['codex', 'claude', 'gemini', 'qwen']), model: z.string().optional(), startedAt: z.string().datetime() }).optional() }).strict()
+const Attempt = z.object({ provider: AgentSchema, model: z.string().optional(), startedAt: z.string(), durationMs: z.number().nonnegative(), success: z.boolean(), summary: z.string(), checkId: z.string(), inputTokens: z.number().nonnegative().optional(), outputTokens: z.number().nonnegative().optional() })
+const Goal = z.object({ version: z.literal(1), id: z.string().uuid(), objective: z.string().trim().min(1).max(16000), status: z.enum(['active', 'running', 'paused', 'blocked', 'complete']), createdAt: z.string(), updatedAt: z.string(), maxAttempts: z.number().int().min(1).max(20), maxMinutes: z.number().positive().max(1440), tokenBudget: z.number().int().positive().optional(), attempts: z.array(Attempt), reason: z.string().optional(), lastCheck: z.string().optional(), pendingAttempt: z.object({ provider: AgentSchema, model: z.string().optional(), startedAt: z.string().datetime() }).optional() }).strict()
 export type ProjectGoal = z.infer<typeof Goal>
 export interface GoalLimits { maxAttempts?: number; maxMinutes?: number; tokenBudget?: number }
 export interface GoalExecutionInput { root: string; provider: Agent; selection: ModelSelection; prompt: string; signal: AbortSignal }

@@ -80,15 +80,21 @@ export function createQualityCommandHooks(input: {
   }
   const prepared = new Map<string, PreparedQuality>()
   const criticAgent = defaults?.critic?.agent ?? defaults?.criticAgent ?? input.config.agents.find(agent => agent !== input.runnerAgent) ?? input.runnerAgent
+  const criticProvider = defaults?.critic?.provider ?? (criticAgent === input.runnerAgent ? input.config.runner?.provider : undefined)
   const criticModel = defaults?.critic?.model ?? defaults?.criticModel ?? (criticAgent === input.runnerAgent ? input.config.runner?.model : undefined)
   const criticReasoningEffort = defaults?.critic?.reasoningEffort ?? defaults?.criticReasoningEffort
+  const criticVariant = defaults?.critic?.variant ?? (criticAgent === input.runnerAgent ? input.config.runner?.variant : undefined)
   const repairAgent = defaults?.repair?.agent ?? defaults?.repairAgent ?? input.runnerAgent
+  const configuredRepairProvider = defaults?.repair?.provider ?? (repairAgent === input.runnerAgent ? input.config.runner?.provider : undefined)
   const configuredRepairModel = defaults?.repair?.model ?? defaults?.repairModel
   const configuredRepairEffort = defaults?.repair?.reasoningEffort ?? defaults?.repairReasoningEffort
+  const configuredRepairVariant = defaults?.repair?.variant ?? (repairAgent === input.runnerAgent ? input.config.runner?.variant : undefined)
   const repairSelection = {
     nativeMultiAgent: false,
+    ...(configuredRepairProvider ? { provider: configuredRepairProvider } : {}),
     ...(configuredRepairModel ? { model: configuredRepairModel } : repairAgent === input.runnerAgent && input.config.runner?.model ? { model: input.config.runner.model } : {}),
     ...(configuredRepairEffort ? { reasoningEffort: configuredRepairEffort } : repairAgent === input.runnerAgent && input.config.runner?.reasoningEffort ? { reasoningEffort: input.config.runner.reasoningEffort } : {}),
+    ...(configuredRepairVariant ? { variant: configuredRepairVariant } : {}),
   }
 
   return {
@@ -117,6 +123,8 @@ export function createQualityCommandHooks(input: {
       const routed = !defaults?.critic?.model && !defaults?.criticModel ? roleSelection(input.targetDir, input.config, context.story, criticAgent, "critic") : undefined
       const selectedCriticModel = routed?.model ?? criticModel
       const selectedCriticEffort = criticReasoningEffort ?? routed?.reasoningEffort
+      const selectedCriticProvider = routed?.provider ?? criticProvider
+      const selectedCriticVariant = criticVariant ?? routed?.variant
       const declaration = context.story.quality
       if (!declaration) return { kind: 'skipped', summary: 'no story quality declaration' }
       const quality = prepared.get(context.story.id)
@@ -161,6 +169,8 @@ export function createQualityCommandHooks(input: {
             idleMs: input.idleMs,
             ...(selectedCriticModel ? { model: selectedCriticModel } : {}),
             reasoningEffort: selectedCriticEffort,
+            ...(selectedCriticProvider ? { provider: selectedCriticProvider } : {}),
+            ...(selectedCriticVariant ? { variant: selectedCriticVariant } : {}),
           }),
           mkdir: path => mkdirSync(path, { recursive: true }),
           writeFile: (path, content) => writeFileSync(path, content),
@@ -180,7 +190,7 @@ export function createQualityCommandHooks(input: {
     },
     repair: (context, request) => {
       const routed = !configuredRepairModel ? roleSelection(input.targetDir, input.config, context.story, repairAgent, "repair", request.round) : undefined
-      const selectedRepair = routed ? { ...routed, ...(configuredRepairEffort ? { reasoningEffort: configuredRepairEffort } : {}) } : repairSelection
+      const selectedRepair = routed ? { ...routed, ...(configuredRepairProvider ? { provider: configuredRepairProvider } : {}), ...(configuredRepairEffort ? { reasoningEffort: configuredRepairEffort } : {}), ...(configuredRepairVariant ? { variant: configuredRepairVariant } : {}) } : repairSelection
       const invocation = buildWatchdogInvocation(
         buildProviderInvocation(repairAgent, repairPrompt(context, request, input.config), context.targetDir, 'safe', selectedRepair),
         input.idleMs,
@@ -196,6 +206,7 @@ export function createQualityCommandHooks(input: {
     },
     candidateComparison: (story, candidateIds = []) => {
       if (!story.quality) throw new Error(`story ${story.id} does not declare quality`)
+      const routed = !defaults?.critic?.model && !defaults?.criticModel ? roleSelection(input.targetDir, input.config, story, criticAgent, "critic") : undefined
       return createCandidateComparison({
         targetDir: input.targetDir,
         storyId: story.id,
@@ -203,7 +214,9 @@ export function createQualityCommandHooks(input: {
         declaration: story.quality,
         artifacts: projectDir => input.runtime?.artifacts ?? productionArtifactAdapters(projectDir),
         agent: criticAgent,
-        model: ((!defaults?.critic?.model && !defaults?.criticModel ? roleSelection(input.targetDir, input.config, story, criticAgent, "critic")?.model : undefined) ?? criticModel) ?? (() => { throw new Error('candidate comparison requires an explicit critic model when the provider default cannot be known before comparison') })(),
+        provider: routed?.provider ?? criticProvider,
+        model: (routed?.model ?? criticModel) ?? (() => { throw new Error('candidate comparison requires an explicit critic model when the provider default cannot be known before comparison') })(),
+        variant: routed?.variant ?? criticVariant,
         idleMs: input.idleMs,
         invoke: measuredInvoke('critic', story.id),
       })
@@ -223,8 +236,10 @@ function providerCriticCall(input: {
   readonly referenceBytes: Uint8Array
   readonly candidateBytes: readonly Uint8Array[]
   readonly idleMs: number
+  readonly provider?: string
   readonly model?: string
   readonly reasoningEffort?: string
+  readonly variant?: string
 }): { readonly ok: true; readonly output: string } | { readonly ok: false; readonly summary: string } {
   const criticDir = mkdtempSync(join(tmpdir(), 'yoke-quality-critic-'))
   try {
@@ -240,6 +255,8 @@ function providerCriticCall(input: {
         nativeMultiAgent: false,
         ...(input.model ? { model: input.model } : {}),
         ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+        ...(input.provider ? { provider: input.provider } : {}),
+        ...(input.variant ? { variant: input.variant } : {}),
       }),
       input.idleMs,
       input.ownershipRoot,

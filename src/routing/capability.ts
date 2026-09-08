@@ -64,7 +64,7 @@ export function chooseCapability(input: {
   const candidates = input.workers.filter(w => w.tier && tiers.indexOf(w.tier) >= level && (!input.maxTier || tiers.indexOf(w.tier) <= tiers.indexOf(input.maxTier)) && (!w.roles || w.roles.includes(role)) && (!input.story.agent || w.agent === input.story.agent) && (input.available?.(w.agent) ?? true))
   const history = readRoutingObservations().filter(e => e.projectHash === projectHash(input.root) && e.taskClass === input.assessment.taskClass && e.requiredTier === baseTier && e.role === role && e.failureKind !== 'infrastructure' && Date.now() - Date.parse(e.recordedAt) < 30 * 86400000)
   const evidence = (w: RoutingWorker) => {
-    const matching = history.filter(e => e.provider === w.agent && e.requestedModel === w.model && e.requestedReasoningEffort === w.reasoningEffort && e.actualModel)
+    const matching = history.filter(e => e.provider === w.agent && e.requestedProvider === w.provider && e.requestedModel === w.model && e.requestedReasoningEffort === w.reasoningEffort && e.requestedVariant === w.variant && e.actualModel)
     const actual = matching.at(-1)?.actualModel
     return actual ? matching.filter(e => e.actualModel === actual) : []
   }
@@ -75,7 +75,7 @@ export function chooseCapability(input: {
   const worker = reliable[0]
   const blocked = !worker && (input.fallback === 'block' || input.maxTier !== undefined)
   const provider = worker?.agent ?? input.story.agent ?? input.parent
-  const selection: ModelSelection = worker ? { model: worker.model, reasoningEffort: worker.reasoningEffort, nativeMultiAgent: false, ...(provider !== 'gemini' && provider !== 'qwen' && input.parentSelection?.bare !== undefined ? { bare: input.parentSelection.bare } : {}) }
+  const selection: ModelSelection = worker ? { provider: worker.provider, model: worker.model, reasoningEffort: worker.reasoningEffort, variant: worker.variant, nativeMultiAgent: false, ...(provider !== 'gemini' && provider !== 'qwen' && provider !== 'pi' && input.parentSelection?.bare !== undefined ? { bare: input.parentSelection.bare } : {}) }
     : { ...(provider === input.parent ? input.parentSelection : {}), nativeMultiAgent: false }
   const reason = `${role}: ${tiers[level]}; ${input.assessment.reason}${failures.length ? `; ${failures.length} verified failure(s), ${failures.length === 1 ? 'one targeted repair' : 'escalated'}` : ''}${worker ? '' : '; no eligible profile, parent/provider fallback'}`
   return { worker, provider, selection, reason: blocked ? `${role}: no eligible profile within routing limits; execution blocked` : reason, blocked, requiredTier: baseTier, selectedTier: tiers[level], failures: failures.length, exhausted, next: input.maxTier && level >= tiers.indexOf(input.maxTier) ? 'stop at configured tier limit' : level < 3 ? tiers[level + 1] : 'stop after bounded attempts' }

@@ -81,11 +81,13 @@ describe('candidate comparison staging', () => {
         commandOutput: () => new Uint8Array(),
         benchmark: () => new Uint8Array(),
       }),
-      agent: 'codex',
+      agent: 'opencode',
       model: 'critic-model',
+      provider: 'openrouter',
+      variant: 'high',
       idleMs: 0,
       invoke: (_agent, invocation) => {
-        expect(invocation.args).toContain('--skip-git-repo-check')
+        expect(invocation.args).toEqual(expect.arrayContaining(['--model', 'openrouter/critic-model', '--variant', 'high']))
         expect(invocation.input).not.toContain('candidate-left')
         expect(invocation.input).not.toContain('candidate-right')
         expect(invocation.input).not.toContain(JSON.stringify(project).slice(1, -1))
@@ -98,7 +100,7 @@ describe('candidate comparison staging', () => {
         expect(relative(project, invocation.cwd)).not.toBe('')
         expect(resolve(invocation.cwd).startsWith(resolve(project))).toBe(false)
         expect(JSON.stringify(request)).not.toContain('candidate-')
-        expect(request.trustedJudgeProvenance).toEqual({ provider: 'codex', model: 'critic-model' })
+        expect(request.trustedJudgeProvenance).toEqual({ provider: 'opencode', model: 'critic-model' })
         expect(readdirSync(invocation.cwd).sort()).toEqual([...request.left.artifacts, ...request.right.artifacts].sort())
         const leftBytes = readFileSync(join(invocation.cwd, request.left.artifacts[0] ?? ''), 'utf8')
         const rightBytes = readFileSync(join(invocation.cwd, request.right.artifacts[0] ?? ''), 'utf8')
@@ -123,9 +125,8 @@ describe('candidate comparison staging', () => {
         return {
           success: true,
           output: [
-            JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
-            JSON.stringify({ type: 'item.completed', item: { id: 'item-1', type: 'agent_message', text: verdict } }),
-            JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 4 } }),
+            JSON.stringify({ type: 'text', part: { text: verdict } }),
+            JSON.stringify({ type: 'step_finish', part: { tokens: { input: 10, output: 4 } } }),
           ].join('\n'),
           summary: 'selected by staged bytes',
           tokens: { inputTokens: 10, outputTokens: 4, model: 'provider-canonical-model' },

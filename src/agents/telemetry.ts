@@ -21,6 +21,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function textContent(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (!Array.isArray(value)) return ''
+  return value.filter(isRecord).filter(part => part.type === 'text' && typeof part.text === 'string').map(part => part.text as string).join('')
+}
+
 function directMachineResult(value: unknown): unknown | undefined {
   return isRecord(value) && value.schemaVersion === 1 ? value : undefined
 }
@@ -51,6 +57,18 @@ export function parseProviderResult(agent: Agent, output: string): unknown {
       }
       case 'gemini':
         if (event.type === 'message' && event.role === 'assistant' && typeof event.content === 'string') fragments.push(event.content)
+        break
+      case 'opencode':
+      case 'kilo': {
+        const part = isRecord(event.part) ? event.part : undefined
+        if (event.type === 'text' && typeof part?.text === 'string') fragments.push(part.text)
+        break
+      }
+      case 'pi':
+        if (event.type === 'message_end' && isRecord(event.message) && event.message.role === 'assistant') {
+          const text = textContent(event.message.content)
+          if (text) fragments.push(text)
+        }
         break
     }
   }
@@ -100,6 +118,10 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
   let totalCostUsd: number | undefined
   let model: string | undefined
   let reportedModels: string[] = []
+  const harnessTotals = agent === 'opencode' || agent === 'kilo'
+    ? { input: 0, output: 0, cached: 0, cacheWrite: 0, reasoning: 0, cost: 0, hasInput: false, hasOutput: false, hasCached: false, hasCacheWrite: false, hasReasoning: false, hasCost: false }
+    : undefined
+  let piUsage: Record<string, unknown> | undefined
   for (const line of lines) {
     let parsed: unknown
     try { parsed = JSON.parse(line) } catch { continue }
@@ -108,6 +130,24 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
     if (agent === 'qwen' && event.parent_tool_use_id != null) continue
     const message = event.message && typeof event.message === 'object' ? event.message as Record<string, unknown> : undefined
     const stats = event.stats && typeof event.stats === 'object' ? event.stats as Record<string, unknown> : undefined
+    const part = event.part && typeof event.part === 'object' ? event.part as Record<string, unknown> : undefined
+    const partTokens = part?.tokens && typeof part.tokens === 'object' ? part.tokens as Record<string, unknown> : undefined
+    if (harnessTotals && (event.type === 'step_finish' || part?.type === 'step-finish') && partTokens) {
+      const cache = partTokens.cache && typeof partTokens.cache === 'object' ? partTokens.cache as Record<string, unknown> : undefined
+      const stepInput = finite(partTokens.input)
+      const stepOutput = finite(partTokens.output)
+      const stepCached = finite(partTokens.cached ?? partTokens.cacheRead ?? cache?.read)
+      const stepCacheWrite = finite(partTokens.cacheWrite ?? cache?.write)
+      const stepReasoning = finite(partTokens.reasoning)
+      const stepCost = finite(part?.cost ?? event.cost)
+      if (stepInput !== undefined) { harnessTotals.input += stepInput; harnessTotals.hasInput = true }
+      if (stepOutput !== undefined) { harnessTotals.output += stepOutput; harnessTotals.hasOutput = true }
+      if (stepCached !== undefined) { harnessTotals.cached += stepCached; harnessTotals.hasCached = true }
+      if (stepCacheWrite !== undefined) { harnessTotals.cacheWrite += stepCacheWrite; harnessTotals.hasCacheWrite = true }
+      if (stepReasoning !== undefined) { harnessTotals.reasoning += stepReasoning; harnessTotals.hasReasoning = true }
+      if (stepCost !== undefined) { harnessTotals.cost += stepCost; harnessTotals.hasCost = true }
+    }
+    if (agent === 'pi' && event.type === 'message_update' && event.usage && typeof event.usage === 'object') piUsage = event.usage as Record<string, unknown>
     const usage = (event.usage && typeof event.usage === 'object'
       ? event.usage
       : message?.usage && typeof message.usage === 'object'
@@ -149,7 +189,7 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
       if (aggregateCached !== undefined) source.cached_input_tokens = aggregateCached
     }
     const inValue = finite(source?.input_tokens ?? source?.inputTokens ?? source?.prompt_tokens ?? source?.promptTokenCount ?? source?.input)
-    const cachedValue = finite(source?.cached_input_tokens ?? source?.cache_read_input_tokens ?? source?.cachedInputTokens ?? source?.cachedContentTokenCount ?? source?.cached)
+    const cachedValue = finite(source?.cached_input_tokens ?? source?.cache_read_input_tokens ?? source?.cachedInputTokens ?? source?.cacheRead ?? source?.cachedContentTokenCount ?? source?.cached)
     const cacheWriteValue = finite(source?.cache_write_input_tokens ?? source?.cache_creation_input_tokens ?? source?.cacheWriteInputTokens ?? source?.cacheWrite)
     const outValue = finite(source?.output_tokens ?? source?.outputTokens ?? source?.completion_tokens ?? source?.candidatesTokenCount ?? source?.output)
     const reasoningValue = finite(source?.reasoning_output_tokens ?? source?.reasoningOutputTokens ?? source?.thoughtsTokenCount ?? source?.thoughts)
@@ -158,10 +198,33 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
     if (cacheWriteValue !== undefined) cacheWriteInputTokens = cacheWriteValue
     if (outValue !== undefined) outputTokens = outValue
     if (reasoningValue !== undefined) reasoningOutputTokens = reasoningValue
-    const costValue = finite(event.total_cost_usd ?? event.totalCostUsd ?? stats?.total_cost_usd)
+    const usageCost = isRecord(usage?.cost) ? finite(usage.cost.total) : undefined
+    const costValue = finite(event.total_cost_usd ?? event.totalCostUsd ?? stats?.total_cost_usd ?? usageCost)
     if (costValue !== undefined) totalCostUsd = costValue
     const eventModel = event.model ?? message?.model ?? firstModel?.[0]
     if (typeof eventModel === 'string' && eventModel && reportedModels.length <= 1) model = eventModel
+  }
+  if (piUsage) {
+    const piInput = finite(piUsage.input)
+    const piOutput = finite(piUsage.output)
+    const piCached = finite(piUsage.cacheRead)
+    const piCacheWrite = finite(piUsage.cacheWrite)
+    const piReasoning = finite(piUsage.reasoning)
+    const piCost = isRecord(piUsage.cost) ? finite(piUsage.cost.total) : undefined
+    if (piInput !== undefined) inputTokens = piInput
+    if (piOutput !== undefined) outputTokens = piOutput
+    if (piCached !== undefined) cachedInputTokens = piCached
+    if (piCacheWrite !== undefined) cacheWriteInputTokens = piCacheWrite
+    if (piReasoning !== undefined) reasoningOutputTokens = piReasoning
+    if (piCost !== undefined) totalCostUsd = piCost
+  }
+  if (harnessTotals) {
+    if (harnessTotals.hasInput) inputTokens = harnessTotals.input
+    if (harnessTotals.hasOutput) outputTokens = harnessTotals.output
+    if (harnessTotals.hasCached) cachedInputTokens = harnessTotals.cached
+    if (harnessTotals.hasCacheWrite) cacheWriteInputTokens = harnessTotals.cacheWrite
+    if (harnessTotals.hasReasoning) reasoningOutputTokens = harnessTotals.reasoning
+    if (harnessTotals.hasCost) totalCostUsd = harnessTotals.cost
   }
   if (inputTokens === undefined || outputTokens === undefined) {
     const partialUsage = {

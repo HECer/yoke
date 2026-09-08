@@ -293,7 +293,7 @@ function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider,
   if (input.routing) {
     const routed = makeAsyncAdaptiveRunner({
       parent: input.routing.strategy === 'capability' ? input.runnerAgent : provider.provider,
-      parentSelection: input.routing.strategy === 'capability' ? input.selection : { ...input.selection, model: provider.model, reasoningEffort: provider.reasoningEffort, nativeMultiAgent: false },
+      parentSelection: input.routing.strategy === 'capability' ? input.selection : { ...input.selection, provider: provider.providerModel, model: provider.model, reasoningEffort: provider.reasoningEffort, variant: provider.variant, nativeMultiAgent: false },
       projectRoot: input.targetDir,
       workers: input.routing.workers,
       rules: input.routing.rules,
@@ -313,7 +313,7 @@ function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider,
       },
       makeWorker: (agent, selection) => async context => {
         if (signal?.aborted) return { success: false, summary: 'Routing cancelled before worker start' }
-        input.reporter.parallelWorker?.({ story: context.story.id, storyTitle: context.story.title, provider: agent, selectedProvider: agent, selectedModel: selection.model, phase: 'implementing' })
+        input.reporter.parallelWorker?.({ story: context.story.id, storyTitle: context.story.title, provider: agent, selectedProvider: selection.provider ?? agent, selectedModel: selection.model, selectedVariant: selection.variant, phase: 'implementing' })
         const run = makeAsyncRunner(agent, { onAmbiguity: input.onAmbiguity, permissions: input.permissions, selection,
           process: { idleTimeoutMs: input.idleMs, signal, workerId } })
         return providerProcessResultToAgentResult(agent, context.story.id, await run(context).completion)
@@ -329,10 +329,12 @@ function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider,
     permissions: input.permissions,
     selection: {
       ...selection,
+      ...(provider.providerModel ? { provider: provider.providerModel } : {}),
       ...(provider.provider !== 'gemini' && globalBare !== undefined ? { bare: globalBare } : {}),
       nativeMultiAgent: false,
       ...(provider.model ? { model: provider.model } : {}),
       ...(provider.reasoningEffort ? { reasoningEffort: provider.reasoningEffort } : {}),
+      ...(provider.variant ? { variant: provider.variant } : {}),
     },
     process: { idleTimeoutMs: input.idleMs, signal, workerId },
   })

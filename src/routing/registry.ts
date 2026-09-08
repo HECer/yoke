@@ -13,8 +13,10 @@ export interface RoutingObservation {
   strategy: string
   selected: 'SELF' | string
   provider: Agent
+  requestedProvider?: string
   requestedModel?: string
   requestedReasoningEffort?: string
+  requestedVariant?: string
   actualModel?: string
   orchestratorProvider: Agent
   orchestratorModel?: string
@@ -109,8 +111,10 @@ export function historyForWorkers(workers: RoutingWorker[]): Map<string, WorkerH
     // Capability evidence belongs to the provider/model that produced it. This
     // prevents a reused worker id from inheriting scores from a retired model.
     if (event.provider !== worker.agent
+      || event.requestedProvider !== worker.provider
       || event.requestedModel !== worker.model
-      || event.requestedReasoningEffort !== worker.reasoningEffort) continue
+      || event.requestedReasoningEffort !== worker.reasoningEffort
+      || event.requestedVariant !== worker.variant) continue
     if (typeof event.verificationSuccess !== 'boolean') continue
     if (Date.parse(event.recordedAt) < oldestUseful) continue
     grouped.set(event.selected, [...(grouped.get(event.selected) ?? []), event])

@@ -5,6 +5,7 @@ import { isPidAlive } from './lock.js'
 import { publishClaimFile, replaceClaimFile, withClaimOperations } from './claim-lease.js'
 import type { Agent } from '../retrofit/config.js'
 import { storyPathSegment } from './prd.js'
+import { AgentSchema } from '../agents/contracts.js'
 
 export const CLAIM_SCHEMA_VERSION = 2
 
@@ -71,7 +72,7 @@ const RichClaimSchema = LegacyClaimSchema.extend({
   heartbeatAt: z.string().min(1),
   baseCommit: z.string().min(1).optional(),
   worktree: z.string().min(1).optional(),
-  provider: z.enum(['claude', 'codex', 'gemini', 'qwen']).optional(),
+  provider: AgentSchema.optional(),
   model: z.string().min(1).optional(),
   role: z.enum(['implementation', 'quality', 'repair', 'review']).optional(),
   cancellation: z.object({

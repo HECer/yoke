@@ -11,6 +11,16 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-cfg-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('yoke config', () => {
+  it('round-trips provider and variant selection for runners and routing workers', () => {
+    const config = YokeConfigSchema.parse({
+      canonVersion: 'test', agents: ['opencode'], loop: { enabled: true },
+      runner: { agent: 'opencode', provider: 'openrouter', model: 'openai/gpt-5.6', variant: 'high' },
+      routing: { enabled: true, workers: [{ id: 'pi-review', agent: 'pi', provider: 'openai', model: 'gpt-5.6', variant: 'medium', costTier: 'low', capabilities: [] }] },
+    })
+    expect(config.runner).toMatchObject({ provider: 'openrouter', variant: 'high' })
+    expect(config.routing?.workers[0]).toMatchObject({ provider: 'openai', variant: 'medium' })
+  })
+
   it('makes criterion evidence strict for newly configured projects', () => {
     expect(defaultConfig('1.0.0').verify).toEqual({ requireCriteria: true })
   })

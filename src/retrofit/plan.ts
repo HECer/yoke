@@ -2,6 +2,9 @@ import { planClaude } from './planners/claude.js'
 import { planCodex } from './planners/codex.js'
 import { planGemini } from './planners/gemini.js'
 import { planQwen } from './planners/qwen.js'
+import { planOpenCode } from './planners/opencode.js'
+import { planKilo } from './planners/kilo.js'
+import { planPi } from './planners/pi.js'
 import { baseContextActions } from './context-actions.js'
 import type { Agent, CodeGraph } from './config.js'
 
@@ -26,6 +29,9 @@ export const PLANNERS: Record<Agent, AgentPlanner> = {
   codex: planCodex,
   gemini: planGemini,
   qwen: planQwen,
+  opencode: planOpenCode,
+  kilo: planKilo,
+  pi: planPi,
 }
 
 export function planRetrofit(canonDir: string, targetDir: string, agents: Agent[], codeGraph: CodeGraph = 'graphify'): Action[] {

@@ -114,7 +114,29 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   const recordAdapter = options.recordAdapter ?? filesystemProviderProcessRecordAdapter
   const terminateProcessTree = options.terminateProcessTree ?? ((processPid: number) => {
     try { process.kill(processPid, 0) } catch { return true }
-    if (startedAt.startsWith('unverified:') || processIncarnation(processPid) !== startedAt) return false
+    // A slow or unavailable Windows identity query must not strand the exact
+    // child process Yoke just spawned. The live ChildProcess handle proves
+    // ownership more strongly than a late PID lookup. Terminate that exact
+    // handle immediately and ask taskkill asynchronously to catch descendants;
+    // waiting synchronously for taskkill can itself exceed the provider timeout
+    // on a heavily loaded Windows host. If the identity was verified, retain the
+    // PID-reuse guard for cleanup records.
+    if (startedAt.startsWith('unverified:')) {
+      if (child.exitCode !== null || child.signalCode !== null || child.killed) return true
+      try {
+        const killed = child.kill('SIGKILL')
+        if (killed && process.platform === 'win32') {
+          try {
+            const tree = spawn('taskkill', ['/PID', String(processPid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+            tree.unref()
+          } catch { /* direct child termination already succeeded */ }
+        }
+        return killed
+      } catch {
+        return false
+      }
+    }
+    if (processIncarnation(processPid) !== startedAt) return false
     return killProcessTreeForCleanup(processPid)
   })
   let recordPublished = false
@@ -132,6 +154,7 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   let completionTimer: ReturnType<typeof setTimeout> | undefined
   let recordFailure: string | undefined
   let terminationConfirmed = false
+  let forcedTerminationAttempted = false
   let settled = false
   let resolveCompletion: (result: ProviderProcessResult) => void = () => {}
 
@@ -169,13 +192,18 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     stderrTruncated: stderr.truncated,
     telemetry: telemetry.finish(),
   })
+  const forceTerminateExactChild = (): void => {
+    if (child.exitCode !== null || child.signalCode !== null || child.killed) return
+    try { child.kill('SIGKILL') } catch { /* the tree killer may have won the race */ }
+  }
   const finalize = (exitCode: number | null): void => {
     if (settled) return
     supervision.flush()
     // Windows can emit close before taskkill's process-tree state is observable.
     // Reconfirm here so successful termination does not leave a stale ownership record.
-    if (termination && pid !== undefined && !terminationConfirmed) {
+    if (termination && pid !== undefined && !terminationConfirmed && !forcedTerminationAttempted) {
       terminationConfirmed = terminateProcessTree(pid, true)
+      if (terminationConfirmed) forceTerminateExactChild()
     }
     const details = evidence()
     if (recordFailure) {
@@ -201,7 +229,11 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     termination = next
     if (pid !== undefined) terminationConfirmed = terminateProcessTree(pid, false)
     forceTimer = setTimeout(() => {
-      if (pid !== undefined && !settled) terminationConfirmed = terminateProcessTree(pid, true)
+      if (pid !== undefined && !settled) {
+        forcedTerminationAttempted = true
+        terminationConfirmed = terminateProcessTree(pid, true)
+        if (terminationConfirmed) forceTerminateExactChild()
+      }
       // Allow close/pipe draining to confirm termination before the bounded fallback.
       if (!settled) completionTimer = setTimeout(() => {
         if (settled) return

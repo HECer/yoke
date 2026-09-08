@@ -5,6 +5,78 @@ import { mergeQwenSettings } from './qwen-settings.js'
 import { mergeJson } from './merge-json.js'
 import { carryPreserved } from './preserve.js'
 
+function parseJsonc(source: string): unknown {
+  let withoutComments = ''
+  let inString = false
+  let escaped = false
+  let lineComment = false
+  let blockComment = false
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index]!
+    const next = source[index + 1]
+    if (lineComment) {
+      if (char === '\n' || char === '\r') {
+        lineComment = false
+        withoutComments += char
+      } else withoutComments += ' '
+      continue
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false
+        withoutComments += '  '
+        index += 1
+      } else withoutComments += char === '\n' || char === '\r' ? char : ' '
+      continue
+    }
+    if (inString) {
+      withoutComments += char
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') {
+      inString = true
+      withoutComments += char
+    } else if (char === '/' && next === '/') {
+      lineComment = true
+      withoutComments += '  '
+      index += 1
+    } else if (char === '/' && next === '*') {
+      blockComment = true
+      withoutComments += '  '
+      index += 1
+    } else withoutComments += char
+  }
+
+  let withoutTrailingCommas = ''
+  inString = false
+  escaped = false
+  for (let index = 0; index < withoutComments.length; index += 1) {
+    const char = withoutComments[index]!
+    if (inString) {
+      withoutTrailingCommas += char
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') {
+      inString = true
+      withoutTrailingCommas += char
+      continue
+    }
+    if (char === ',') {
+      let lookahead = index + 1
+      while (/\s/u.test(withoutComments[lookahead] ?? '')) lookahead += 1
+      if (withoutComments[lookahead] === '}' || withoutComments[lookahead] === ']') continue
+    }
+    withoutTrailingCommas += char
+  }
+  return JSON.parse(withoutTrailingCommas)
+}
+
 export interface AppliedAction {
   target: string
   status: 'created' | 'overwritten' | 'unchanged' | 'merged'
@@ -42,7 +114,7 @@ export function applyActions(actions: Action[], targetDir: string, opts: ApplyOp
         const current = currentBytes.toString('utf8')
         let parsedCurrent: unknown
         try {
-          parsedCurrent = JSON.parse(current)
+          parsedCurrent = action.target.endsWith('.jsonc') ? parseJsonc(current) : JSON.parse(current)
         } catch {
           throw new Error(`yoke: cannot merge ${action.target} — existing file is not valid JSON. Fix or delete it and re-run.`)
         }

@@ -74,7 +74,7 @@ export function formatReviewContract(path: string, provider?: z.infer<typeof Age
   return [
     `Write your final verdict to this absolute path: ${path}`,
     'The file must contain exactly one JSON object with this contract:',
-    `{"schemaVersion":1,"approved":boolean,"summary":"non-empty string","findings":[{"id":"optional id","severity":"blocking|warning|info","message":"non-empty string","file":"optional path","line":1,"actionable":true,"suggestedFix":"optional repair","evidence":["optional evidence reference"]}],"provenance":{"provider":"${provider ?? 'claude|codex|gemini'}","model":"provider-reported model","role":"review","promptVersion":1,"permissions":"safe"}}`,
+    `{"schemaVersion":1,"approved":boolean,"summary":"non-empty string","findings":[{"id":"optional id","severity":"blocking|warning|info","message":"non-empty string","file":"optional path","line":1,"actionable":true,"suggestedFix":"optional repair","evidence":["optional evidence reference"]}],"provenance":{"provider":"${provider ?? 'claude|codex|gemini|qwen|opencode|kilo|pi'}","model":"provider-reported model","role":"review","promptVersion":1,"permissions":"safe"}}`,
     'Set approved=false when any blocking finding exists. Create the file even when the process also exits non-zero.',
   ].join('\n')
 }

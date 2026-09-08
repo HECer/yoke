@@ -11,8 +11,10 @@ type MaybePromise<T> = T | Promise<T>
 
 export type StoryWorkerProvider = {
   readonly provider: Agent
+  readonly providerModel?: string
   readonly model?: string
   readonly reasoningEffort?: string
+  readonly variant?: string
   readonly role: 'implementation'
 }
 
