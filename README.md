@@ -40,11 +40,11 @@ yoke projects add /path/to/backend
 yoke dashboard --no-register
 ```
 
-Open the printed `http://127.0.0.1:...` URL. Each registered project has its own goals, tasks and evidence. The dashboard shows available worker state, per-task duration estimates, planned start offsets, input/output tokens, costs and unknown measurements. You can request a goal pause at a safe boundary.
+Open the printed `http://127.0.0.1:...` URL. Each registered project has its own goals, tasks and evidence. The dashboard is a local control room with an overview/ranking screen, project live view, bounded **History explorer**, and Workspace analytics by UTC time bucket. It shows worker state, agent/provider/model/variant/role/phase metadata when recorded, per-task duration estimates, planned start offsets, input/output tokens, reported costs, outcomes, and explicit unknown or partial measurements. Dark and light themes, keyboard navigation, responsive layouts, and reduced-motion handling are included.
 
-The dashboard includes attention-first project search and filters, restorable view links, and usage comparisons against the preceding period. See [dashboard behavior and measurement limits](docs/DASHBOARD-EVOLUTION.md).
+The dashboard includes attention-first project search and filters, project ranking by attention, last activity, token usage, reported cost, acceptance, or name, restorable view links, and usage comparisons against the preceding period. From a project’s live view you can request a safe-boundary pause or resume, add an operator note, and use **Queue a change** for the next planning boundary. See [dashboard behavior and measurement limits](docs/DASHBOARD-EVOLUTION.md) and the [dashboard overhaul contract](docs/DASHBOARD-OVERHAUL.md).
 
-Projects are registered explicitly; this version does not automatically discover every process or aggregate other computers. Start/resume and budget changes use the CLI. Missing history appears as unknown; time ranges are empirical estimates, not exact deadlines.
+Projects are registered explicitly; this version does not automatically discover every process or aggregate other computers. Dashboard controls call the existing goal/loop pause and resume boundaries and never execute arbitrary shell commands. Change requests are append-only pending inbox entries, not immediate code changes. The server stays loopback-only and POST actions require same-origin session authorization; the local Yoke process remains the authority for execution. Missing history appears as unknown; time ranges are empirical estimates, not exact deadlines. Read the [overhaul contract](docs/DASHBOARD-OVERHAUL.md) for data limits and non-goals.
 
 ### Verified goals and efficient execution
 
