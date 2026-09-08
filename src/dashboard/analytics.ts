@@ -1,5 +1,5 @@
 import { readMeasurements } from '../observability/history.js'
-import { readEvents, type LoopEvent } from '../observability/events.js'
+import { EVENT_CAP, readEvents, type LoopEvent } from '../observability/events.js'
 import { DASHBOARD_LIMITS } from './contracts.js'
 
 export interface Period { from: number; to: number; bucket: 'day' | 'week' | 'month' }
@@ -80,10 +80,14 @@ export function aggregateMeasurements(events: LoopEvent[], period: Period) {
         const key = JSON.stringify([provider, model, role])
         modelDetails.set(key, { provider, model, role })
         for (const target of [...targets, get(models, key), get(modelBuckets, JSON.stringify([bucketOf(event.timestamp, period.bucket), provider, model, role]))]) {
-          addMetric(target, 'inputTokens', call.inputTokens); addMetric(target, 'outputTokens', call.outputTokens)
-          addMetric(target, 'cachedInputTokens', call.cachedInputTokens); addMetric(target, 'cacheWriteInputTokens', call.cacheWriteInputTokens)
-          addMetric(target, 'reasoningOutputTokens', call.reasoningOutputTokens); addMetric(target, 'reportedCostUsd', call.totalCostUsd); addMetric(target, 'callDurationMs', call.durationMs)
-          const measured = finite(call.inputTokens) && finite(call.outputTokens) && call.usageAvailable !== false && call.measurementComplete !== false
+          const usageAvailable = call.usageAvailable !== false && data.usageAvailable !== false && call.measurementComplete !== false && data.measurementComplete !== false
+          if (usageAvailable) {
+            addMetric(target, 'inputTokens', call.inputTokens); addMetric(target, 'outputTokens', call.outputTokens)
+            addMetric(target, 'cachedInputTokens', call.cachedInputTokens); addMetric(target, 'cacheWriteInputTokens', call.cacheWriteInputTokens)
+            addMetric(target, 'reasoningOutputTokens', call.reasoningOutputTokens)
+          }
+          addMetric(target, 'reportedCostUsd', call.totalCostUsd); addMetric(target, 'callDurationMs', call.durationMs)
+          const measured = finite(call.inputTokens) && finite(call.outputTokens) && usageAvailable
           if (measured) target.measuredCalls++; else target.unknownCalls++
           if (finite(call.totalCostUsd)) target.costReportedCalls++
           if (call.costMeasurementComplete === false || data.costMeasurementComplete === false) target.incompleteCosts++
@@ -139,7 +143,7 @@ export interface ProjectHistory {
 export function projectHistory(root: string, period: Period, limit: number = DASHBOARD_LIMITS.events): ProjectHistory {
   if (!Number.isInteger(limit) || limit < 1 || limit > DASHBOARD_LIMITS.events) throw Error('Limit must be an integer from 1 to ' + DASHBOARD_LIMITS.events)
   const history = readMeasurements(root, period.from, period.to), seen = new Set<string>()
-  const events = [...history.events, ...readEvents(root, limit)].filter(event => {
+  const events = [...history.events, ...readEvents(root, EVENT_CAP)].filter(event => {
     const time = Date.parse(event.timestamp)
     if (seen.has(event.id) || !Number.isFinite(time) || time < period.from || time >= period.to) return false
     seen.add(event.id); return true

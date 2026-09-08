@@ -2,7 +2,7 @@ import { afterEach, expect, it } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { aggregateMeasurements, parsePeriod, projectAnalytics } from '../../src/dashboard/analytics.js'
+import { aggregateMeasurements, parsePeriod, projectAnalytics, projectHistory } from '../../src/dashboard/analytics.js'
 import { appendEvent, type LoopEvent } from '../../src/observability/events.js'
 
 const roots: string[] = []
@@ -45,6 +45,22 @@ it('analytics keeps unavailable usage out of measured numeric totals', () => {
   expect(result.total.reportedCostUsd).toBeNull()
   expect(result.total.callDurationMs).toBeNull()
   expect(result.total.tokensPerElapsedMinute).toBeNull()
+})
+
+it('does not count numeric token fields when usage is explicitly unavailable', () => {
+  const result = aggregateMeasurements([event('partial', { data: { provider: 'gemini', inputTokens: 10, outputTokens: 5, usageAvailable: false } })], period)
+  expect(result.total.inputTokens).toBeNull()
+  expect(result.total.outputTokens).toBeNull()
+  expect(result.total.measuredCalls).toBe(0)
+  expect(result.total.unknownCalls).toBe(1)
+})
+
+it('filters the bounded event history by period before applying the requested limit', () => {
+  const root = mkdtempSync(join(tmpdir(), 'yoke-history-')); roots.push(root)
+  appendEvent(root, { runId: 'target', type: 'status', timestamp: '2026-09-06T10:00:00Z' })
+  for (let index = 0; index < 100; index++) appendEvent(root, { runId: `later-${index}`, type: 'status', timestamp: `2026-10-01T${String(index % 24).padStart(2, '0')}:00:00Z` })
+  const result = projectHistory(root, period, 1)
+  expect(result.events.map(item => item.runId)).toEqual(['target'])
 })
 
 it('retains measurements across runs after the recent event directory is removed', () => {

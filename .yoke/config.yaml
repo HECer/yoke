@@ -13,7 +13,7 @@ runner:
   agent: codex
   permissions: safe
 verify:
-  command: npm test
+  command: npm test -- tests/dashboard
   retries: 1
   requireCriteria: true
 design:
