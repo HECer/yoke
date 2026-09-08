@@ -3,7 +3,7 @@
 <h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.13.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
 
 <!-- yoke:version:start -->1.13.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1231<!-- yoke:tests:end -->
+<!-- yoke:tests:start -->1258<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1231%20defined-blue.svg)
+![Tests](https://img.shields.io/badge/tests-1258%20defined-blue.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini%20%7C%20Qwen%20%7C%20OpenCode%20%7C%20Kilo%20%7C%20Pi-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -925,7 +925,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1231 tests)
+npm test          # vitest (1258 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```
