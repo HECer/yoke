@@ -7,13 +7,23 @@ import type { PermissionProfile } from '../agents/types.js'
 import { ProjectQualityDefaultsSchema } from '../quality/types.js'
 import { DEFAULT_OUTPUT_POLICY, type OutputPolicy } from '../output/types.js'
 import { ToolActionSchema, type ToolAction } from '../execution/actions.js'
+import { CodeIntelligenceModeSchema, type CodeIntelligenceMode } from '../code-intelligence/contracts.js'
 
 export type Agent = z.infer<typeof AgentSchema>
 export type CodeGraph = 'graphify' | 'serena'
+export { CodeIntelligenceModeSchema }
+export type { CodeIntelligenceMode }
 export type DecisionPolicy = 'auto' | 'critical'
 export type RoutingStrategy = 'balanced' | 'cost' | 'speed' | 'quality' | 'capability'
 
 const CodeGraphSchema = z.enum(['graphify', 'serena'])
+const CodeIntelligenceProcessSchema = z.object({ command: z.string().min(1), args: z.array(z.string()).max(32).optional() })
+const CodeIntelligenceSchema = z.object({
+  mode: CodeIntelligenceModeSchema.default('off'), workspaceId: z.string().min(1).optional(),
+  graft: CodeIntelligenceProcessSchema.optional(), graphify: CodeIntelligenceProcessSchema.optional(), serena: CodeIntelligenceProcessSchema.optional(),
+  policy: z.object({ allowNetwork: z.boolean().default(false), excludePatterns: z.array(z.string().min(1)).max(100).default([]), maxFileBytes: z.number().int().positive().max(20_000_000).optional() }).optional(),
+  limits: z.object({ tokenBudget: z.number().int().min(128).max(16000).default(2400), timeoutMs: z.number().int().min(100).max(600000).default(10000), maxBytes: z.number().int().positive().max(10_000_000).default(2_000_000), maxBackends: z.number().int().min(1).max(3).default(3) }).optional(),
+})
 
 const SmokeFlowSchema = z.object({ name: z.string().min(1), path: z.string().min(1), landmark: z.string().optional() })
 const SmokeSchema = z.object({ baseUrl: z.string().min(1), flows: z.array(SmokeFlowSchema).min(1) })
@@ -128,6 +138,7 @@ export const YokeConfigSchema = z.object({
     max: z.number().int().positive().default(4),
   }).optional(),
   codeGraph: CodeGraphSchema.optional(),
+  codeIntelligence: CodeIntelligenceSchema.optional(),
   smoke: SmokeSchema.optional(),
   quality: ProjectQualityDefaultsSchema.optional(),
   output: OutputPolicySchema.optional(),
@@ -176,6 +187,12 @@ export interface YokeConfig {
   perf?: { command: string; retries?: number }
   design?: { mode: 'off' | 'auto' | 'on'; max: number }
   codeGraph?: CodeGraph
+  codeIntelligence?: {
+    mode: CodeIntelligenceMode; workspaceId?: string
+    graft?: { command: string; args?: string[] }; graphify?: { command: string; args?: string[] }; serena?: { command: string; args?: string[] }
+    policy?: { allowNetwork: boolean; excludePatterns: string[]; maxFileBytes?: number }
+    limits?: { tokenBudget: number; timeoutMs: number; maxBytes: number; maxBackends: number }
+  }
   smoke?: SmokeConfig
   quality?: import('../quality/types.js').ProjectQualityDefaults
   output?: Partial<OutputPolicy>

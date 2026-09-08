@@ -169,6 +169,12 @@ describe('yoke config', () => {
     expect(loadConfig(dir)).toEqual(cfg)
   })
 
+  it('round-trips federated code-intelligence mode and bounded backend overrides', () => {
+    const cfg = { ...defaultConfig('0.1.0'), codeIntelligence: { mode: 'active' as const, serena: { command: 'uvx', args: ['serena-agent', 'start-mcp-server'] }, limits: { maxBytes: 100000 } } }
+    saveConfig(dir, cfg)
+    expect(loadConfig(dir)?.codeIntelligence).toMatchObject({ mode: 'active', serena: { command: 'uvx' }, limits: { maxBytes: 100000 } })
+  })
+
   it('round-trips a smoke section', () => {
     const config = { ...defaultConfig('1.0.0'), smoke: { baseUrl: 'http://localhost:3000', flows: [{ name: 'home', path: '/', landmark: 'main h1' }, { name: 'login', path: '/login' }] } }
     saveConfig(dir, config)

@@ -5,11 +5,11 @@ import { applyActions } from './apply.js'
 import { formatReport } from './report.js'
 import { detectProject } from './detect.js'
 import { ensureGitignore } from './gitignore.js'
-import { loadConfig, saveConfig, defaultConfig, type Agent, type YokeConfig, type CodeGraph } from './config.js'
+import { loadConfig, saveConfig, defaultConfig, type Agent, type YokeConfig, type CodeGraph, type CodeIntelligenceMode } from './config.js'
 import { loadManifest } from '../canon/manifest.js'
 import { detectHostAgent } from '../agents/host.js'
 
-export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: Agent[]; codeGraph?: CodeGraph; host?: Agent }): number {
+export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: Agent[]; codeGraph?: CodeGraph; codeIntelligence?: CodeIntelligenceMode; host?: Agent }): number {
   const canonDir = resolveCanonDir()
   const canonVersion = loadManifest(join(canonDir, 'manifest.yaml')).version
 
@@ -20,8 +20,9 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: A
 
   const existing = loadConfig(targetDir)
   const codeGraph: CodeGraph = opts.codeGraph ?? existing?.codeGraph ?? 'graphify'
+  const codeIntelligence: CodeIntelligenceMode = opts.codeIntelligence ?? existing?.codeIntelligence?.mode ?? 'off'
 
-  const actions = planRetrofit(canonDir, targetDir, agents, codeGraph)
+  const actions = planRetrofit(canonDir, targetDir, agents, codeGraph, codeIntelligence)
   const backupDir = join(targetDir, '.yoke', 'backup', String(Date.now()))
   const applied = applyActions(actions, targetDir, { backupDir })
 
@@ -37,6 +38,7 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: A
     agents: mergedAgents,
     loop: { ...existing?.loop, enabled: opts.loop },
     codeGraph,
+    codeIntelligence: { ...(existing?.codeIntelligence ?? {}), mode: codeIntelligence },
     ...(existing?.design
       ? { design: existing.design }
       : detection.ui.detected ? { design: { mode: 'auto' as const, max: 4 } } : {}),

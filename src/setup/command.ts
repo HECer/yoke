@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 import { detectHostAgent } from '../agents/host.js'
-import { loadConfig, saveConfig, YokeConfigSchema, type Agent, type CodeGraph, type DecisionPolicy, type RoutingWorker } from '../retrofit/config.js'
+import { loadConfig, saveConfig, YokeConfigSchema, type Agent, type CodeGraph, type CodeIntelligenceMode, type DecisionPolicy, type RoutingWorker } from '../retrofit/config.js'
 import { detectProject } from '../retrofit/detect.js'
 import { applyActions } from '../retrofit/apply.js'
 import { join } from 'node:path'
@@ -14,6 +14,7 @@ export interface SetupOptions {
   host?: Agent
   agents?: Agent[]
   codeGraph?: CodeGraph
+  codeIntelligence?: CodeIntelligenceMode
   loop?: boolean
   runner?: Agent
   decisionPolicy?: DecisionPolicy
@@ -92,6 +93,7 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
         ? detected.agents
         : modelProviders.length ? ['qwen' as const] : [host ?? 'claude']
   const defaultGraph = opts.codeGraph ?? existing?.codeGraph ?? 'graphify'
+  const defaultCodeIntelligence = opts.codeIntelligence ?? existing?.codeIntelligence?.mode ?? 'off'
   const defaultLoop = opts.loop ?? existing?.loop.enabled ?? true
   const defaultRunner = opts.runner ?? existing?.runner?.agent ?? (host && defaultAgents.includes(host) ? host : defaultAgents[0] ?? host ?? 'claude')
   const defaultPolicy = opts.decisionPolicy ?? existing?.loop.decisionPolicy ?? (existing?.loop.onAmbiguity === 'abort' ? 'critical' : 'auto')
@@ -109,6 +111,7 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
   try {
     let agents = defaultAgents
     let codeGraph = defaultGraph
+    let codeIntelligence = defaultCodeIntelligence
     let loop = defaultLoop
     let runner = defaultRunner
     let decisionPolicy = defaultPolicy
@@ -127,7 +130,7 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
 
     if (modelProviders.length && !agents.includes('qwen')) agents = [...agents, 'qwen']
     if (!agents.includes(runner)) agents = [...agents, runner]
-    const code = runRetrofit(targetDir, { loop, agents, codeGraph, host })
+    const code = runRetrofit(targetDir, { loop, agents, codeGraph, codeIntelligence, host })
     if (code !== 0) return code
     applyActions(presetActions, targetDir, { backupDir: join(targetDir, '.yoke', 'backups', `model-presets-${Date.now()}`) })
     const config = loadConfig(targetDir)

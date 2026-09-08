@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { loadManifest } from '../../canon/manifest.js'
 import { parseFrontmatter } from '../../canon/frontmatter.js'
 import type { Action } from '../plan.js'
-import type { CodeGraph } from '../config.js'
+import type { CodeGraph, CodeIntelligenceMode } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
 import { PRESERVE_SCAFFOLD } from '../preserve.js'
 import { skillPackageActions } from '../skill-actions.js'
@@ -12,7 +12,7 @@ function tomlString(s: string): string {
   return '"""\n' + s.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"') + '\n"""'
 }
 
-export function planGemini(canonDir: string, _targetDir: string, codeGraph: CodeGraph = 'graphify'): Action[] {
+export function planGemini(canonDir: string, targetDir: string, codeGraph: CodeGraph = 'graphify', codeIntelligence: CodeIntelligenceMode = 'off'): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const actions: Action[] = []
 
@@ -64,7 +64,7 @@ export function planGemini(canonDir: string, _targetDir: string, codeGraph: Code
     target: '.gemini/settings.json',
     merge: true,
     content: JSON.stringify({
-      mcpServers: mcpServers(codeGraph),
+      mcpServers: mcpServers(codeGraph, codeIntelligence, targetDir),
       context: { fileName: ['AGENTS.md', 'GEMINI.md'] },
       hooks: { BeforeTool: [{ matcher: '^run_shell_command$', hooks: [{ name: 'yoke-rtk', type: 'command', command: 'node .gemini/hooks/gemini-rtk-hook.mjs' }] }] },
     }, null, 2) + '\n',

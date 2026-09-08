@@ -2,12 +2,12 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadManifest } from '../../canon/manifest.js'
 import type { Action } from '../plan.js'
-import type { CodeGraph } from '../config.js'
+import type { CodeGraph, CodeIntelligenceMode } from '../config.js'
 import { rtkInstruction } from '../tools.js'
 import { PRESERVE_SCAFFOLD } from '../preserve.js'
 import { skillPackageActions } from '../skill-actions.js'
 
-export function planPi(canonDir: string, _targetDir: string, _codeGraph: CodeGraph = 'graphify'): Action[] {
+export function planPi(canonDir: string, _targetDir: string, _codeGraph: CodeGraph = 'graphify', _codeIntelligence: CodeIntelligenceMode = 'off'): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const baseline = readFileSync(join(canonDir, 'AGENTS.md'), 'utf8')
   const actions: Action[] = manifest.skills.flatMap(skill => skillPackageActions(canonDir, skill, 'pi'))
@@ -28,4 +28,3 @@ export function planPi(canonDir: string, _targetDir: string, _codeGraph: CodeGra
   )
   return actions
 }
-

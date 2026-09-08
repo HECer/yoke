@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadManifest } from '../../canon/manifest.js'
 import type { Action } from '../plan.js'
-import type { CodeGraph } from '../config.js'
+import type { CodeGraph, CodeIntelligenceMode } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
 import { hasWsl } from '../wsl.js'
 import { detectGstack } from '../gstack.js'
@@ -33,6 +33,7 @@ export function planClaude(
   wslAvailable: boolean = hasWsl(),
   codeGraph: CodeGraph = 'graphify',
   gstackDetected: boolean = detectGstack(targetDir),
+  codeIntelligence: CodeIntelligenceMode = 'off',
 ): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const actions: Action[] = []
@@ -60,8 +61,8 @@ export function planClaude(
   actions.push({
     kind: 'write',
     target: '.mcp.json',
-    content: JSON.stringify({ mcpServers: mcpServers(codeGraph) }, null, 2) + '\n',
-    reason: 'MCP servers (code-graph + playwright)',
+    content: JSON.stringify({ mcpServers: mcpServers(codeGraph, codeIntelligence, targetDir) }, null, 2) + '\n',
+    reason: codeIntelligence === 'off' ? 'MCP servers (code-graph + playwright)' : 'Yoke code-intelligence facade + playwright',
   })
 
   if (rtkHookable) {
