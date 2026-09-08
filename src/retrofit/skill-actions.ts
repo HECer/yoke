@@ -2,12 +2,13 @@ import { parse, stringify } from 'yaml'
 import { enumerateSkillPackage, type SkillEntry, type SkillPackageFile } from '../canon/skill-package.js'
 import type { Action } from './plan.js'
 
-type SkillProvider = 'claude' | 'codex' | 'gemini'
+type SkillProvider = 'claude' | 'codex' | 'gemini' | 'qwen'
 
 const roots: Record<SkillProvider, string> = {
   claude: '.claude/skills',
   codex: '.agents/skills',
   gemini: '.gemini/skills',
+  qwen: '.qwen/skills',
 }
 
 function manualClaudeSkill(content: Buffer, skill: SkillEntry): string {

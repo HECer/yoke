@@ -2,10 +2,10 @@
 
 <h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.10.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
 
-<!-- yoke:version:start -->1.10.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1173<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.11.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->1174<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
-<!-- yoke:agents:start -->Claude | Codex | Gemini<!-- yoke:agents:end -->
+<!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen<!-- yoke:agents:end -->
 
 ### One harness, three agents — and zero trust in "done."
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1173%20defined-blue.svg)
+![Tests](https://img.shields.io/badge/tests-1174%20defined-blue.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -897,7 +897,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1173 tests)
+npm test          # vitest (1174 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```
