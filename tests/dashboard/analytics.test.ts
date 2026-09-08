@@ -38,6 +38,15 @@ it('preserves unknown measurements and missing model identity', () => {
   expect(result.models[0].model).toBe('unknown')
 })
 
+it('analytics keeps unavailable usage out of measured numeric totals', () => {
+  const result = aggregateMeasurements([event('unknown', { data: { provider: 'gemini', usageAvailable: false } })], period)
+  expect(result.total.inputTokens).toBeNull()
+  expect(result.total.outputTokens).toBeNull()
+  expect(result.total.reportedCostUsd).toBeNull()
+  expect(result.total.callDurationMs).toBeNull()
+  expect(result.total.tokensPerElapsedMinute).toBeNull()
+})
+
 it('retains measurements across runs after the recent event directory is removed', () => {
   const root = mkdtempSync(join(tmpdir(), 'yoke-history-')); roots.push(root)
   for (const runId of ['first', 'second']) appendEvent(root, { runId, timestamp: '2026-09-06T10:00:00Z', type: 'tokens', data: { inputTokens: 100, outputTokens: 20 } })

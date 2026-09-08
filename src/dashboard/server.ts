@@ -9,7 +9,8 @@ import { dashboardPage } from './page.js'
 import { readEvents } from '../observability/events.js'
 import { estimateSchedule } from '../estimation/schedule.js'
 import { pauseProjectGoal } from '../goals/command.js'
-import { parsePeriod, projectAnalytics } from './analytics.js'
+import { parsePeriod, projectAnalytics, projectHistory, workspaceAnalytics } from './analytics.js'
+import { DASHBOARD_LIMITS, DashboardControlPayloadSchema, parseDashboardLimit, type DashboardControlResponse } from './contracts.js'
 
 const text = z.string().max(16000)
 const number = z.number().finite().nonnegative()
@@ -18,9 +19,10 @@ const Status = z.object({ state: text, phase: text.optional(), reason: text.opti
 const Stories = z.array(z.object({ id: text, title: text, passes: z.boolean(), priority: number.optional(), area: text.optional(), writes: z.array(text).optional(), needs: z.array(text).optional() })).max(2000)
 const Check = z.object({ id: text, status: z.enum(['passed', 'failed', 'unverified']), generatedAt: text, summary: text, criteria: z.array(z.object({ id: text, text, status: z.enum(['passed', 'failed', 'unverified']), summary: text })).max(500) })
 const Durations = z.array(z.object({ storyId: text, ms: number.positive() })).max(5000)
-const MAX_FILE = 1_048_576
+const MAX_FILE = DASHBOARD_LIMITS.fileBytes
 
 function safeFile(root: string, relative: string): string | undefined {
+  if (!relative || relative.startsWith('/') || relative.includes('\\') || relative.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Unsafe project path')
   let file = root
   try {
     for (const part of relative.split('/')) {
@@ -32,6 +34,25 @@ function safeFile(root: string, relative: string): string | undefined {
     if (stat.size > MAX_FILE) throw new Error(`${relative}: file too large`)
     return readFileSync(file, 'utf8')
   } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error }
+}
+function requestBody(req: import('node:http').IncomingMessage): Promise<unknown> {
+  const length = req.headers['content-length']
+  if (typeof length === 'string' && Number.isFinite(Number(length)) && Number(length) > DASHBOARD_LIMITS.requestBytes) { req.resume(); return Promise.reject(new Error('Dashboard request body too large')) }
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []; let size = 0; let rejected = false
+    req.on('data', chunk => {
+      size += Buffer.byteLength(chunk)
+      if (size > DASHBOARD_LIMITS.requestBytes) { rejected = true; req.resume(); reject(new Error('Dashboard request body too large')); return }
+      chunks.push(Buffer.from(chunk))
+    })
+    req.on('end', () => {
+      if (rejected) return
+      const body = Buffer.concat(chunks).toString('utf8').trim()
+      if (!body) { resolve({ action: 'pause' }); return }
+      try { resolve(JSON.parse(body)) } catch { reject(new Error('Invalid dashboard request body')) }
+    })
+    req.on('error', reject)
+  })
 }
 function snapshot(project: RegisteredProject, detail: boolean) {
   const errors: string[] = project.error ? [project.error] : []
@@ -55,21 +76,23 @@ function snapshot(project: RegisteredProject, detail: boolean) {
       if (latest) check = read(`.yoke/checks/${latest.name}`, Check)
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push((error as Error).message) }
   }
-  return { ...project, goal, status, errors, ...(detail ? { stories, check, events: project.error ? [] : readEvents(project.root, 100), estimate: estimateSchedule(stories, Math.max(1, status?.parallel?.maxConcurrency ?? 1), history) } : {}) }
+  return { ...project, goal, status, errors, ...(detail ? { stories, check, events: project.error ? [] : readEvents(project.root, DASHBOARD_LIMITS.events), estimate: estimateSchedule(stories, Math.max(1, status?.parallel?.maxConcurrency ?? 1), history) } : {}) }
 }
 export async function startDashboard(options: { port?: number } = {}): Promise<{ url: string; close: () => Promise<void> }> {
   const token = randomBytes(32).toString('hex')
   const nonce = randomBytes(24).toString('base64')
   let origin = ''
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store')
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Referrer-Policy', 'no-referrer')
     res.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`)
     const send = (code: number, data: unknown) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)) }
     if (req.headers.host !== new URL(origin).host || (req.headers.origin !== undefined && req.headers.origin !== origin)) { send(403, { error: 'Untrusted request origin' }); return }
-    let path: string
-    try { path = new URL(req.url ?? '/', origin).pathname } catch { send(400, { error: 'Invalid URL' }); return }
+    let requested: URL
+    try { requested = new URL(req.url ?? '/', origin) } catch { send(400, { error: 'Invalid URL' }); return }
+    if (requested.origin !== origin) { send(403, { error: 'Untrusted request origin' }); return }
+    const path = requested.pathname
     if (req.method === 'POST') {
       const supplied = req.headers['x-yoke-token']
       if (req.headers.origin !== origin || typeof supplied !== 'string' || Buffer.byteLength(supplied) !== token.length || !timingSafeEqual(Buffer.from(supplied), Buffer.from(token))) { send(403, { error: 'Missing dashboard session authorization' }); return }
@@ -78,22 +101,37 @@ export async function startDashboard(options: { port?: number } = {}): Promise<{
       if (req.method === 'GET' && path === '/favicon.ico') { res.writeHead(204); res.end(); return }
       if (req.method === 'GET' && path === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(dashboardPage(token, nonce)); return }
       if (req.method === 'GET' && path === '/api/projects') { send(200, listProjects().map(project => snapshot(project, false))); return }
-      const match = /^\/api\/projects\/([a-f0-9]{32})(\/pause|\/analytics)?$/u.exec(path)
+      if (req.method === 'GET' && path === '/api/workspace/analytics') {
+        let period
+        try { period = parsePeriod(requested.searchParams) } catch (error) { send(400, { error: (error as Error).message }); return }
+        send(200, workspaceAnalytics(listProjects(), period)); return
+      }
+      const match = /^\/api\/projects\/([a-f0-9]{32})(\/pause|\/analytics|\/history|\/events)?$/u.exec(path)
       if (match) {
         const project = listProjects().find(project => project.id === match[1])
         if (!project) { send(404, { error: 'Unknown project' }); return }
         if (req.method === 'GET' && match[2] === '/analytics') {
           if (project.error) { send(409, { error: project.error }); return }
           let period
-          try { period = parsePeriod(new URL(req.url!, origin).searchParams) } catch (error) { send(400, { error: (error as Error).message }); return }
+          try { period = parsePeriod(requested.searchParams) } catch (error) { send(400, { error: (error as Error).message }); return }
           send(200, projectAnalytics(project.root, period)); return
+        }
+        if (req.method === 'GET' && (match[2] === '/history' || match[2] === '/events')) {
+          if (project.error) { send(409, { error: project.error }); return }
+          let period, limit
+          try { period = parsePeriod(requested.searchParams); limit = parseDashboardLimit(requested.searchParams.get('limit')) } catch (error) { send(400, { error: (error as Error).message }); return }
+          send(200, projectHistory(project.root, period, limit)); return
         }
         if (req.method === 'GET' && !match[2]) { send(200, snapshot(project, true)); return }
         if (req.method === 'POST' && match[2] === '/pause') {
+          try { DashboardControlPayloadSchema.parse(await requestBody(req)) } catch (error) {
+            send((error as Error).message === 'Dashboard request body too large' ? 413 : 400, { error: (error as Error).message === 'Dashboard request body too large' ? (error as Error).message : 'Invalid dashboard control payload' }); return
+          }
           if (project.error || !snapshot(project, false).goal) { send(409, { error: 'No readable project goal' }); return }
           safeFile(project.root, '.yoke/goal.pause')
           pauseProjectGoal(project.root)
-          send(200, { status: 'pause-requested' }); return
+          const response: DashboardControlResponse = { status: 'pause-requested' }
+          send(200, response); return
         }
       }
       send(404, { error: 'Not found' })
