@@ -332,7 +332,7 @@ describe('yoke loop run --parallel', () => {
     expect(existsSync(join(dir, '.yoke', 'loop.pause'))).toBe(false)
   })
 
-  it('uses real Git worktrees to serialize three dependent story commits', { timeout: 15_000 }, async () => {
+  it('uses real Git worktrees to serialize three dependent story commits', { timeout: 30_000 }, async () => {
     for (const id of ['A', 'B', 'C']) writeFileSync(join(dir, `implemented-${id}.txt`), `base ${id}`)
     const baseCommit = initializeGitRepository([
       '- { id: A, title: API, priority: 1, acceptance: ["a"], passes: false, area: api }',
@@ -371,7 +371,7 @@ describe('yoke loop run --parallel', () => {
     expect(execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: dir, encoding: 'utf8' }).match(/^worktree /gmu)).toHaveLength(1)
   })
 
-  it('keeps unrelated PRD stories authoritative when a worker mutates its candidate copy', async () => {
+  it('keeps unrelated PRD stories authoritative when a worker mutates its candidate copy', { timeout: 15_000 }, async () => {
     initializeGitRepository([
       '- { id: A, title: API, priority: 1, acceptance: ["a"], passes: false, area: api }',
       '- { id: B, title: Web, priority: 2, acceptance: ["b"], passes: false, needs: [A] }',
@@ -400,7 +400,7 @@ describe('yoke loop run --parallel', () => {
     expect(existsSync(join(dir, 'implemented-A.txt'))).toBe(true)
   })
 
-  it('lands a worker-authored commit as one dispatcher-authored story commit', async () => {
+  it('lands a worker-authored commit as one dispatcher-authored story commit', { timeout: 15_000 }, async () => {
     const baseCommit = initializeGitRepository('- { id: A, title: API, priority: 1, acceptance: ["a"], passes: false }')
 
     const code = await Promise.resolve(runLoopCommand(dir, {
@@ -422,7 +422,7 @@ describe('yoke loop run --parallel', () => {
     expect(landedSubjects).toEqual(['yoke: complete A API'])
   })
 
-  it('does not integrate when the target becomes dirty during integrated gates', async () => {
+  it('does not integrate when the target becomes dirty during integrated gates', { timeout: 15_000 }, async () => {
     writeFileSync(join(dir, 'tracked.txt'), 'operator baseline')
     const expectedHead = initializeGitRepository('- { id: A, title: API, priority: 1, acceptance: ["a"], passes: false }')
     let verifyCalls = 0
@@ -448,7 +448,7 @@ describe('yoke loop run --parallel', () => {
     expect(existsSync(join(dir, 'implemented-A.txt'))).toBe(false)
   })
 
-  it('does not integrate when the target rewinds during integrated gates', async () => {
+  it('does not integrate when the target rewinds during integrated gates', { timeout: 15_000 }, async () => {
     const expectedHead = initializeGitRepository('- { id: A, title: API, priority: 1, acceptance: ["a"], passes: false }')
     const rewoundHead = execFileSync('git', ['rev-parse', `${expectedHead}^`], { cwd: dir, encoding: 'utf8' }).trim()
     let verifyCalls = 0

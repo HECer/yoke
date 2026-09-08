@@ -64,6 +64,42 @@ describe('provider invocations', () => {
     expect(buildProviderInvocation('claude', 'P', '/w', 'safe', { bare: true }).args).toContain('--bare')
   })
 
+  it('builds OpenCode headless invocations with provider/model and variant selection', () => {
+    expect(buildProviderInvocation('opencode', 'P', '/w', 'safe', {
+      model: 'openai/gpt-5.6', variant: 'high', nativeMultiAgent: false,
+    }).args).toEqual([
+      'run', '--format', 'json', '--auto', '--model', 'openai/gpt-5.6', '--variant', 'high',
+    ])
+  })
+
+  it('uses the OpenCode plan agent for read-only runs and a dangerous override only when explicit', () => {
+    expect(buildProviderInvocation('opencode', 'P', '/w', 'read-only').args).toEqual([
+      'run', '--format', 'json', '--auto', '--agent', 'plan',
+    ])
+    expect(buildProviderInvocation('opencode', 'P', '/w', 'unsafe').args).toContain('--dangerously-skip-permissions')
+  })
+
+  it('builds Kilo invocations with its OpenCode-compatible provider and variant flags', () => {
+    expect(buildProviderInvocation('kilo', 'P', '/w', 'safe', {
+      model: 'anthropic/claude-sonnet', variant: 'medium',
+    }).args).toEqual([
+      'run', '--format', 'json', '--auto', '--model', 'anthropic/claude-sonnet', '--variant', 'medium',
+    ])
+    expect(buildProviderInvocation('kilo', 'P', '/w', 'read-only').args).toContain('--agent')
+    expect(buildProviderInvocation('kilo', 'P', '/w', 'unsafe').args).toContain('--dangerously-skip-permissions')
+  })
+
+  it('builds Pi JSON invocations with provider, model, thinking and tool safety', () => {
+    expect(buildProviderInvocation('pi', 'P', '/w', 'safe', {
+      provider: 'openai', model: 'gpt-5.6', reasoningEffort: 'high',
+    }).args).toEqual([
+      '--mode', 'json', '--no-session', '--tools', 'read,bash,edit,write',
+      '--provider', 'openai', '--model', 'gpt-5.6', '--thinking', 'high',
+    ])
+    expect(buildProviderInvocation('pi', 'P', '/w', 'read-only').args).toContain('read,grep,find,ls')
+    expect(buildProviderInvocation('pi', 'P', '/w', 'unsafe').args).not.toContain('--tools')
+  })
+
   it('rejects provider selectors containing Windows shell metacharacters', () => {
     expect(() => buildProviderInvocation('codex', 'P', '/w', 'safe', { model: 'safe&whoami' })).toThrow()
     expect(() => buildProviderInvocation('codex', 'P', '/w', 'safe', { reasoningEffort: 'high|whoami' })).toThrow()

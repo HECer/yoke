@@ -1,8 +1,9 @@
 import { z } from 'zod'
 import { parse } from 'yaml'
 import { readFileSync } from 'node:fs'
+import { AgentSchema } from '../agents/contracts.js'
 
-export const AgentSchema = z.enum(['claude', 'codex', 'gemini', 'qwen'])
+export { AgentSchema }
 export const InvocationSchema = z.enum(['auto', 'manual'])
 
 export const SkillEntrySchema = z.object({

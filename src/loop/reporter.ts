@@ -44,6 +44,7 @@ export interface ParallelWorkerStatus {
   readonly startedAt?: string
   readonly selectedProvider?: string
   readonly selectedModel?: string
+  readonly selectedVariant?: string
   readonly story: string
   readonly storyTitle: string
   readonly provider: string
@@ -111,8 +112,10 @@ export interface ModelCallUsage {
   role: 'orchestrator' | 'worker' | 'parent'
   provider: string
   profile?: string
+  requestedProvider?: string
   requestedModel?: string
   requestedReasoningEffort?: string
+  requestedVariant?: string
   actualModel?: string
   inputTokens: number
   cachedInputTokens?: number
@@ -144,7 +147,7 @@ export interface TokenUsage {
 
 export interface LoopStatus {
   supervision?: import('../agents/supervision.js').SupervisionState[]
-  routingDecisions?: Record<string, { profile: string; provider: string; model?: string; reasoningEffort?: string; reason: string; next: string; assessment?: import("../routing/assessment.js").TaskAssessment }>
+  routingDecisions?: Record<string, { profile: string; provider: string; providerModel?: string; model?: string; reasoningEffort?: string; variant?: string; reason: string; next: string; assessment?: import("../routing/assessment.js").TaskAssessment }>
 
   execution?: { provider: string; requestedModel?: string; startedAt: string }
   state: LoopState
@@ -389,6 +392,7 @@ export function makeReporter(
               startedAt: previous.startedAt,
               selectedProvider: previous.selectedProvider,
               selectedModel: previous.selectedModel,
+              selectedVariant: previous.selectedVariant,
               ...(previous.model ? { model: previous.model } : {}),
               provider: previous.provider,
               ...(previous.phase ? { phase: previous.phase } : {}),

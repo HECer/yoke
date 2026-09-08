@@ -20,6 +20,7 @@ import { runLoopCleanup } from './loop/cleanup.js'
 import { runFlowSmoke } from './smoke/command.js'
 import { maybeNotifyUpdate, currentYokeVersion } from './update/check.js'
 import { runUpgrade } from './update/upgrade.js'
+import { AGENT_LIST, isSupportedAgent, SUPPORTED_AGENTS } from './agents/catalog.js'
 import { printAudit, runAudit } from './audit/command.js'
 import { runSetup } from './setup/command.js'
 import { pendingChanges, queueChange } from './change/inbox.js'
@@ -110,14 +111,14 @@ export function main(argv: string[]): number | Promise<number> {
   switch (cmd) {
     case 'setup': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
-      const valid: Agent[] = ['claude', 'codex', 'gemini', 'qwen']
+      const valid: Agent[] = [...SUPPORTED_AGENTS]
       const hostArg = rest.find(a => a.startsWith('--host='))?.slice('--host='.length)
       if (hostArg && !valid.includes(hostArg as Agent)) { console.error(`Invalid --host value: ${hostArg}`); return 1 }
       const agentArg = rest.find(a => a.startsWith('--agent='))?.slice('--agent='.length)
       const agentTokens = agentArg === 'all' ? valid : agentArg?.split(',').map(a => a.trim())
       const invalidAgents = agentTokens?.filter(a => !valid.includes(a as Agent)) ?? []
       if (agentArg && (invalidAgents.length > 0 || agentTokens?.length === 0)) {
-        console.error(`Invalid --agent value: ${agentArg} (expected claude,codex,gemini,qwen|all)`)
+        console.error(`Invalid --agent value: ${agentArg} (expected ${AGENT_LIST}|all)`)
         return 1
       }
       const agents = agentTokens ? [...new Set(agentTokens as Agent[])] : undefined
@@ -185,7 +186,7 @@ export function main(argv: string[]): number | Promise<number> {
         if (sub === 'pause') { pauseProjectGoal(targetDir); console.log('Pause requested at next safe boundary'); return 0 }
         if (sub === 'run' || sub === 'resume') {
           const provider = value('runner') ?? 'codex'
-          if (!['codex', 'claude', 'gemini', 'qwen'].includes(provider)) throw new Error('Unknown runner')
+          if (!SUPPORTED_AGENTS.includes(provider as Agent)) throw new Error('Unknown runner')
           return runProjectGoal(targetDir, { provider: provider as Agent, selection: { model: value('model') } }).then(goal => {
             console.log(JSON.stringify(goal)); return goal.status === 'complete' ? 0 : 1
           }).catch(error => { console.error(`Goal: ${(error as Error).message}`); return 2 })
@@ -216,7 +217,7 @@ export function main(argv: string[]): number | Promise<number> {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
       const loop = rest.includes('--loop')
       const agentArg = rest.find(a => a.startsWith('--agent='))?.slice('--agent='.length)
-      const all: Agent[] = ['claude', 'codex', 'gemini', 'qwen']
+      const all: Agent[] = [...SUPPORTED_AGENTS]
       const agents = !agentArg || agentArg === 'all'
         ? (agentArg === 'all' ? all : undefined)
         : agentArg.split(',').filter((a): a is Agent => (all as string[]).includes(a))
@@ -371,18 +372,17 @@ export function main(argv: string[]): number | Promise<number> {
           return 1
         }
         const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
-        const valid = ['claude', 'codex', 'gemini', 'qwen']
-        const agent = runnerArg && valid.includes(runnerArg) ? (runnerArg as Agent) : undefined
+        const agent = runnerArg && isSupportedAgent(runnerArg) ? runnerArg : undefined
         if (runnerArg && !agent) {
-          console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini|qwen)`)
+          console.error(`Invalid --runner value: ${runnerArg} (expected ${AGENT_LIST})`)
           return 1
         }
         const isolate = rest.includes('--isolate') ? true : rest.includes('--no-isolate') ? false : undefined
         const reviewerArg = rest.find(a => a.startsWith('--reviewer='))?.slice('--reviewer='.length)
         let reviewer: Agent | undefined
         if (reviewerArg) {
-          if (!valid.includes(reviewerArg)) {
-            console.error(`Invalid --reviewer value: ${reviewerArg} (expected claude|codex|gemini|qwen)`)
+          if (!isSupportedAgent(reviewerArg)) {
+            console.error(`Invalid --reviewer value: ${reviewerArg} (expected ${AGENT_LIST})`)
             return 1
           }
           reviewer = reviewerArg as Agent
@@ -416,19 +416,19 @@ export function main(argv: string[]): number | Promise<number> {
         if (!qualityFlags.ok) { console.error(qualityFlags.error); return 1 }
         return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, resumeWorktree: rest.includes('--resume-worktree'), parallel, parallelAuto: parallelArg === '--parallel=auto', reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions, ...qualityFlags.options })
       }
-      console.log('usage: yoke loop <on|off|status|decision|answer|resume [--discard] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=<auto|N>] [--runner=<claude|codex|gemini|qwen>] [--reviewer=<claude|codex|gemini|qwen>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate|--no-isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]')
+      console.log(`usage: yoke loop <on|off|status|decision|answer|resume [--discard] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=<auto|N>] [--runner=<${AGENT_LIST}>] [--reviewer=<${AGENT_LIST}>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate|--no-isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]`)
       return 1
     }
     case 'new': {
       const dir = rest.find(a => !a.startsWith('-'))
       if (!dir) {
-        console.error('usage: yoke new <dir> [--idea="..."] [--agent=claude,codex,gemini,qwen|all] [--runner=<claude|codex|gemini|qwen>] [--loop]')
+        console.error(`usage: yoke new <dir> [--idea="..."] [--agent=${AGENT_LIST}|all] [--runner=<${AGENT_LIST}>] [--loop]`)
         return 1
       }
       const idea = rest.find(a => a.startsWith('--idea='))?.slice('--idea='.length)
       const loop = rest.includes('--loop')
       const agentArg = rest.find(a => a.startsWith('--agent='))?.slice('--agent='.length)
-      const all: Agent[] = ['claude', 'codex', 'gemini', 'qwen']
+      const all: Agent[] = [...SUPPORTED_AGENTS]
       const agents = !agentArg || agentArg === 'all'
         ? (agentArg === 'all' ? all : undefined)
         : agentArg.split(',').filter((a): a is Agent => (all as string[]).includes(a))
@@ -436,8 +436,8 @@ export function main(argv: string[]): number | Promise<number> {
         console.warn('Unknown agent(s) in --agent; falling back to detection')
       }
       const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
-      if (runnerArg && !(all as string[]).includes(runnerArg)) {
-        console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini|qwen)`)
+      if (runnerArg && !isSupportedAgent(runnerArg)) {
+        console.error(`Invalid --runner value: ${runnerArg} (expected ${AGENT_LIST})`)
         return 1
       }
       return runNew(dir, { idea, agents, runner: runnerArg as Agent | undefined, loop })
@@ -447,19 +447,18 @@ export function main(argv: string[]): number | Promise<number> {
       const targetDir = rest.slice(1).find(a => !a.startsWith('-')) ?? '.'
       if (sub === 'assess') {
         const runner = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
-        if (runner && !['codex', 'claude', 'gemini', 'qwen'].includes(runner)) { console.error('Invalid planning runner'); return 1 }
+        if (runner && !SUPPORTED_AGENTS.includes(runner as Agent)) { console.error('Invalid planning runner'); return 1 }
         return runPrdAssess(targetDir, { runner: runner as Agent | undefined, story: rest.find(a => a.startsWith('--story='))?.slice('--story='.length), reassess: rest.includes('--reassess') })
       }
       if (sub === 'draft') {
         const idea = rest.find(a => a.startsWith('--idea='))?.slice('--idea='.length)
         if (!idea) {
-          console.error('usage: yoke prd draft [dir] --idea="..." [--runner=<claude|codex|gemini|qwen>] [--force] [--timeout=<minutes>]')
+          console.error(`usage: yoke prd draft [dir] --idea="..." [--runner=<${AGENT_LIST}>] [--force] [--timeout=<minutes>]`)
           return 1
         }
-        const valid = ['claude', 'codex', 'gemini', 'qwen']
         const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
-        if (runnerArg && !valid.includes(runnerArg)) {
-          console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini|qwen)`)
+        if (runnerArg && !isSupportedAgent(runnerArg)) {
+          console.error(`Invalid --runner value: ${runnerArg} (expected ${AGENT_LIST})`)
           return 1
         }
         const force = rest.includes('--force')
@@ -473,7 +472,7 @@ export function main(argv: string[]): number | Promise<number> {
         return runPrdDraft(targetDir, { idea, runner: runnerArg as Agent | undefined, force, timeoutMinutes })
       }
       if (sub === 'check') return runPrdCheck(targetDir)
-      console.log('usage: yoke prd <draft|check|assess> [dir] [--idea="..."] [--runner=<claude|codex|gemini|qwen>] [--story=<id>] [--reassess] [--force] [--timeout=<minutes>]')
+      console.log(`usage: yoke prd <draft|check|assess> [dir] [--idea="..."] [--runner=<${AGENT_LIST}>] [--story=<id>] [--reassess] [--force] [--timeout=<minutes>]`)
       return 1
     }
     case 'context': {
@@ -486,10 +485,9 @@ export function main(argv: string[]): number | Promise<number> {
     }
     case 'review': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
-      const valid = ['claude', 'codex', 'gemini', 'qwen']
       const reviewerArg = rest.find(a => a.startsWith('--reviewer='))?.slice('--reviewer='.length)
-      if (reviewerArg && !valid.includes(reviewerArg)) {
-        console.error(`Invalid --reviewer value: ${reviewerArg} (expected claude|codex|gemini|qwen)`)
+      if (reviewerArg && !isSupportedAgent(reviewerArg)) {
+          console.error(`Invalid --reviewer value: ${reviewerArg} (expected ${AGENT_LIST})`)
         return 1
       }
       const base = rest.find(a => a.startsWith('--base='))?.slice('--base='.length)
@@ -530,7 +528,7 @@ export function main(argv: string[]): number | Promise<number> {
       return runUpgrade()
     default:
       console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
-      console.log('usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini,qwen|all] [--code-graph=graphify|serena] [--loop] | change <add|status> [dir] | prd <draft|check|assess> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini|qwen>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>')
+      console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--loop] | change <add|status> [dir] | prd <draft|check|assess> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] [--reviewer=<${AGENT_LIST}>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>`)
       return cmd ? 1 : 0
   }
 }

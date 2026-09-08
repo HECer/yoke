@@ -7,6 +7,8 @@ describe('host-aware agent selection', () => {
     expect(detectHostAgent({ CODEX_THREAD_ID: 'thread' })).toBe('codex')
     expect(detectHostAgent({ CLAUDECODE: '1' })).toBe('claude')
     expect(detectHostAgent({ QWEN_CLI: '1' })).toBe('qwen')
+    expect(detectHostAgent({ OPENCODE_CLIENT: 'cli' })).toBe('opencode')
+    expect(detectHostAgent({ KILO_CLIENT: 'cli' })).toBe('kilo')
   })
 
   it('prefers an active session marker over another provider home directory', () => {

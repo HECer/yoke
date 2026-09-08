@@ -26,7 +26,7 @@ export const PRD_TEMPLATE = `# Yoke PRD — the loop picks the lowest-priority o
 #   priority: 1
 #   needs: []             # optional story IDs that must pass first
 #   area: foundation      # optional collision domain for parallel runs
-#   agent: codex          # optional claude|codex|gemini affinity
+#   agent: codex          # optional Yoke harness affinity
 #   acceptance:
 #     - id: suite-runs
 #       text: "the project test suite can run"
@@ -65,7 +65,7 @@ export function buildPrdDraftPrompt(idea: string, planningBrief?: string): strin
     '- priority: dense integers from 1 (lower = built first)',
     '- needs: optional list of story IDs that must pass first; the graph must be acyclic',
     '- area: optional collision domain for safe parallel scheduling',
-    '- agent: optional claude|codex|gemini affinity',
+    '- agent: optional harness affinity (claude, codex, gemini, qwen, opencode, kilo, or pi)',
     '- acceptance: 2-5 testable, behavioral criteria (observable outcomes, never implementation steps)',
     '  Each criterion is an object with a stable id, behavioral text, and verify: [one or more approved test commands].',
     '  Every criterion id must appear in every verify command; use one test command without shell control operators.',
@@ -122,7 +122,7 @@ export function runPrdDraft(targetDir: string, opts: PrdDraftOptions): number {
   const planner = resolvePlanner(config, resolveRunnerAgent(config, undefined, detectHostAgent()), config?.runner, opts.runner)
   const agent = planner.agent
   if (!available(agent)) {
-    console.error(`Agent CLI "${agent}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
+    console.error(`Agent CLI "${agent}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini|qwen|opencode|kilo|pi>.`)
     return 2
   }
   const idleMs = resolveIdleMs(opts.timeoutMinutes, undefined)

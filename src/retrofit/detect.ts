@@ -17,6 +17,9 @@ export function detectProject(targetDir: string): Detection {
   if (has('.codex') || has('AGENTS.md')) agents.push('codex')
   if (has('.gemini') || has('GEMINI.md')) agents.push('gemini')
   if (has('.qwen') || has('QWEN.md')) agents.push('qwen')
+  if (has('.opencode') || has('opencode.json') || has('opencode.jsonc')) agents.push('opencode')
+  if (has('.kilo') || has('kilo.json') || has('kilo.jsonc')) agents.push('kilo')
+  if (has('.pi') || has('PI.md')) agents.push('pi')
   return {
     agents,
     hasAgentsMd: has('AGENTS.md'),

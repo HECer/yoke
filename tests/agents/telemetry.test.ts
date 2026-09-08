@@ -73,4 +73,37 @@ describe('provider telemetry', () => {
   it('reports unavailable usage explicitly', () => {
     expect(parseProviderTelemetry('codex', ['not-json'])).toEqual({ usageAvailable: false })
   })
+
+  it('parses OpenCode text events and step-finish token usage', () => {
+    const output = [
+      JSON.stringify({ type: 'text', part: { type: 'text', text: '{"schemaVersion":1,"value":"ok"}' } }),
+      JSON.stringify({ type: 'step_finish', part: { type: 'step-finish', tokens: { input: 11, output: 7, reasoning: 2, cache: { read: 3, write: 1 } }, cost: 0.004 } }),
+    ]
+    expect(parseProviderResult('opencode', output.join('\n'))).toEqual({ schemaVersion: 1, value: 'ok' })
+    expect(parseProviderTelemetry('opencode', output)).toMatchObject({
+      usageAvailable: true,
+      tokens: { inputTokens: 11, outputTokens: 7, reasoningOutputTokens: 2, cachedInputTokens: 3, cacheWriteInputTokens: 1, totalCostUsd: 0.004 },
+    })
+  })
+
+  it('parses Kilo JSON events using the shared OpenCode event contract', () => {
+    const output = [
+      JSON.stringify({ type: 'text', part: { text: '{"schemaVersion":1,"value":"kilo"}' } }),
+      JSON.stringify({ type: 'step_finish', part: { tokens: { input: 5, output: 4, cache: { read: 0, write: 0 } }, cost: 0 } }),
+    ]
+    expect(parseProviderResult('kilo', output.join('\n'))).toEqual({ schemaVersion: 1, value: 'kilo' })
+    expect(parseProviderTelemetry('kilo', output)).toMatchObject({ usageAvailable: true, tokens: { inputTokens: 5, outputTokens: 4 } })
+  })
+
+  it('parses Pi message-end JSON and message-update usage', () => {
+    const output = [
+      JSON.stringify({ type: 'message_update', usage: { input: 13, output: 9, cacheRead: 4, cacheWrite: 2, cost: { total: 0.009 } }, assistantMessageEvent: { type: 'text_delta', delta: 'ignored' } }),
+      JSON.stringify({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: '{"schemaVersion":1,"value":"pi"}' }], model: 'gpt-5.6' } }),
+    ]
+    expect(parseProviderResult('pi', output.join('\n'))).toEqual({ schemaVersion: 1, value: 'pi' })
+    expect(parseProviderTelemetry('pi', output)).toMatchObject({
+      usageAvailable: true,
+      tokens: { inputTokens: 13, outputTokens: 9, cachedInputTokens: 4, cacheWriteInputTokens: 2, totalCostUsd: 0.009, model: 'gpt-5.6' },
+    })
+  })
 })

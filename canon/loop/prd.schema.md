@@ -8,7 +8,7 @@ The loop is driven by a continuous PRD backlog. Each story:
   priority: 1            # lower = higher priority
   needs: []              # optional dependency IDs; no unknown IDs, self-links, or cycles
   area: api              # optional collision domain for parallel scheduling
-  agent: codex           # optional claude|codex|gemini affinity
+  agent: codex           # optional supported harness affinity
   acceptance:
     - id: valid-request-returns-200
       text: The endpoint returns 200 for a valid request.
@@ -42,7 +42,7 @@ dispatch blocks missing or stale assessments. See [capability routing](../../doc
 
 Stories without `needs`, `area`, or `agent` retain serial behavior. A story is ready only when
 every ID in `needs` passes. The scheduler orders ready work by priority, avoids simultaneously
-active areas, and uses `agent` as an affinity hint.
+active areas, and uses `agent` as a supported harness affinity hint.
 
 The backlog is continuous, not a release object. A momentary stop condition is every story
 having `passes: true`; if configured, `completion.command` must then prove the integrated

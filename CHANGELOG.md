@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.13.0 — 2026-09-08
+
+### Added
+- Add first-class OpenCode, Kilo and Pi coding-agent adapters across setup, retrofit, loop execution, reviews, quality critics/repairs, goals, PRD affinity and adaptive routing.
+- Generate idiomatic OpenCode/Kilo skill packages, `AGENTS.md` instructions, merged MCP config and read-only reviewer agents; generate Pi skill packages and project settings without inventing unsupported MCP or sub-agent features.
+- Support provider/model/variant selection for OpenCode and Kilo, and provider/model/thinking selection for Pi. Preserve provider and variant identity in routing evidence and dashboard status.
+- Parse OpenCode/Kilo JSON text and per-step usage/cost events and Pi JSONL assistant/usage events, retaining partial or unknown measurements instead of treating them as free calls.
+
+### Changed
+- Extend the shared agent contract and all CLI validation/help text from four to seven supported harnesses: Claude, Codex, Gemini, Qwen, OpenCode, Kilo and Pi.
+- Add JSONC-aware merging for existing Kilo configuration files so comments, trailing commas and user-owned settings survive retrofit.
+- Add OpenCode/Kilo/Pi capability-tier routing defaults and carry provider/variant choices into parallel workers and quality candidate comparison.
+
+### Migration and validation limits
+- Run `yoke retrofit . --agent=opencode,kilo,pi` to add the new native artifacts, or use `--agent=all` for all seven harnesses. Install and authenticate each external CLI separately; Yoke does not bundle runtimes or credentials.
+- OpenCode and Kilo safe execution uses their headless approval mode, while Pi uses explicit tool allowlists. None provides the same OS-level sandbox boundary as Codex/Gemini; Pi has no native MCP, sub-agent or plan layer. See [OpenCode, Kilo and Pi](docs/HARNESSES.md) before using `unsafe`.
+- Regression fixtures cover invocation, routing, quality configuration, retrofit, host detection, result parsing and telemetry. No authenticated provider matrix, production sandbox equivalence, or model-quality/cost benchmark is claimed for these harnesses. Provider streams that omit final usage events remain partial or unknown.
+- This release targets npm package 1.13.0; publication is triggered by the matching published GitHub release and verified separately.
+
 ## 1.12.0 — 2026-09-08
 
 ### Fixed

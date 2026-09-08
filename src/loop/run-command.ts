@@ -12,7 +12,7 @@ import { commandVerifier, commandsVerifier, retryingVerifier, type Verifier } fr
 import { readStatus, makeReporter, fmtDuration, type LoopReporter } from './reporter.js'
 import { acquireLock, releaseLock } from './lock.js'
 import { maybeAutoUpgrade } from '../update/upgrade.js'
-import type { PermissionProfile } from '../agents/types.js'
+import type { ModelSelection, PermissionProfile } from '../agents/types.js'
 import { resolveCommitIdentity, type CommitIdentity } from './identity.js'
 import { runAudit } from '../audit/command.js'
 import { detectHostAgent, resolveRunnerAgent } from '../agents/host.js'
@@ -30,6 +30,8 @@ import { runParallelLoopCommand } from './parallel-command.js'
 import { detectUiProject } from '../retrofit/ui-detect.js'
 import { designVerifier } from '../scan/gate.js'
 import { prepareIsolatedWorktree } from './recovery.js'
+import { AGENT_LIST, SUPPORTED_AGENTS } from '../agents/catalog.js'
+import type { StoryWorkerProvider } from './worker.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -313,22 +315,38 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   const permissions = opts.permissions ?? config.runner?.permissions ?? 'safe'
   const routingRequested = opts.routing ?? config.routing?.enabled ?? true
   const routingEnabled = routingRequested && Boolean(config.routing && (config.routing.workers.length || config.routing.fallback === 'block' || config.routing.maxTier || config.routing.assessmentPolicy === 'prepared'))
-  const runnerSelection = {
+  const runnerSelection: ModelSelection = {
+    provider: config.runner?.provider,
     model: config.runner?.model,
     reasoningEffort: config.runner?.reasoningEffort,
+    variant: config.runner?.variant,
     bare: config.runner?.bare,
     nativeMultiAgent: false,
   }
-  const parallelProviders = [{
+  const parallelProviders: readonly Omit<StoryWorkerProvider, 'role'>[] = [{
     provider: runnerAgent,
+    ...(runnerSelection.provider ? { providerModel: runnerSelection.provider } : {}),
     ...(runnerSelection.model ? { model: runnerSelection.model } : {}),
     ...(runnerSelection.reasoningEffort ? { reasoningEffort: runnerSelection.reasoningEffort } : {}),
+    ...(runnerSelection.variant ? { variant: runnerSelection.variant } : {}),
   }]
-  const parallelAffinityProviders = config.routing?.strategy === 'capability' ? config.agents.map(agent => ({ provider: agent, ...(agent === runnerAgent ? runnerSelection : {}) })) : (config.routing?.workers ?? []).map(worker => ({
-    provider: worker.agent,
-    ...(worker.model ? { model: worker.model } : {}),
-    ...(worker.reasoningEffort ? { reasoningEffort: worker.reasoningEffort } : {}),
-  }))
+  const parallelAffinityProviders: readonly Omit<StoryWorkerProvider, 'role'>[] = config.routing?.strategy === 'capability'
+    ? config.agents.map(agent => agent === runnerAgent
+      ? {
+          provider: agent,
+          ...(runnerSelection.provider ? { providerModel: runnerSelection.provider } : {}),
+          ...(runnerSelection.model ? { model: runnerSelection.model } : {}),
+          ...(runnerSelection.reasoningEffort ? { reasoningEffort: runnerSelection.reasoningEffort } : {}),
+          ...(runnerSelection.variant ? { variant: runnerSelection.variant } : {}),
+        }
+      : { provider: agent })
+    : (config.routing?.workers ?? []).map(worker => ({
+        provider: worker.agent,
+        ...(worker.provider ? { providerModel: worker.provider } : {}),
+        ...(worker.model ? { model: worker.model } : {}),
+        ...(worker.reasoningEffort ? { reasoningEffort: worker.reasoningEffort } : {}),
+        ...(worker.variant ? { variant: worker.variant } : {}),
+      }))
   const parallelStories = parallel > 1 || candidates > 1 ? loadPrd(path).filter(story => !story.passes) : []
   const ambiguousAffinityProvider = [...new Set(parallelStories.flatMap(story => story.agent ? [story.agent] : []))]
     .find(agent => parallelAffinityProviders.filter(provider => provider.provider === agent).length > 1)
@@ -343,8 +361,10 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
         ?? parallelProviders.find(candidate => candidate.provider === story.agent)
       return !provider
         || provider.provider !== runnerAgent
+        || provider.providerModel !== runnerSelection.provider
         || provider.model !== runnerSelection.model
         || provider.reasoningEffort !== runnerSelection.reasoningEffort
+        || provider.variant !== runnerSelection.variant
     })
     if (mismatchedAffinity) {
       console.error(`Injected runner cannot truthfully execute affinity provider for story ${mismatchedAffinity.id}. Remove the affinity or use the configured provider runner.`)
@@ -363,8 +383,10 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     isAvailable: available,
     permissions,
     selection: {
+      provider: config.runner?.provider,
       model: config.runner?.model,
       reasoningEffort: config.runner?.reasoningEffort,
+      variant: config.runner?.variant,
       bare: config.runner?.bare,
     },
     commit: (_path, request) => commitPaths(targetDir, ['.yoke/prd.yaml'], `yoke: plan change ${request.id}`, commitIdentity),
@@ -377,7 +399,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       : loadPrd(path).filter(story => !story.passes).every(story => config.actions?.some(action => action.storyId === story.id)) ? [] : [runnerAgent]
     const unavailableProvider = requiredProviders.find(agent => !available(agent))
     if (unavailableProvider) {
-      console.error(`Agent CLI "${unavailableProvider}" was not found on PATH. Install it, or pick another with --runner=<claude|codex|gemini>.`)
+      console.error(`Agent CLI "${unavailableProvider}" was not found on PATH. Install it, or pick another with --runner=<${AGENT_LIST}>.`)
       return 2
     }
     // Token reporting is part of the machine interface: in --json mode a claude
@@ -423,7 +445,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   let review = opts.reviewRunner
   let reviewProvider: string = 'unknown'
   if (!review && (opts.review || opts.reviewer)) {
-    const reviewerAgent = opts.reviewer ?? (['codex', 'gemini', 'qwen', 'claude'] as Agent[]).find(agent => agent !== runnerAgent && available(agent))
+    const reviewerAgent = opts.reviewer ?? SUPPORTED_AGENTS.find(agent => agent !== runnerAgent && available(agent))
     if (!reviewerAgent) {
       if (!opts.allowSelfReview) {
         console.error('No independent reviewer CLI is available. Install or select a second agent, or pass --allow-self-review explicitly.')
@@ -437,13 +459,13 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       return 2
     }
     if (!available(resolvedReviewer)) {
-      console.error(`Reviewer agent CLI "${resolvedReviewer}" was not found on PATH. Install it, or pick another with --reviewer=<claude|codex|gemini|qwen>.`)
+      console.error(`Reviewer agent CLI "${resolvedReviewer}" was not found on PATH. Install it, or pick another with --reviewer=<${AGENT_LIST}>.`)
       return 2
     }
     review = context => {
       const implementer = readStatus(targetDir)?.routingDecisions?.[context.story.id]?.provider ?? runnerAgent
       const selectedReviewer = !opts.reviewer && resolvedReviewer === implementer
-        ? (["codex", "claude", "gemini", "qwen"] as Agent[]).find(agent => agent !== implementer && available(agent)) ?? resolvedReviewer : resolvedReviewer
+        ? SUPPORTED_AGENTS.find(agent => agent !== implementer && available(agent)) ?? resolvedReviewer : resolvedReviewer
       if (selectedReviewer === implementer && !opts.allowSelfReview) return { success: false, summary: "Independent review requires a provider distinct from the routed implementer", reviewOutcome: { kind: "infrastructure", summary: "Routed implementation and reviewer share a provider" } }
       reviewProvider = selectedReviewer
       return makeReviewRunner(selectedReviewer, idleMs, undefined, routingEnabled ? roleSelection(targetDir, config, context.story, selectedReviewer, "reviewer") : undefined)(context)

@@ -1,11 +1,13 @@
 import { z } from 'zod'
 
-export const AgentSchema = z.enum(['claude', 'codex', 'gemini', 'qwen'])
+export const AgentSchema = z.enum(['claude', 'codex', 'gemini', 'qwen', 'opencode', 'kilo', 'pi'])
 export const PermissionProfileSchema = z.enum(['safe', 'unsafe', 'read-only'])
 
 export const ModelSelectionSchema = z.object({
+  provider: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).optional(),
   model: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/).optional(),
   reasoningEffort: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/).optional(),
+  variant: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/).optional(),
   nativeMultiAgent: z.boolean().optional(),
   bare: z.boolean().optional(),
 })

@@ -145,6 +145,22 @@ it('routes review and repair effort independently while preserving explicit role
   expect(chooseCapability({ root, story, assessment, workers: restricted, parent: 'codex', parentSelection: { model: 'gpt-6-astra' }, role: 'reviewer' }).selection.model).toBe('gpt-6-astra')
 })
 
+it('preserves harness provider and variant affinity in a capability selection', () => {
+  const opencodeWorker = {
+    id: 'opencode-standard',
+    agent: 'opencode' as const,
+    provider: 'openrouter',
+    model: 'anthropic/claude-sonnet-4',
+    variant: 'high',
+    costTier: 'medium' as const,
+    tier: 'standard' as const,
+    capabilities: ['mechanical'],
+  }
+  const choice = chooseCapability({ root, story, assessment, workers: [opencodeWorker], parent: 'opencode', parentSelection: { provider: 'openrouter', model: opencodeWorker.model, variant: 'high' } })
+  expect(choice.provider).toBe('opencode')
+  expect(choice.selection).toMatchObject({ provider: 'openrouter', model: opencodeWorker.model, variant: 'high' })
+})
+
 it('stops an infrastructure gate failure without spending a repair or escalating', async () => {
   let attempts = 0
   const planned = { ...story, assessment }

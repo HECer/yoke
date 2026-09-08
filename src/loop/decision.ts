@@ -10,6 +10,7 @@ import { resolveCommitIdentity } from './identity.js'
 import { commitPaths, realGitOps } from './git.js'
 import { acquireLock, releaseLock } from './lock.js'
 import { loadPrd, selectNextStory } from './prd.js'
+import { AgentSchema } from '../agents/contracts.js'
 
 const singleLine = (max: number) => z.string().trim().min(1).max(max).refine(
   value => !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(value),
@@ -71,9 +72,9 @@ export const DecisionResumeSchema = z.object({
   answered: z.boolean().optional(),
   /** Absent preserves the default unlimited run across a critical-decision resume. */
   maxIterations: z.number().int().positive().optional(),
-  agent: z.enum(['claude', 'codex', 'gemini', 'qwen']).optional(),
+  agent: AgentSchema.optional(),
   isolate: z.boolean().optional(),
-  reviewer: z.enum(['claude', 'codex', 'gemini', 'qwen']).optional(),
+  reviewer: AgentSchema.optional(),
   review: z.boolean().optional(),
   allowSelfReview: z.boolean().optional(),
   timeoutMinutes: z.number().nonnegative().optional(),

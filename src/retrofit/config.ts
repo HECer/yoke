@@ -34,8 +34,10 @@ const OutputPolicySchema = z.object({
 const RoutingWorkerSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
   agent: AgentSchema,
+  provider: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).optional(),
   model: z.string().min(1).optional(),
   reasoningEffort: z.string().min(1).optional(),
+  variant: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/).optional(),
   costTier: z.enum(['low', 'medium', 'high']).default('medium'),
   capabilities: z.array(z.string().min(1)).default([]),
   tier: z.enum(['light', 'standard', 'strong', 'frontier']).optional(),
@@ -67,15 +69,19 @@ export const YokeConfigSchema = z.object({
   }),
   runner: z.object({
     agent: AgentSchema.optional(),
+    provider: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).optional(),
     model: z.string().min(1).optional(),
     reasoningEffort: z.string().min(1).optional(),
+    variant: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/).optional(),
     bare: z.boolean().optional(),
     permissions: PermissionProfileSchema.optional(),
   }).optional(),
   planning: z.object({
     agent: AgentSchema.optional(),
+    provider: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).optional(),
     model: z.string().min(1).optional(),
     reasoningEffort: z.string().min(1).optional(),
+    variant: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/).optional(),
     maxTasks: z.number().int().min(1).max(50).optional(),
   }).optional(),
   routing: z.object({
@@ -87,8 +93,10 @@ export const YokeConfigSchema = z.object({
     maxTier: z.enum(['light', 'standard', 'strong', 'frontier']).optional(),
     maxCandidates: z.number().int().min(1).max(5).default(3),
     orchestrator: z.object({
+      provider: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).optional(),
       model: z.string().min(1).optional(),
       reasoningEffort: z.string().min(1).optional(),
+      variant: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/).optional(),
     }).optional(),
     workers: z.array(RoutingWorkerSchema).max(32).default([]),
     rules: z.array(RoutingRuleSchema).max(100).optional(),
@@ -132,8 +140,10 @@ export interface SmokeConfig { baseUrl: string; flows: SmokeFlow[] }
 export interface RoutingWorker {
   id: string
   agent: Agent
+  provider?: string
   model?: string
   reasoningEffort?: string
+  variant?: string
   costTier: 'low' | 'medium' | 'high'
   capabilities: string[]
   tier?: import('../routing/assessment.js').CapabilityTier
@@ -145,8 +155,8 @@ export interface YokeConfig {
   canonVersion: string
   agents: Agent[]
   loop: { enabled: boolean; parallel?: 'auto' | number; isolate?: boolean; timeoutMinutes?: number; maxCallMinutes?: number; progressTimeoutMinutes?: number; decisionPolicy?: DecisionPolicy; onAmbiguity?: 'resolve' | 'abort' }
-  runner?: { agent?: Agent; model?: string; reasoningEffort?: string; bare?: boolean; permissions?: PermissionProfile }
-  planning?: { agent?: Agent; model?: string; reasoningEffort?: string; maxTasks?: number }
+  runner?: { agent?: Agent; provider?: string; model?: string; reasoningEffort?: string; variant?: string; bare?: boolean; permissions?: PermissionProfile }
+  planning?: { agent?: Agent; provider?: string; model?: string; reasoningEffort?: string; variant?: string; maxTasks?: number }
   routing?: {
     enabled: boolean
     strategy: RoutingStrategy
@@ -155,7 +165,7 @@ export interface YokeConfig {
     fallback?: 'parent' | 'block'
     maxTier?: 'light' | 'standard' | 'strong' | 'frontier'
     maxCandidates: number
-    orchestrator?: { model?: string; reasoningEffort?: string }
+    orchestrator?: { provider?: string; model?: string; reasoningEffort?: string; variant?: string }
     workers: RoutingWorker[]
     rules?: RoutingRule[]
   }

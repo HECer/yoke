@@ -32,7 +32,7 @@ export interface AdaptiveRunnerOptions {
   assessmentPolicy?: 'on-demand' | 'prepared'
   fallback?: 'parent' | 'block'
   maxTier?: CapabilityTier
-  onDecision?: (storyId: string, decision: { profile: string; provider: Agent; model?: string; reasoningEffort?: string; reason: string; next: string; assessment?: import('./assessment.js').TaskAssessment }) => void
+  onDecision?: (storyId: string, decision: { profile: string; provider: Agent; model?: string; reasoningEffort?: string; variant?: string; providerModel?: string; reason: string; next: string; assessment?: import('./assessment.js').TaskAssessment }) => void
   rules?: RoutingRule[]
   idleTimeoutMs?: number
   permissions?: PermissionProfile
@@ -131,8 +131,10 @@ function callUsage(role: ModelCallUsage['role'], provider: Agent, selection: Mod
     role,
     provider,
     ...(profile ? { profile } : {}),
+    ...(selection.provider ? { requestedProvider: selection.provider } : {}),
     ...(selection.model ? { requestedModel: selection.model } : {}),
     ...(selection.reasoningEffort ? { requestedReasoningEffort: selection.reasoningEffort } : {}),
+    ...(selection.variant ? { requestedVariant: selection.variant } : {}),
     ...(tokens?.model ? { actualModel: tokens.model } : {}),
     inputTokens: tokens?.inputTokens ?? 0,
     ...(tokens?.cachedInputTokens !== undefined ? { cachedInputTokens: tokens.cachedInputTokens } : {}),
@@ -215,7 +217,7 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
       }
       if (!assessment) return { success: false, summary: 'Routing assessment unavailable or invalid; implementation was not started', tokens: aggregateCalls(calls), routing: { recordOutcome: () => undefined, blocked: true } }
       const choice = chooseCapability({ root, story: ctx.story, assessment, workers: eligibleWorkers, parent: options.parent, parentSelection: options.parentSelection, maxAttempts: options.maxAttempts, fallback: options.fallback, maxTier: options.maxTier })
-      options.onDecision?.(ctx.story.id, { profile: choice.worker?.id ?? 'SELF', provider: choice.provider, model: choice.selection.model, reasoningEffort: choice.selection.reasoningEffort, reason: choice.reason, next: choice.next, assessment })
+      options.onDecision?.(ctx.story.id, { profile: choice.worker?.id ?? 'SELF', provider: choice.provider, model: choice.selection.model, reasoningEffort: choice.selection.reasoningEffort, variant: choice.selection.variant, providerModel: choice.selection.provider, reason: choice.reason, next: choice.next, assessment })
       if (choice.blocked) return { ...blocked(choice.reason), tokens: aggregateCalls(calls) }
       if (choice.exhausted) return { success: false, summary: 'Routing attempt budget exhausted; replan this task before retrying', tokens: aggregateCalls(calls), routing: { recordOutcome: () => undefined, blocked: true } }
       const started = now()
@@ -230,7 +232,7 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
           if (recorded) return
           recorded = true
           recordRoutingObservation({ projectHash: projectHash(root), storyHash: storyHash(projectHash(root), ctx.story.id), assessmentKey: routingAssessmentKey(root, ctx.story), taskClass: assessment!.taskClass, requiredTier: choice.requiredTier,
-            role: 'implementation', strategy: 'capability', selected: choice.worker?.id ?? 'SELF', provider: choice.provider, requestedModel: choice.selection.model, requestedReasoningEffort: choice.selection.reasoningEffort,
+            role: 'implementation', strategy: 'capability', selected: choice.worker?.id ?? 'SELF', provider: choice.provider, requestedProvider: choice.selection.provider, requestedModel: choice.selection.model, requestedReasoningEffort: choice.selection.reasoningEffort, requestedVariant: choice.selection.variant,
             actualModel: result.tokens?.model, orchestratorProvider: options.planner?.agent ?? options.parent, orchestratorModel: (options.planner?.selection ?? options.parentSelection)?.model, orchestratorDurationMs: calls.filter(c => c.role === 'orchestrator').reduce((s,c) => s+c.durationMs,0), workerDurationMs: calls[calls.length-1].durationMs,
             processSuccess: result.success, verificationSuccess: infrastructureFailure ? false : verified, failureKind: infrastructureFailure ? 'infrastructure' : failureKind ?? 'implementation', usageAvailable: result.tokens !== undefined && result.tokens.measurementComplete !== false,
             inputTokens: result.tokens?.inputTokens ?? 0, outputTokens: result.tokens?.outputTokens ?? 0, totalCostUsd: result.tokens?.totalCostUsd })
@@ -272,7 +274,7 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
     if ((!worker && (options.fallback === 'block' || options.maxTier)) || (options.maxTier && (!worker?.tier || tiers.indexOf(worker.tier) > tiers.indexOf(options.maxTier)))) return blocked('Selected routing profile exceeds configured limits; execution blocked')
     const provider = worker?.agent ?? options.parent
     const selection: ModelSelection = worker
-      ? { model: worker.model, reasoningEffort: worker.reasoningEffort, nativeMultiAgent: false, ...(provider !== 'gemini' && provider !== 'qwen' ? { bare: options.parentSelection?.bare } : {}) }
+      ? { provider: worker.provider, model: worker.model, reasoningEffort: worker.reasoningEffort, variant: worker.variant, nativeMultiAgent: false, ...(provider !== 'gemini' && provider !== 'qwen' && provider !== 'pi' ? { bare: options.parentSelection?.bare } : {}) }
       : { ...(options.parentSelection ?? {}), nativeMultiAgent: false }
 
     const workerStarted = now()
@@ -320,6 +322,8 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
         provider,
         ...(selection.model ? { requestedModel: selection.model } : {}),
         ...(selection.reasoningEffort ? { requestedReasoningEffort: selection.reasoningEffort } : {}),
+        ...(selection.provider ? { requestedProvider: selection.provider } : {}),
+        ...(selection.variant ? { requestedVariant: selection.variant } : {}),
         ...(result.tokens?.model ? { actualModel: result.tokens.model } : {}),
         orchestratorProvider: options.parent,
         ...(orchestratorSelection.model ? { orchestratorModel: orchestratorSelection.model } : {}),

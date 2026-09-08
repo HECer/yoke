@@ -1,13 +1,13 @@
 ---
 name: yoke-retrofit
-description: Use when asked to "retrofit", "yoke this project", or set up the Yoke harness in a project — runs the shared setup wizard and configures the same behavior for Claude, Codex, and Gemini.
+description: Use when asked to "retrofit", "yoke this project", or set up the Yoke harness in a project — runs the shared setup wizard and configures the same behavior for the supported Yoke harnesses.
 ---
 
 # Yoke Retrofit
 
 Set up or update Yoke through the shared `yoke setup` contract.
 
-1. Inspect the project and identify the current host (`claude`, `codex`, or `gemini`).
+1. Inspect the project and identify the current host (`claude`, `codex`, `gemini`, `qwen`, `opencode`, `kilo`, or `pi`).
 2. Ask these setup questions one at a time and give a direct recommendation:
    - target agents (recommend the current host; use `all` for deliberately cross-agent projects),
    - code-graph tool,

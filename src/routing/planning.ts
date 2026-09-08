@@ -7,8 +7,10 @@ export function resolvePlanner(config: Pick<YokeConfig, 'planning'> | null, star
   const inherited = agent === start ? selection : {}
   const planning = !override || override === (config?.planning?.agent ?? start) ? config?.planning : undefined
   return { agent, selection: {
+    provider: planning?.provider ?? inherited.provider,
     model: planning?.model ?? inherited.model,
     reasoningEffort: planning?.reasoningEffort ?? inherited.reasoningEffort,
+    variant: planning?.variant ?? inherited.variant,
     bare: inherited.bare,
     nativeMultiAgent: false,
   } }

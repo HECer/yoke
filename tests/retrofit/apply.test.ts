@@ -111,6 +111,19 @@ describe('applyActions', () => {
     expect(() => applyActions([mergeAction], target, { backupDir: backupDir() })).toThrow(/not valid JSON/)
   })
 
+  it('merges an existing JSONC config without dropping comments-supported user settings', () => {
+    writeFileSync(join(target, 'kilo.jsonc'), '{\n  // keep the user profile\n  "profile": "custom",\n  "permissions": { "bash": "ask", },\n}')
+    const mergeAction: Action = {
+      kind: 'write', target: 'kilo.jsonc', merge: true,
+      content: JSON.stringify({ instructions: ['AGENTS.md'] }), reason: 'kilo settings',
+    }
+    const res = applyActions([mergeAction], target, { backupDir: backupDir() })
+    expect(res[0].status).toBe('merged')
+    expect(JSON.parse(readFileSync(join(target, 'kilo.jsonc'), 'utf8'))).toEqual({
+      profile: 'custom', permissions: { bash: 'ask' }, instructions: ['AGENTS.md'],
+    })
+  })
+
   it('ifAbsent action creates the file when missing', () => {
     const d = mkdtempSync(join(tmpdir(), 'yoke-apply-'))
     const res = applyActions(

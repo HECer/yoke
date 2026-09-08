@@ -5,7 +5,7 @@ description: Use when the user asks Yoke to plan and build a feature, run storie
 
 # Yoke Workflow
 
-Provide the same interaction contract in Claude, Codex, and Gemini.
+Provide the same interaction contract in every supported Yoke harness.
 
 1. Read `.yoke/config.yaml`. If it is missing, offer `yoke setup . --host=<current-agent>` and run the setup flow before planning.
 2. Plan before starting the loop. Inspect the project, then ask one focused question at a time only where the answer changes product behavior, scope, architecture, security, data ownership, external cost, or an irreversible choice. Include a recommended answer. Resolve routine implementation details yourself.
