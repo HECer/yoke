@@ -12,6 +12,11 @@ export interface LoopEvent {
   storyId?: string
   attemptId?: string
   phase?: string
+  agent?: string
+  provider?: string
+  model?: string
+  variant?: string
+  role?: string
   durationMs?: number
   outcome?: string
   data?: Record<string, unknown>

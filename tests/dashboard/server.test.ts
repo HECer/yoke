@@ -99,6 +99,19 @@ it('server exposes bounded workspace analytics and project event history', async
   expect((await fetch(`${server.url}api/projects/${project.id}/history?limit=${DASHBOARD_LIMITS.events + 1}`)).status).toBe(400)
 })
 
+it('server exposes runs grouped in history with recorded execution metadata', async () => {
+  const project = registerProject(root)
+  appendEvent(root, { runId: 'run-details', timestamp: '2026-09-06T10:00:00Z', type: 'tokens', storyId: 'story', attemptId: 'attempt', data: { agent: 'codex', provider: 'openai', model: 'gpt-5', variant: 'high', role: 'worker', inputTokens: 20, outputTokens: 5, usageAvailable: true } })
+  appendEvent(root, { runId: 'run-details', timestamp: '2026-09-06T10:01:00Z', type: 'phase-ended', storyId: 'story', attemptId: 'attempt', phase: 'implementing', durationMs: 60000 })
+  appendEvent(root, { runId: 'run-details', timestamp: '2026-09-06T10:02:00Z', type: 'attempt-ended', storyId: 'story', attemptId: 'attempt', outcome: 'passed', data: { usageAvailable: true } })
+  server = await startDashboard({ port: 0 })
+  const data = await (await fetch(`${server.url}api/projects/${project.id}/history?from=2026-09-01&to=2026-10-01`)).json()
+  expect(data.runs).toHaveLength(1)
+  expect(data.runs[0]).toMatchObject({ runId: 'run-details', agent: 'codex', provider: 'openai', model: 'gpt-5', variant: 'high', role: 'worker', phase: 'implementing', startedAt: '2026-09-06T10:00:00.000Z', endedAt: '2026-09-06T10:02:00.000Z' })
+  expect(data.runs[0].timestamps).toEqual(['2026-09-06T10:00:00.000Z', '2026-09-06T10:01:00.000Z', '2026-09-06T10:02:00.000Z'])
+  expect(data.runs[0].events).toHaveLength(3)
+})
+
 it('server validates typed control payloads', async () => {
   createProjectGoal(root, 'Test goal')
   const project = registerProject(root)

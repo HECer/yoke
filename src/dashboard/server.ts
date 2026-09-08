@@ -9,7 +9,7 @@ import { dashboardPage } from './page.js'
 import { readEvents } from '../observability/events.js'
 import { estimateSchedule } from '../estimation/schedule.js'
 import { pauseProjectGoal } from '../goals/command.js'
-import { parsePeriod, projectAnalytics, projectHistory, workspaceAnalytics } from './analytics.js'
+import { parsePeriod, parseRanking, projectAnalytics, projectHistory, workspaceAnalytics } from './analytics.js'
 import { DASHBOARD_LIMITS, DashboardControlPayloadSchema, parseDashboardLimit, type DashboardControlResponse } from './contracts.js'
 
 const text = z.string().max(16000)
@@ -102,9 +102,9 @@ export async function startDashboard(options: { port?: number } = {}): Promise<{
       if (req.method === 'GET' && path === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(dashboardPage(token, nonce)); return }
       if (req.method === 'GET' && path === '/api/projects') { send(200, listProjects().map(project => snapshot(project, false))); return }
       if (req.method === 'GET' && path === '/api/workspace/analytics') {
-        let period
-        try { period = parsePeriod(requested.searchParams) } catch (error) { send(400, { error: (error as Error).message }); return }
-        send(200, workspaceAnalytics(listProjects(), period)); return
+        let period, sort
+        try { period = parsePeriod(requested.searchParams); sort = parseRanking(requested.searchParams) } catch (error) { send(400, { error: (error as Error).message }); return }
+        send(200, workspaceAnalytics(listProjects(), period, sort)); return
       }
       const match = /^\/api\/projects\/([a-f0-9]{32})(\/pause|\/analytics|\/history|\/events)?$/u.exec(path)
       if (match) {

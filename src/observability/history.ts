@@ -23,7 +23,7 @@ export function archiveMeasurement(root: string, event: LoopEvent): void {
   try { if (lstatSync(file).isSymbolicLink() || !lstatSync(file).isFile()) throw Error('Linked measurement file') }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
   const data = event.data ?? {}
-  const allowed = ['inputTokens', 'outputTokens', 'cachedInputTokens', 'cacheWriteInputTokens', 'reasoningOutputTokens', 'totalCostUsd', 'model', 'provider', 'role', 'calls', 'measurementComplete', 'costMeasurementComplete', 'usageAvailable', 'prediction', 'errorMs', 'withinObservedRange', 'escalated']
+  const allowed = ['inputTokens', 'outputTokens', 'cachedInputTokens', 'cacheWriteInputTokens', 'reasoningOutputTokens', 'totalCostUsd', 'agent', 'provider', 'model', 'actualModel', 'requestedModel', 'variant', 'role', 'calls', 'measurementComplete', 'costMeasurementComplete', 'usageAvailable', 'prediction', 'errorMs', 'withinObservedRange', 'escalated']
   const compact = { ...event, data: Object.fromEntries(allowed.filter(key => data[key] !== undefined).map(key => [key, data[key]])) }
   appendFileSync(file, JSON.stringify(compact) + '\n')
 }

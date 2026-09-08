@@ -45,7 +45,7 @@
         breaking.
       verify:
         - npm test -- tests/dashboard/analytics.test.ts --testNamePattern=ranking
-  passes: false
+  passes: true
   needs:
     - dashboard-foundation
   area: dashboard
