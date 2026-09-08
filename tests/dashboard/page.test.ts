@@ -164,3 +164,55 @@ it('composes search, status, date scope, and project sort in URL navigation with
   ],'ship','attention',Date.parse('2026-09-07T12:00:00Z'),'tokens').map(project=>project.id)`, context)
   expect([...result]).toEqual(['two'])
 })
+
+it('live project view shows freshness, safe controls, objective progress, worker metadata, and last successful sync', () => {
+  const html = dashboardPage('a'.repeat(64), 'validNonce')
+  expect(html).toContain('Live operations')
+  expect(html).toContain('Freshness')
+  expect(html).toContain('Objective progress')
+  expect(html).toContain('Worker metadata')
+  expect(html).toContain('Last successful sync')
+  expect(html).toContain('Request pause')
+  expect(html).toContain('Resume')
+
+  const context = dashboardContext()
+  expect(runInContext("liveFreshness({status:{state:'running',updatedAt:'2026-09-08T11:59:00Z'}},Date.parse('2026-09-08T12:00:00Z'))", context)).toBe('fresh')
+  expect(runInContext("liveFreshness({status:{state:'running',updatedAt:'2026-09-08T11:30:00Z'}},Date.parse('2026-09-08T12:00:00Z'))", context)).toBe('unconfirmed')
+  expect(runInContext("workerMetadata({provider:'codex',selectedModel:'gpt-5',selectedVariant:'high',phase:'verifying'})", context)).toContain('codex')
+})
+
+it('timeline project view is bounded, chronological, expandable, and labels local and UTC times', () => {
+  const html = dashboardPage('a'.repeat(64), 'validNonce')
+  expect(html).toContain('Event timeline')
+  expect(html).toContain('Local time')
+  expect(html).toContain('UTC')
+  expect(html).toContain('Run details')
+  expect(html).toContain('Token details')
+
+  const context = dashboardContext()
+  const events = runInContext(`timelineEvents([
+    {id:'late',runId:'run',timestamp:'2026-09-08T12:02:00Z',type:'tokens'},
+    {id:'early',runId:'run',timestamp:'2026-09-08T12:01:00Z',type:'status'},
+  ], 1)`, context)
+  expect([...events].map(event => event.id)).toEqual(['late'])
+  expect([...runInContext(`timelineEvents([
+    {id:'late',runId:'run',timestamp:'2026-09-08T12:02:00Z',type:'tokens'},
+    {id:'early',runId:'run',timestamp:'2026-09-08T12:01:00Z',type:'status'},
+  ], 2)`, context)].map(event => event.id)).toEqual(['early', 'late'])
+})
+
+it('compose controls report pending, applied, validation, and failure feedback', () => {
+  const html = dashboardPage('a'.repeat(64), 'validNonce')
+  expect(html).toContain('Add note')
+  expect(html).toContain('Queue change')
+  expect(html).toContain('pending')
+  expect(html).toContain('applied')
+  expect(html).toContain('validation')
+  expect(html).toContain('failure')
+
+  const context = dashboardContext()
+  expect(runInContext("composeFeedbackStatus({status:'pending'})", context)).toBe('pending')
+  expect(runInContext("composeFeedbackStatus({status:'note-added'})", context)).toBe('applied')
+  expect(runInContext("composeFeedbackStatus({error:'Invalid dashboard note payload'})", context)).toBe('validation')
+  expect(runInContext("composeFeedbackStatus({error:'socket closed'})", context)).toBe('failure')
+})

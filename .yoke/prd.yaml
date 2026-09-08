@@ -133,7 +133,7 @@
         pending, applied, validation, and failure feedback.
       verify:
         - npm test -- tests/dashboard/page.test.ts --testNamePattern=compose
-  passes: false
+  passes: true
   needs:
     - dashboard-history-api
     - dashboard-controls

@@ -3,6 +3,52 @@ export function dashboardPanels(): string {
   return String.raw`
 function panel(title){return append(el('section',undefined,'panel'),el('h2',title))}
 function table(headers,rows){const wrap=el('div',undefined,'table-scroll'),t=el('table'),head=el('thead'),hr=el('tr');for(const title of headers)hr.append(el('th',title));head.append(hr);t.append(head);const body=el('tbody');for(const values of rows){const r=el('tr');for(const value of values)r.append(el('td',String(value)));body.append(r)}t.append(body);wrap.append(t);return wrap}
+let lastSuccessfulSync='',composeFeedbackState=null;
+function liveFreshness(project,now=Date.now()){
+  const status=project.status||{},times=[status.updatedAt,...(status.supervision||[]).flatMap(value=>[value.heartbeatAt,value.lastProgressAt])].map(value=>Date.parse(value||'')).filter(Number.isFinite),latest=Math.max(...times);
+  if(!Number.isFinite(latest))return 'unknown';
+  if(now-latest<=20*60000)return 'fresh';
+  return ['running','active'].includes(status.state)?'unconfirmed':'stale'
+}
+function workerMetadata(worker){return [worker.provider?'Agent '+worker.provider:null,worker.selectedProvider&&worker.selectedProvider!==worker.provider?'Selected provider '+worker.selectedProvider:null,'Model '+(worker.selectedModel||worker.model||'provider default'),worker.selectedVariant?'Variant '+worker.selectedVariant:null,worker.role?'Role '+worker.role:null,'Phase '+(worker.phase||worker.lifecycle||'working')].filter(Boolean).join(' · ')}
+function timelineEvents(events,limit=100){return [...events].sort((left,right)=>String(left.timestamp).localeCompare(String(right.timestamp))).slice(-limit)}
+function composeFeedbackStatus(result){if(result?.status==='pending')return 'pending';if(['note-added','applied'].includes(result?.status))return 'applied';if(result?.status==='validation'||/invalid|validation|required|empty/iu.test(String(result?.error||'')))return 'validation';return 'failure'}
+function localAndUtc(timestamp){const date=new Date(timestamp);return 'Local time: '+date.toLocaleString()+' · UTC: '+date.toISOString()}
+function timelineDetail(title,value){const detail=el('details'),summary=el('summary',title);detail.append(summary,el('p',value||'Unknown'));return detail}
+function timelineItem(event){
+  const item=el('details'),data=event.data||{},input=data.inputTokens??event.inputTokens,output=data.outputTokens??event.outputTokens,usage=data.usageAvailable===false||event.usageAvailable===false?'unavailable':input!==undefined||output!==undefined?'reported':'not recorded';
+  item.append(el('summary',event.type+' · '+localAndUtc(event.timestamp)),timelineDetail('Run details',event.runId),timelineDetail('Story details',event.storyId),timelineDetail('Phase details',event.phase),timelineDetail('Agent details',[event.agent,event.provider,event.model,event.variant,event.role].filter(Boolean).join(' · ')),timelineDetail('Token details','Input '+(input===undefined?'Unknown':input)+' · output '+(output===undefined?'Unknown':output)+' · '+usage));
+  return item
+}
+function feedbackText(state){return state.status+': '+state.message}
+function feedbackNode(state){return el('p',feedbackText(state),'compose-feedback '+state.status)}
+function renderTimeline(project){
+  const view=panel('Event timeline');view.append(el('p','Bounded to the latest 100 events in chronological order. Each event expands run, story, phase, agent, and token details.','muted'));
+  const events=timelineEvents(project.events||[]);if(!events.length)view.append(el('p','No recorded events.','empty'));else{const list=el('div',undefined,'timeline');for(const event of events)list.append(timelineItem(event));view.append(list)}content.append(view)
+}
+function renderOperatorInput(project){
+  const view=panel('Operator input');if(composeFeedbackState)view.append(feedbackNode(composeFeedbackState));
+  const noteLabel=el('label','Add a note','field'),note=el('textarea');note.rows=3;note.placeholder='Record context for the next worker or handoff';note.setAttribute('aria-label','Operator note');noteLabel.append(note);view.append(noteLabel,button('Add note',()=>submitOperatorInput(project,'note',note.value,view)));
+  const changeLabel=el('label','Queue a change','field'),change=el('textarea');change.rows=3;change.placeholder='Describe a change for the pending inbox';change.setAttribute('aria-label','Change request');changeLabel.append(change);view.append(changeLabel,button('Queue change',()=>submitOperatorInput(project,'change',change.value,view)));content.append(view)
+}
+async function submitOperatorInput(project,kind,value,view){
+  const text=value.trim();if(!text){composeFeedbackState={status:'validation',message:kind==='note'?'Enter a note before adding it.':'Describe a change before queueing it.'};view.append(feedbackNode(composeFeedbackState));return}
+  try{
+    const data=await api('/api/projects/'+project.id+'/'+(kind==='note'?'notes':'changes'),{method:'POST',headers:{'content-type':'application/json','x-yoke-token':sessionToken},body:JSON.stringify(kind==='note'?{note:text}:{request:text})});
+    const status=composeFeedbackStatus(data),message=status==='pending'?'Change queued as '+data.requestId+'.': 'Note applied to the live timeline.';composeFeedbackState={status,message};await showProject(project.id)
+  }catch(error){composeFeedbackState={status:composeFeedbackStatus({error:error.message}),message:error.message};view.append(feedbackNode(composeFeedbackState))}
+}
+async function safeLiveControl(project,action){
+  try{const data=await api('/api/projects/'+project.id+'/'+action,{method:'POST',headers:{'content-type':'application/json','x-yoke-token':sessionToken},body:JSON.stringify({action})});composeFeedbackState={status:'pending',message:data.status==='pause-requested'?'Pause requested at the next safe boundary.':'Resume requested at the next safe boundary.'};await showProject(project.id)}
+  catch(error){composeFeedbackState={status:composeFeedbackStatus({error:error.message}),message:error.message};await showProject(project.id)}
+}
+function renderLive(project){
+  const status=project.status||{},goal=project.goal||{},workers=status.parallel?.workers||[],state=projectStatus(project),freshness=liveFreshness(project),tasks=project.stories||[],progress=status.progress||{passed:tasks.filter(task=>task.passes).length,total:tasks.length};
+  const view=panel('Live operations');view.append(row('Goal state',goal.status||'not reported',state.goal||'unknown'),row('Loop state',status.state||'not reported',state.loop||'unknown'),row('Freshness',freshness,'Last status '+(status.updatedAt||'unknown')),row('Objective progress',progress.total?progress.passed+'/'+progress.total+' tasks accepted':'Unknown','Saved acceptance state'),row('Last successful sync',lastSuccessfulSync?localAndUtc(lastSuccessfulSync):'Not synced yet','Dashboard refresh'));
+  const metadata=panel('Worker metadata');if(!workers.length)metadata.append(el('p','No current workers reported.','empty'));else for(const worker of workers)metadata.append(row(worker.storyTitle||worker.story,workerMetadata(worker),state.stale?'unconfirmed':worker.lifecycle||'running'));view.append(metadata);
+  const controls=panel('Safe controls');if(state.active)controls.append(button('Request pause',()=>safeLiveControl(project,'pause')));if(state.goal!=='complete'&&(!state.active||state.loop==='paused'||state.goal==='paused'))controls.append(button('Resume',()=>safeLiveControl(project,'resume'),true));if(!state.active&&!['paused','complete'].includes(state.goal||''))controls.append(el('p','Resume starts through the existing goal or loop boundary.','muted'));view.append(controls);content.append(view)
+  renderOperatorInput(project);renderTimeline(project)
+}
 function costText(t){return t.costState==='unknown'?'Unknown':'$'+t.reportedCostUsd.toFixed(3)+(t.costState==='partial'?' reported (partial)':' reported')}
 function historyCost(total,errors){return errors.length&&total.costState==='measured'?{...total,costState:'partial'}:total}
 function rate(value){return Number.isFinite(value)?value.toLocaleString('en-US',{maximumFractionDigits:1}):'Unknown'}
@@ -51,7 +97,7 @@ function renderNow(p){
   summary.append(el('p','Status refreshes every 5 seconds. Requested models are not proof of the model actually used; reported model identities appear under Usage & time.','muted'));content.append(summary);
   const tasks=panel('Tasks');for(const task of p.stories||[])tasks.append(row(task.title,task.id+(task.needs?.length?' · after '+task.needs.join(', '):'')+' · '+taskTiming(task,p.estimate),task.passes?'passed':workers.some(worker=>worker.story===task.id)?state.stale?'unconfirmed':'running':'open'));content.append(tasks);
   const routing=panel('Model selection');for(const [id,decision] of Object.entries(status.routingDecisions||{})){routing.append(row(id,decision.provider+(decision.providerModel?' ('+decision.providerModel+')':'')+' / '+(decision.model||'provider default')+(decision.reasoningEffort?' · '+decision.reasoningEffort:'')+(decision.variant?' · variant '+decision.variant:''),decision.profile));routing.append(el('p',decision.reason));routing.append(el('p','Next escalation: '+decision.next,'muted'))}if(!Object.keys(status.routingDecisions||{}).length)routing.append(el('p','No recorded model selection for this run.','empty'));content.append(routing);
-  const activity=panel('Recent activity');for(const event of (p.events||[]).slice(-16).reverse())activity.append(row(event.storyId||event.type,event.timestamp+(event.phase?' · '+event.phase:'')+(Number.isFinite(event.durationMs)?' · '+duration(event.durationMs):''),event.outcome||event.type));content.append(activity);
+  renderLive(p);
 }
 function renderUsageHistory(current,previous){
   const total=current.total,prior=previous.total,currentTokens=total.inputTokens+total.outputTokens,previousTokens=prior.inputTokens+prior.outputTokens;
@@ -82,9 +128,9 @@ async function showProject(id){
       [project,current]=await Promise.all([detailRequest,api('/api/projects/'+id+'/analytics?'+queryPeriod(bounds.current),{},request.signal)]);
     }else project=await detailRequest;
     if(!currentRequest(request.version)||navigationState.screen!=='project'||selected!==id)return;
-    heading(project.name,project.goal?.objective||'Saved project work');content.append(el('p',project.root,'path'));for(const error of project.errors)content.append(el('p',error,'notice'));
+    lastSuccessfulSync=new Date().toISOString();heading(project.name,project.goal?.objective||'Saved project work');content.append(el('p',project.root,'path'));for(const error of project.errors)content.append(el('p',error,'notice'));
     const tabs=el('div',undefined,'actions');for(const [view,label] of [['now','Now'],['usage','Usage & time'],['results','Results']]){const control=button(label,()=>setNavigation({view}),projectView===view);control.setAttribute('aria-pressed',String(projectView===view));tabs.append(control)}
-    if(project.goal&&!['complete','paused'].includes(project.goal.status))tabs.append(button('Request pause',async()=>{await api('/api/projects/'+id+'/pause',{method:'POST',headers:{'x-yoke-token':sessionToken}},request.signal);await refresh()}));content.append(tabs);
+    content.append(tabs);
     if(projectView==='now'){
       const tasks=project.stories||[],state=projectStatus(project);content.append(append(el('div',undefined,'metrics'),metric('Accepted tasks',tasks.filter(task=>task.passes).length+' / '+tasks.length,'Saved acceptance state'),metric('Remaining time',project.estimate?.available?duration(project.estimate.lowerMs)+' – '+duration(project.estimate.upperMs):'Unknown',project.estimate?.available?project.estimate.sampleCount+' samples · empirical range':'No reliable duration history'),metric('Project status',state.primary,state.goal&&state.loop&&state.goal!==state.loop?'Goal '+state.goal+' · loop '+(state.stale?'unconfirmed':state.loop):'Latest reported state')));renderNow(project);
     }else{periodControls(id);if(projectView==='usage')renderUsageHistory(current,previous);else renderResults(project,current)}
