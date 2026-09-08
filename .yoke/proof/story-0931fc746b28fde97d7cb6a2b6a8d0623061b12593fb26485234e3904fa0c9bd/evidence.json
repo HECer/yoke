@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "storyId": "dashboard-controls",
+  "generatedAt": "2026-09-08T17:19:45.583Z",
+  "criteria": [
+    {
+      "id": "controls",
+      "text": "An authorized pause request uses the existing loop and goal pause sentinels and returns a clear requested state without executing arbitrary input.",
+      "verify": [
+        "npm test -- tests/dashboard/server.test.ts --testNamePattern=controls"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    },
+    {
+      "id": "resume",
+      "text": "An authorized resume request delegates to the existing loop or goal runner, respects the project lock, and refuses duplicate starts.",
+      "verify": [
+        "npm test -- tests/dashboard/server.test.ts --testNamePattern=resume"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    },
+    {
+      "id": "notes",
+      "text": "Authorized operator notes are bounded, append-only, escaped on read, and visible as project-local timeline data.",
+      "verify": [
+        "npm test -- tests/dashboard/server.test.ts --testNamePattern=notes"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    },
+    {
+      "id": "changes",
+      "text": "Authorized change requests reuse the existing append-only change inbox and return a durable request identifier and pending state.",
+      "verify": [
+        "npm test -- tests/dashboard/server.test.ts --testNamePattern=changes"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer } from 'node:http'
-import { lstatSync, readFileSync, readdirSync } from 'node:fs'
+import { lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from 'yaml'
 import { z } from 'zod'
@@ -8,9 +8,25 @@ import { listProjects, type RegisteredProject } from './registry.js'
 import { dashboardPage } from './page.js'
 import { readEvents } from '../observability/events.js'
 import { estimateSchedule } from '../estimation/schedule.js'
-import { pauseProjectGoal } from '../goals/command.js'
+import { pauseProjectGoal, runProjectGoal } from '../goals/command.js'
+import { runLoopCommand } from '../loop/run-command.js'
+import { isPidAlive, readLock } from '../loop/lock.js'
+import { appendEvent } from '../observability/events.js'
+import { queueChange } from '../change/inbox.js'
+import { statePath } from '../workspace/state.js'
 import { parsePeriod, parseRanking, projectAnalytics, projectHistory, workspaceAnalytics } from './analytics.js'
-import { DASHBOARD_LIMITS, DashboardControlPayloadSchema, parseDashboardLimit, type DashboardControlResponse } from './contracts.js'
+import {
+  DASHBOARD_LIMITS,
+  DashboardChangePayloadSchema,
+  DashboardControlPayloadSchema,
+  DashboardNotePayloadSchema,
+  DashboardResumePayloadSchema,
+  parseDashboardLimit,
+  type DashboardChangeResponse,
+  type DashboardControlResponse,
+  type DashboardNoteResponse,
+  type DashboardResumeResponse,
+} from './contracts.js'
 
 const text = z.string().max(16000)
 const number = z.number().finite().nonnegative()
@@ -20,6 +36,7 @@ const Stories = z.array(z.object({ id: text, title: text, passes: z.boolean(), p
 const Check = z.object({ id: text, status: z.enum(['passed', 'failed', 'unverified']), generatedAt: text, summary: text, criteria: z.array(z.object({ id: text, text, status: z.enum(['passed', 'failed', 'unverified']), summary: text })).max(500) })
 const Durations = z.array(z.object({ storyId: text, ms: number.positive() })).max(5000)
 const MAX_FILE = DASHBOARD_LIMITS.fileBytes
+const activeResumes = new Set<string>()
 
 function safeFile(root: string, relative: string): string | undefined {
   if (!relative || relative.startsWith('/') || relative.includes('\\') || relative.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Unsafe project path')
@@ -35,7 +52,7 @@ function safeFile(root: string, relative: string): string | undefined {
     return readFileSync(file, 'utf8')
   } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error }
 }
-function requestBody(req: import('node:http').IncomingMessage): Promise<unknown> {
+function requestBody(req: import('node:http').IncomingMessage, empty: unknown = { action: 'pause' }): Promise<unknown> {
   const length = req.headers['content-length']
   if (typeof length === 'string' && Number.isFinite(Number(length)) && Number(length) > DASHBOARD_LIMITS.requestBytes) { req.resume(); return Promise.reject(new Error('Dashboard request body too large')) }
   return new Promise((resolve, reject) => {
@@ -48,12 +65,27 @@ function requestBody(req: import('node:http').IncomingMessage): Promise<unknown>
     req.on('end', () => {
       if (rejected) return
       const body = Buffer.concat(chunks).toString('utf8').trim()
-      if (!body) { resolve({ action: 'pause' }); return }
+      if (!body) { resolve(empty); return }
       try { resolve(JSON.parse(body)) } catch { reject(new Error('Invalid dashboard request body')) }
     })
     req.on('error', reject)
   })
 }
+
+function writePauseSignal(root: string): void {
+  const directory = statePath(root)
+  const path = statePath(root, 'loop.pause')
+  mkdirSync(directory, { recursive: true })
+  try { writeFileSync(path, 'pause\n', { flag: 'wx', mode: 0o600 }) }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error }
+}
+
+function projectIsRunning(root: string): boolean {
+  if (activeResumes.has(root)) return true
+  const lock = readLock(root)
+  return Boolean(lock && isPidAlive(lock.pid))
+}
+
 function snapshot(project: RegisteredProject, detail: boolean) {
   const errors: string[] = project.error ? [project.error] : []
   const read = <T>(file: string, schema: z.ZodType<T>, yaml = false): T | null => {
@@ -106,7 +138,7 @@ export async function startDashboard(options: { port?: number } = {}): Promise<{
         try { period = parsePeriod(requested.searchParams); sort = parseRanking(requested.searchParams) } catch (error) { send(400, { error: (error as Error).message }); return }
         send(200, workspaceAnalytics(listProjects(), period, sort)); return
       }
-      const match = /^\/api\/projects\/([a-f0-9]{32})(\/pause|\/analytics|\/history|\/events)?$/u.exec(path)
+      const match = /^\/api\/projects\/([a-f0-9]{32})(\/pause|\/resume|\/notes|\/changes|\/analytics|\/history|\/events)?$/u.exec(path)
       if (match) {
         const project = listProjects().find(project => project.id === match[1])
         if (!project) { send(404, { error: 'Unknown project' }); return }
@@ -124,13 +156,50 @@ export async function startDashboard(options: { port?: number } = {}): Promise<{
         }
         if (req.method === 'GET' && !match[2]) { send(200, snapshot(project, true)); return }
         if (req.method === 'POST' && match[2] === '/pause') {
-          try { DashboardControlPayloadSchema.parse(await requestBody(req)) } catch (error) {
+          try { DashboardControlPayloadSchema.parse(await requestBody(req, { action: 'pause' })) } catch (error) {
             send((error as Error).message === 'Dashboard request body too large' ? 413 : 400, { error: (error as Error).message === 'Dashboard request body too large' ? (error as Error).message : 'Invalid dashboard control payload' }); return
           }
-          if (project.error || !snapshot(project, false).goal) { send(409, { error: 'No readable project goal' }); return }
-          safeFile(project.root, '.yoke/goal.pause')
-          pauseProjectGoal(project.root)
+          const current = snapshot(project, false)
+          if (project.error) { send(409, { error: project.error }); return }
+          if (current.goal) pauseProjectGoal(project.root)
+          writePauseSignal(project.root)
           const response: DashboardControlResponse = { status: 'pause-requested' }
+          send(200, response); return
+        }
+        if (req.method === 'POST' && match[2] === '/resume') {
+          try { DashboardResumePayloadSchema.parse(await requestBody(req, { action: 'resume' })) } catch (error) {
+            send((error as Error).message === 'Dashboard request body too large' ? 413 : 400, { error: (error as Error).message === 'Dashboard request body too large' ? (error as Error).message : 'Invalid dashboard resume payload' }); return
+          }
+          const current = snapshot(project, false)
+          if (project.error) { send(409, { error: project.error }); return }
+          if (projectIsRunning(project.root)) { send(409, { status: 'already-running', error: 'Project is already running' }); return }
+          const goal = current.goal !== null && current.goal.status !== 'complete'
+          activeResumes.add(project.root)
+          void Promise.resolve().then(async () => {
+            if (goal) await runProjectGoal(project.root)
+            else await runLoopCommand(project.root, {})
+          }).catch(() => undefined).finally(() => { activeResumes.delete(project.root) })
+          const response: DashboardResumeResponse = { status: 'resume-requested' }
+          send(202, response); return
+        }
+        if (req.method === 'POST' && match[2] === '/notes') {
+          let payload
+          try { payload = DashboardNotePayloadSchema.parse(await requestBody(req, {})) } catch (error) {
+            send((error as Error).message === 'Dashboard request body too large' ? 413 : 400, { error: (error as Error).message === 'Dashboard request body too large' ? (error as Error).message : 'Invalid dashboard note payload' }); return
+          }
+          if (project.error) { send(409, { error: project.error }); return }
+          appendEvent(project.root, { runId: 'dashboard', timestamp: new Date().toISOString(), type: 'operator-note', data: { note: payload.note } })
+          const response: DashboardNoteResponse = { status: 'note-added' }
+          send(200, response); return
+        }
+        if (req.method === 'POST' && match[2] === '/changes') {
+          let payload
+          try { payload = DashboardChangePayloadSchema.parse(await requestBody(req, {})) } catch (error) {
+            send((error as Error).message === 'Dashboard request body too large' ? 413 : 400, { error: (error as Error).message === 'Dashboard request body too large' ? (error as Error).message : 'Invalid dashboard change payload' }); return
+          }
+          if (project.error) { send(409, { error: project.error }); return }
+          const change = queueChange(project.root, payload.request)
+          const response: DashboardChangeResponse = { status: 'pending', requestId: change.id }
           send(200, response); return
         }
       }

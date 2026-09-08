@@ -77,7 +77,7 @@
         return a durable request identifier and pending state.
       verify:
         - npm test -- tests/dashboard/server.test.ts --testNamePattern=changes
-  passes: false
+  passes: true
   needs:
     - dashboard-foundation
   area: dashboard
