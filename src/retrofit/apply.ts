@@ -1,6 +1,7 @@
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import type { Action } from './plan.js'
+import { mergeQwenSettings } from './qwen-settings.js'
 import { mergeJson } from './merge-json.js'
 import { carryPreserved } from './preserve.js'
 
@@ -45,7 +46,7 @@ export function applyActions(actions: Action[], targetDir: string, opts: ApplyOp
         } catch {
           throw new Error(`yoke: cannot merge ${action.target} — existing file is not valid JSON. Fix or delete it and re-run.`)
         }
-        const merged = JSON.stringify(mergeJson(parsedCurrent, JSON.parse(action.content as string)), null, 2) + '\n'
+        const merged = JSON.stringify((action.target === '.qwen/settings.json' ? mergeQwenSettings : mergeJson)(parsedCurrent, JSON.parse(action.content as string)), null, 2) + '\n'
         if (merged === current) {
           results.push({ target: action.target, status: 'unchanged', reason: action.reason })
           continue
@@ -61,6 +62,12 @@ export function applyActions(actions: Action[], targetDir: string, opts: ApplyOp
 
       if (typeof action.content === 'string') {
         const current = currentBytes.toString('utf8')
+        // Exact matches need no preservation pass. In particular, skill examples
+        // may contain literal preserve markers which must not be reinterpreted.
+        if (current === action.content) {
+          results.push({ target: action.target, status: 'unchanged', reason: action.reason })
+          continue
+        }
         // Carry user content marked with yoke preserve markers into the new file.
         content = carryPreserved(current, action.content)
         if (content !== action.content) reason = `${action.reason} (preserve block kept)`

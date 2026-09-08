@@ -54,8 +54,8 @@ export function planQwen(canonDir: string, _targetDir: string, codeGraph: CodeGr
   actions.push({
     kind: 'write',
     target: '.qwen/hooks/qwen-rtk-hook.mjs',
-    content: readFileSync(join(canonDir, 'tools/gemini-rtk-hook.mjs'), 'utf8'),
-    reason: 'portable RTK BeforeTool argument adapter',
+    content: readFileSync(join(canonDir, 'tools/qwen-rtk-hook.mjs'), 'utf8'),
+    reason: 'portable RTK PreToolUse retry guard',
   })
 
   // Merge to preserve user MCP servers, context and unrelated hooks.
@@ -66,7 +66,7 @@ export function planQwen(canonDir: string, _targetDir: string, codeGraph: CodeGr
     content: JSON.stringify({
       mcpServers: mcpServers(codeGraph),
       context: { fileName: ['AGENTS.md', 'QWEN.md'] },
-      hooks: { BeforeTool: [{ matcher: '^run_shell_command$', hooks: [{ name: 'yoke-rtk', type: 'command', command: 'node .qwen/hooks/qwen-rtk-hook.mjs' }] }] },
+      hooks: { PreToolUse: [{ matcher: '^run_shell_command$', hooks: [{ name: 'yoke-rtk', type: 'command', command: 'node .qwen/hooks/qwen-rtk-hook.mjs' }] }] },
     }, null, 2) + '\n',
     reason: 'MCP servers + AGENTS.md context',
   })

@@ -90,7 +90,7 @@ export const YokeConfigSchema = z.object({
       model: z.string().min(1).optional(),
       reasoningEffort: z.string().min(1).optional(),
     }).optional(),
-    workers: z.array(RoutingWorkerSchema).max(12).default([]),
+    workers: z.array(RoutingWorkerSchema).max(32).default([]),
     rules: z.array(RoutingRuleSchema).max(100).optional(),
   }).optional(),
   commit: z.object({

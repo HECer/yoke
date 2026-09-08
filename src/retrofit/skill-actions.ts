@@ -56,7 +56,7 @@ export function skillPackageActions(canonDir: string, skill: SkillEntry, provide
     .map(file => ({
       kind: 'write' as const,
       target: `${roots[provider]}/${skill.id}/${file.relativePath}`,
-      content: provider === 'claude' && skill.invocation === 'manual' && file.relativePath === 'SKILL.md'
+      content: (provider === 'claude' || provider === 'qwen') && skill.invocation === 'manual' && file.relativePath === 'SKILL.md'
         ? manualClaudeSkill(file.content, skill)
         : portableContent(file),
       executable: file.executable,

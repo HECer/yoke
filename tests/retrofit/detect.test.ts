@@ -46,3 +46,8 @@ describe('detectProject', () => {
     expect(detectProject(dir).ui).toEqual({ detected: true, signals: ['dependency: vue'] })
   })
 })
+
+it('detects Qwen from QWEN.md', () => {
+  writeFileSync(join(dir, 'QWEN.md'), '# Qwen')
+  expect(detectProject(dir).agents).toContain('qwen')
+})

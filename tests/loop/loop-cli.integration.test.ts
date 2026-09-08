@@ -358,6 +358,12 @@ describe('yoke loop CLI', () => {
     expect(code).toBe(2)
   })
 
+  it('selects Qwen as the only independent reviewer without spawning a model for an empty queue', () => {
+    saveConfig(dir, { ...cfg(), agents: ['codex', 'qwen'], verify: { command: 'node -e "process.exit(0)"' } })
+    writeFileSync(join(dir, '.yoke/prd.yaml'), '- { id: S1, title: Done, priority: 1, acceptance: [x], passes: true }')
+    expect(runLoopCommand(dir, { maxIterations: 1, runner: passRunner, git: stubGit, verify: verifyOk, agent: 'codex', review: true, isAvailable: agent => agent === 'codex' || agent === 'qwen' })).toBe(0)
+  })
+
   it('refuses explicit self-review unless it is allowed', () => {
     saveConfig(dir, { ...cfg(), verify: { command: 'node -e "process.exit(0)"' } })
     const common = { maxIterations: 5, runner: passRunner, git: stubGit, verify: verifyOk, agent: 'claude' as const, reviewer: 'claude' as const, isAvailable: () => true }
