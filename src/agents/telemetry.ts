@@ -32,6 +32,8 @@ export function parseProviderResult(agent: Agent, output: string): unknown {
     if (direct !== undefined) return direct
   }
 
+  if (agent === 'qwen') return parseQwenResult(output)
+
   const fragments: string[] = []
   for (const line of output.split(/\r?\n/u)) {
     const parsed = parseJson(line)
@@ -48,9 +50,6 @@ export function parseProviderResult(agent: Agent, output: string): unknown {
         break
       }
       case 'gemini':
-        if (event.type === 'message' && event.role === 'assistant' && typeof event.content === 'string') fragments.push(event.content)
-        break
-      case 'qwen':
         if (event.type === 'message' && event.role === 'assistant' && typeof event.content === 'string') fragments.push(event.content)
         break
     }
@@ -70,6 +69,28 @@ export function parseProviderResult(agent: Agent, output: string): unknown {
   return null
 }
 
+/** Qwen uses assistant content blocks and result envelopes, not Gemini messages. */
+function parseQwenResult(output: string): unknown {
+  let candidate: unknown = null
+  for (const line of output.split(/\r?\n/u)) {
+    const parsed = parseJson(line)
+    if (!parsed.ok || !isRecord(parsed.value)) continue
+    const event = parsed.value
+    if (event.parent_tool_use_id != null) continue
+    if (event.type === 'result') {
+      if (event.is_error === true) { candidate = null; continue }
+      const structured = directMachineResult(event.structured_result)
+      const result = typeof event.result === 'string' ? parseJson(event.result) : { ok: false as const }
+      candidate = structured ?? (result.ok ? directMachineResult(result.value) : undefined) ?? null
+    } else if (event.type === 'assistant' && isRecord(event.message) && Array.isArray(event.message.content)) {
+      const text = event.message.content.filter(isRecord).filter(part => part.type === 'text' && typeof part.text === 'string').map(part => part.text).join('')
+      const result = parseJson(text)
+      if (result.ok) candidate = directMachineResult(result.value) ?? candidate
+    }
+  }
+  return candidate
+}
+
 export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderTelemetry {
   let inputTokens: number | undefined
   let cachedInputTokens: number | undefined
@@ -84,6 +105,7 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
     try { parsed = JSON.parse(line) } catch { continue }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue
     const event = parsed as Record<string, unknown>
+    if (agent === 'qwen' && event.parent_tool_use_id != null) continue
     const message = event.message && typeof event.message === 'object' ? event.message as Record<string, unknown> : undefined
     const stats = event.stats && typeof event.stats === 'object' ? event.stats as Record<string, unknown> : undefined
     const usage = (event.usage && typeof event.usage === 'object'
@@ -102,36 +124,12 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
     // Older JSON stats only provide model-local token objects. Sum a field
     // only when every model measured it; a missing measurement is not zero.
     let source = usage ?? nestedModelTokens ?? modelUsage
-    if (agent === 'gemini' && modelEntries.length > 0) {
+    if ((agent === 'gemini' || agent === 'qwen') && modelEntries.length > 0) {
       reportedModels = modelEntries.map(([name]) => name)
       model = firstModel?.[0]
       const fields = {
-        input_tokens: ['input_tokens', 'inputTokens', 'promptTokenCount', 'input'],
-        output_tokens: ['output_tokens', 'outputTokens', 'candidatesTokenCount', 'output'],
-        cached_input_tokens: ['cached_input_tokens', 'cachedInputTokens', 'cachedContentTokenCount', 'cached'],
-        reasoning_output_tokens: ['reasoning_output_tokens', 'reasoningOutputTokens', 'thoughtsTokenCount', 'thoughts'],
-      }
-      const totals: Record<string, number> = {}
-      for (const [field, aliases] of Object.entries(fields)) {
-        const aggregate = aliases.map(key => finite(usage?.[key])).find(value => value !== undefined)
-        if (aggregate !== undefined) { totals[field] = aggregate; continue }
-        const values = modelEntries.map(([, value]) => {
-          const entry = isRecord(value) ? value : {}
-          const tokens = isRecord(entry.tokens) ? entry.tokens : entry
-          return aliases.map(key => finite(tokens[key])).find(value => value !== undefined)
-        })
-        if (values.every(value => value !== undefined)) totals[field] = values.reduce<number>((sum, value) => sum + value!, 0)
-      }
-      source = { ...totals, ...usage }
-      const aggregateCached = finite(usage?.cached_input_tokens ?? usage?.cached)
-      if (aggregateCached !== undefined) source.cached_input_tokens = aggregateCached
-    }
-    if (agent === 'qwen' && modelEntries.length > 0) {
-      reportedModels = modelEntries.map(([name]) => name)
-      model = firstModel?.[0]
-      const fields = {
-        input_tokens: ['input_tokens', 'inputTokens', 'promptTokenCount', 'input'],
-        output_tokens: ['output_tokens', 'outputTokens', 'candidatesTokenCount', 'output'],
+        input_tokens: ['input_tokens', 'inputTokens', 'promptTokenCount', 'input', 'prompt'],
+        output_tokens: ['output_tokens', 'outputTokens', 'candidatesTokenCount', 'output', 'candidates'],
         cached_input_tokens: ['cached_input_tokens', 'cachedInputTokens', 'cachedContentTokenCount', 'cached'],
         reasoning_output_tokens: ['reasoning_output_tokens', 'reasoningOutputTokens', 'thoughtsTokenCount', 'thoughts'],
       }

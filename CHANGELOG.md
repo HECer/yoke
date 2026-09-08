@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — 2026-09-08
+
+### Fixed
+- Parse Qwen Code's native assistant/result/structured-result output and cumulative native model statistics, ignoring nested subagent results and refusing terminal-error verdicts.
+- Use Qwen's native headless approval flags, retain the sandbox in safe mode and explicitly permit shell tools there; exclude native delegation tools when Yoke owns concurrency.
+- Detect native Qwen session/project markers and include Qwen in automatic loop review selection and CLI review validation.
+- Install manual Qwen skills with native invocation restrictions and a supported RTK PreToolUse retry guard; back up settings and remove only Yoke's obsolete BeforeTool hook on retrofit.
+- Accept up to 32 routing profiles so an all-agent setup remains valid.
+
+### Added
+- Opt-in `setup --model-provider=deepseek,kimi` with DeepSeek V4 Flash/Pro and Kimi K2.6/K2.7 Code/K3 API configurations, environment key references, preserved custom settings and routing profiles.
+- Explicit Qwen `PROTOCOL::MODEL` selectors mapped to native authentication/model arguments without changing global login settings.
+
+### Migration and validation limits
+- Fresh Qwen setups now use one standard profile with the user's configured model. Existing workers remain unchanged unless reset with `--routing-preset`; configure stronger profiles for stronger assessments.
+- API presets require separately configured credentials and are not model-quality or cost benchmarks. Read [Qwen model support](docs/QWEN-MODEL-SUPPORT.md) for exact behavior and migration.
+- Tested with regression fixtures and real Qwen Code 0.23.0 against a synthetic local tool-calling server; no authenticated provider benchmarks or production sandbox validation. No new npm version is published by this change.
+
 ## 1.11.0 — 2026-09-07
 
 ### Added

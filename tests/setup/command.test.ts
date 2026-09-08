@@ -11,6 +11,12 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-setup-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('yoke setup', () => {
+  it('persists a valid all-agent setup and detects existing Qwen projects', async () => {
+    expect(await main(['setup', dir, '--yes', '--agent=all'])).toBe(0)
+    expect(loadConfig(dir)?.agents).toContain('qwen')
+    expect(loadConfig(dir)?.routing?.workers.length).toBeGreaterThan(12)
+  })
+
   it('preserves custom profiles until a preset reset is explicitly requested', async () => {
     const custom = { id: 'custom', agent: 'codex' as const, model: 'custom-model', costTier: 'medium' as const, capabilities: [] }
     saveConfig(dir, { canonVersion: 'test', agents: ['codex'], loop: { enabled: true }, routing: { enabled: true, strategy: 'balanced', maxCandidates: 3, workers: [custom] } })

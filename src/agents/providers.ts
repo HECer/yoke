@@ -26,11 +26,11 @@ const argsFor = (agent: Agent, permissions: PermissionProfile): string[] => {
     // Automatic review already selects workspace-write and conflicts with --sandbox.
     return ['exec', '--approve-for-me', '--json']
   }
-  // Qwen CLI is a Gemini fork with similar arguments
+  // Qwen Code uses its own approval modes and native tool exclusions.
   if (agent === 'qwen') {
     if (permissions === 'unsafe') return ['--yolo', '--output-format', 'stream-json']
-    const approval = permissions === 'read-only' ? 'plan' : 'auto_edit'
-    return ['--approval-mode', approval, '--sandbox', '--output-format', 'stream-json']
+    const approval = permissions === 'read-only' ? 'plan' : 'auto-edit'
+    return ['--approval-mode', approval, '--sandbox', '--output-format', 'stream-json', ...(permissions === 'safe' ? ['--allowed-tools', 'run_shell_command'] : [])]
   }
   if (permissions === 'unsafe') return ['--yolo', '--output-format', 'stream-json']
   const approval = permissions === 'read-only' ? 'plan' : 'auto_edit'
@@ -63,13 +63,25 @@ export function buildProviderInvocation(
       args.push('--json-schema', schema)
     } else throw new Error(`${agent} structured output schema requires ${agent === 'codex' ? 'schemaFile' : agent === 'claude' ? 'jsonSchema' : 'a supported native schema option (unavailable)'}`)
   }
-  if (parsedSelection.model) args.push('--model', parsedSelection.model)
+  if (parsedSelection.model) {
+    const qualified = agent === 'qwen' && parsedSelection.model.includes('::')
+      ? parsedSelection.model.match(/^(openai|anthropic|gemini|vertex-ai|qwen-oauth)::(.+)$/u) : undefined
+    if (agent === 'qwen' && parsedSelection.model.includes('::') && !qualified) throw Error('Invalid Qwen auth/model selector')
+    if (qualified) {
+      const model = ModelSelectionSchema.shape.model.parse(qualified[2])!
+      args.push('--auth-type', qualified[1]!, '--model', model)
+    }
+    else args.push('--model', parsedSelection.model)
+  }
   if (parsedSelection.reasoningEffort) {
     if (agent === 'claude') args.push('--effort', parsedSelection.reasoningEffort)
     else if (agent === 'codex') args.push('--config', `model_reasoning_effort=${parsedSelection.reasoningEffort}`)
   }
   if (agent === 'codex' && parsedSelection.nativeMultiAgent === false) args.push('--disable', 'multi_agent')
   if (agent === 'claude' && parsedSelection.nativeMultiAgent === false) args.push('--disallowedTools', 'Agent', 'Task', 'TeamCreate', 'SendMessage')
+  if (agent === 'qwen' && parsedSelection.nativeMultiAgent === false) {
+    args.push('--exclude-tools', 'agent', 'task', 'create_sub_session', 'team_create', 'send_message')
+  }
   if (parsedSelection.bare) {
     if (agent === 'codex') args.push('--ignore-user-config')
     else if (agent === 'claude') args.push('--bare')

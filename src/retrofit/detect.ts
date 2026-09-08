@@ -16,6 +16,7 @@ export function detectProject(targetDir: string): Detection {
   if (has('.claude') || has('CLAUDE.md')) agents.push('claude')
   if (has('.codex') || has('AGENTS.md')) agents.push('codex')
   if (has('.gemini') || has('GEMINI.md')) agents.push('gemini')
+  if (has('.qwen') || has('QWEN.md')) agents.push('qwen')
   return {
     agents,
     hasAgentsMd: has('AGENTS.md'),

@@ -14,6 +14,11 @@ describe('host-aware agent selection', () => {
     expect(detectHostAgent({ CLAUDE_CONFIG_DIR: 'C:/claude', QWEN_CLI: '1' })).toBe('qwen')
   })
 
+  it('detects native Qwen session markers before install hints', () => {
+    expect(detectHostAgent({ QWEN_CODE: '1', CODEX_HOME: '/codex' })).toBe('qwen')
+    expect(detectHostAgent({ QWEN_CODE_SESSION_ID: 'session' })).toBe('qwen')
+  })
+
   it('prefers an explicit flag, then configured runner, then current host', () => {
     const cfg = { ...defaultConfig('1.1.0'), agents: ['claude', 'codex'] as const, runner: { agent: 'codex' as const } }
     expect(resolveRunnerAgent(cfg, 'claude', 'codex')).toBe('claude')

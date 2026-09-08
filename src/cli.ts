@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { MODEL_PROVIDERS, type ModelProvider } from './setup/model-presets.js'
 import { pathToFileURL } from 'node:url'
 import { realpathSync } from 'node:fs'
 import { checkProject, checkExitCode, protectAcceptance } from './check/command.js'
@@ -116,7 +117,7 @@ export function main(argv: string[]): number | Promise<number> {
       const agentTokens = agentArg === 'all' ? valid : agentArg?.split(',').map(a => a.trim())
       const invalidAgents = agentTokens?.filter(a => !valid.includes(a as Agent)) ?? []
       if (agentArg && (invalidAgents.length > 0 || agentTokens?.length === 0)) {
-        console.error(`Invalid --agent value: ${agentArg} (expected claude,codex,gemini|all)`)
+        console.error(`Invalid --agent value: ${agentArg} (expected claude,codex,gemini,qwen|all)`)
         return 1
       }
       const agents = agentTokens ? [...new Set(agentTokens as Agent[])] : undefined
@@ -130,7 +131,11 @@ export function main(argv: string[]): number | Promise<number> {
       const routing = rest.includes('--routing') ? true : rest.includes('--no-routing') ? false : undefined
       const routingStrategy = rest.find(a => a.startsWith('--routing-strategy='))?.slice('--routing-strategy='.length)
       if (routingStrategy && !['capability', 'balanced', 'cost', 'speed', 'quality'].includes(routingStrategy)) { console.error('Invalid routing strategy'); return 1 }
+      const modelProviderArg = rest.find(a => a.startsWith('--model-provider='))?.slice('--model-provider='.length)
+      const modelProviders = modelProviderArg?.split(',').map(value => value.trim())
+      if (modelProviders?.some(value => !MODEL_PROVIDERS.includes(value as ModelProvider))) { console.error('Invalid --model-provider (expected deepseek,kimi)'); return 1 }
       return runSetup(targetDir, {
+        modelProviders: modelProviders as ModelProvider[] | undefined,
         host: hostArg as Agent | undefined, agents, runner: runnerArg as Agent | undefined,
         codeGraph: graphArg as 'graphify' | 'serena' | undefined,
         loop, routing, decisionPolicy: policyArg as DecisionPolicy | undefined,
@@ -377,7 +382,7 @@ export function main(argv: string[]): number | Promise<number> {
         let reviewer: Agent | undefined
         if (reviewerArg) {
           if (!valid.includes(reviewerArg)) {
-            console.error(`Invalid --reviewer value: ${reviewerArg} (expected claude|codex|gemini)`)
+            console.error(`Invalid --reviewer value: ${reviewerArg} (expected claude|codex|gemini|qwen)`)
             return 1
           }
           reviewer = reviewerArg as Agent
@@ -411,13 +416,13 @@ export function main(argv: string[]): number | Promise<number> {
         if (!qualityFlags.ok) { console.error(qualityFlags.error); return 1 }
         return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, resumeWorktree: rest.includes('--resume-worktree'), parallel, parallelAuto: parallelArg === '--parallel=auto', reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions, ...qualityFlags.options })
       }
-      console.log('usage: yoke loop <on|off|status|decision|answer|resume [--discard] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=<auto|N>] [--runner=<claude|codex|gemini>] [--reviewer=<claude|codex|gemini>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate|--no-isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]')
+      console.log('usage: yoke loop <on|off|status|decision|answer|resume [--discard] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=<auto|N>] [--runner=<claude|codex|gemini|qwen>] [--reviewer=<claude|codex|gemini|qwen>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate|--no-isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]')
       return 1
     }
     case 'new': {
       const dir = rest.find(a => !a.startsWith('-'))
       if (!dir) {
-        console.error('usage: yoke new <dir> [--idea="..."] [--agent=claude,codex,gemini|all] [--runner=<claude|codex|gemini>] [--loop]')
+        console.error('usage: yoke new <dir> [--idea="..."] [--agent=claude,codex,gemini,qwen|all] [--runner=<claude|codex|gemini|qwen>] [--loop]')
         return 1
       }
       const idea = rest.find(a => a.startsWith('--idea='))?.slice('--idea='.length)
@@ -432,7 +437,7 @@ export function main(argv: string[]): number | Promise<number> {
       }
       const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
       if (runnerArg && !(all as string[]).includes(runnerArg)) {
-        console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini)`)
+        console.error(`Invalid --runner value: ${runnerArg} (expected claude|codex|gemini|qwen)`)
         return 1
       }
       return runNew(dir, { idea, agents, runner: runnerArg as Agent | undefined, loop })
@@ -448,7 +453,7 @@ export function main(argv: string[]): number | Promise<number> {
       if (sub === 'draft') {
         const idea = rest.find(a => a.startsWith('--idea='))?.slice('--idea='.length)
         if (!idea) {
-          console.error('usage: yoke prd draft [dir] --idea="..." [--runner=<claude|codex|gemini>] [--force] [--timeout=<minutes>]')
+          console.error('usage: yoke prd draft [dir] --idea="..." [--runner=<claude|codex|gemini|qwen>] [--force] [--timeout=<minutes>]')
           return 1
         }
         const valid = ['claude', 'codex', 'gemini', 'qwen']
@@ -468,7 +473,7 @@ export function main(argv: string[]): number | Promise<number> {
         return runPrdDraft(targetDir, { idea, runner: runnerArg as Agent | undefined, force, timeoutMinutes })
       }
       if (sub === 'check') return runPrdCheck(targetDir)
-      console.log('usage: yoke prd <draft|check|assess> [dir] [--idea="..."] [--runner=<claude|codex|gemini>] [--story=<id>] [--reassess] [--force] [--timeout=<minutes>]')
+      console.log('usage: yoke prd <draft|check|assess> [dir] [--idea="..."] [--runner=<claude|codex|gemini|qwen>] [--story=<id>] [--reassess] [--force] [--timeout=<minutes>]')
       return 1
     }
     case 'context': {
@@ -481,10 +486,10 @@ export function main(argv: string[]): number | Promise<number> {
     }
     case 'review': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
-      const valid = ['claude', 'codex', 'gemini']
+      const valid = ['claude', 'codex', 'gemini', 'qwen']
       const reviewerArg = rest.find(a => a.startsWith('--reviewer='))?.slice('--reviewer='.length)
       if (reviewerArg && !valid.includes(reviewerArg)) {
-        console.error(`Invalid --reviewer value: ${reviewerArg} (expected claude|codex|gemini)`)
+        console.error(`Invalid --reviewer value: ${reviewerArg} (expected claude|codex|gemini|qwen)`)
         return 1
       }
       const base = rest.find(a => a.startsWith('--base='))?.slice('--base='.length)
@@ -525,7 +530,7 @@ export function main(argv: string[]): number | Promise<number> {
       return runUpgrade()
     default:
       console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
-      console.log('usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini|all] [--code-graph=graphify|serena] [--loop] | change <add|status> [dir] | prd <draft|check|assess> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>')
+      console.log('usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=claude,codex,gemini,qwen|all] [--code-graph=graphify|serena] [--loop] | change <add|status> [dir] | prd <draft|check|assess> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] [--reviewer=<claude|codex|gemini|qwen>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>')
       return cmd ? 1 : 0
   }
 }

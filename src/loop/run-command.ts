@@ -423,7 +423,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   let review = opts.reviewRunner
   let reviewProvider: string = 'unknown'
   if (!review && (opts.review || opts.reviewer)) {
-    const reviewerAgent = opts.reviewer ?? (['codex', 'gemini', 'claude'] as Agent[]).find(agent => agent !== runnerAgent && available(agent))
+    const reviewerAgent = opts.reviewer ?? (['codex', 'gemini', 'qwen', 'claude'] as Agent[]).find(agent => agent !== runnerAgent && available(agent))
     if (!reviewerAgent) {
       if (!opts.allowSelfReview) {
         console.error('No independent reviewer CLI is available. Install or select a second agent, or pass --allow-self-review explicitly.')
@@ -437,13 +437,13 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       return 2
     }
     if (!available(resolvedReviewer)) {
-      console.error(`Reviewer agent CLI "${resolvedReviewer}" was not found on PATH. Install it, or pick another with --reviewer=<claude|codex|gemini>.`)
+      console.error(`Reviewer agent CLI "${resolvedReviewer}" was not found on PATH. Install it, or pick another with --reviewer=<claude|codex|gemini|qwen>.`)
       return 2
     }
     review = context => {
       const implementer = readStatus(targetDir)?.routingDecisions?.[context.story.id]?.provider ?? runnerAgent
       const selectedReviewer = !opts.reviewer && resolvedReviewer === implementer
-        ? (["codex", "claude", "gemini"] as Agent[]).find(agent => agent !== implementer && available(agent)) ?? resolvedReviewer : resolvedReviewer
+        ? (["codex", "claude", "gemini", "qwen"] as Agent[]).find(agent => agent !== implementer && available(agent)) ?? resolvedReviewer : resolvedReviewer
       if (selectedReviewer === implementer && !opts.allowSelfReview) return { success: false, summary: "Independent review requires a provider distinct from the routed implementer", reviewOutcome: { kind: "infrastructure", summary: "Routed implementation and reviewer share a provider" } }
       reviewProvider = selectedReviewer
       return makeReviewRunner(selectedReviewer, idleMs, undefined, routingEnabled ? roleSelection(targetDir, config, context.story, selectedReviewer, "reviewer") : undefined)(context)

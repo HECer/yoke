@@ -1,11 +1,15 @@
 import { createInterface } from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
 import { detectHostAgent } from '../agents/host.js'
-import { loadConfig, saveConfig, type Agent, type CodeGraph, type DecisionPolicy, type RoutingWorker } from '../retrofit/config.js'
+import { loadConfig, saveConfig, YokeConfigSchema, type Agent, type CodeGraph, type DecisionPolicy, type RoutingWorker } from '../retrofit/config.js'
 import { detectProject } from '../retrofit/detect.js'
+import { applyActions } from '../retrofit/apply.js'
+import { join } from 'node:path'
+import { modelPresetWorkers, planModelPresets, type ModelProvider } from './model-presets.js'
 import { runRetrofit } from '../retrofit/command.js'
 
 export interface SetupOptions {
+  modelProviders?: ModelProvider[]
   host?: Agent
   agents?: Agent[]
   codeGraph?: CodeGraph
@@ -42,10 +46,8 @@ export function defaultRoutingWorkers(agents: Agent[]): RoutingWorker[] {
       { id: 'gemini-frontier', agent: 'gemini', model: 'gemini-2.5-pro', tier: 'frontier', costTier: 'high', capabilities: ['architecture'] },
     ],
     qwen: [
-      { id: 'qwen-light', agent: 'qwen', model: 'qwen-turbo-latest', tier: 'light', costTier: 'low', capabilities: ['mechanical', 'tests'] },
-      { id: 'qwen-standard', agent: 'qwen', model: 'qwen3-coder-plus', tier: 'standard', costTier: 'medium', capabilities: ['implementation'] },
-      { id: 'qwen-strong', agent: 'qwen', model: 'qwen3-coder-plus', tier: 'strong', costTier: 'medium', capabilities: ['debugging'] },
-      { id: 'qwen-frontier', agent: 'qwen', model: 'qwen3-235b-a22b', tier: 'frontier', costTier: 'high', capabilities: ['architecture'] },
+      // Respect the user's Qwen Code account/model. API presets are opt-in.
+      { id: 'qwen-standard', agent: 'qwen', tier: 'standard', costTier: 'medium', capabilities: ['implementation'] },
     ],
   }
   return agents.flatMap(agent => workers[agent])
@@ -66,6 +68,9 @@ function yes(value: string, fallback: boolean): boolean {
 
 export async function runSetup(targetDir: string, opts: SetupOptions = {}): Promise<number> {
   const existing = loadConfig(targetDir)
+  const modelProviders = opts.modelProviders ?? []
+  const presetActions = planModelPresets(targetDir, modelProviders)
+  const presetWorkers = modelPresetWorkers(modelProviders)
   const detected = detectProject(targetDir)
   const host = opts.host ?? detectHostAgent()
   const configuredAgents = existing?.agents.filter(a => ALL_AGENTS.includes(a)) ?? []
@@ -75,7 +80,7 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
       ? configuredAgents
       : detected.agents.length > 0
         ? detected.agents
-        : [host ?? 'claude']
+        : modelProviders.length ? ['qwen' as const] : [host ?? 'claude']
   const defaultGraph = opts.codeGraph ?? existing?.codeGraph ?? 'graphify'
   const defaultLoop = opts.loop ?? existing?.loop.enabled ?? true
   const defaultRunner = opts.runner ?? existing?.runner?.agent ?? (host && defaultAgents.includes(host) ? host : defaultAgents[0] ?? host ?? 'claude')
@@ -110,14 +115,21 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
       routing = yes(await ask(`Enable adaptive multi-model routing? [${defaultRouting ? 'yes' : 'no'}]: `), defaultRouting)
     }
 
+    if (modelProviders.length && !agents.includes('qwen')) agents = [...agents, 'qwen']
     if (!agents.includes(runner)) agents = [...agents, runner]
     const code = runRetrofit(targetDir, { loop, agents, codeGraph, host })
     if (code !== 0) return code
+    applyActions(presetActions, targetDir, { backupDir: join(targetDir, '.yoke', 'backups', `model-presets-${Date.now()}`) })
     const config = loadConfig(targetDir)
     if (!config) return 1
     config.loop = { parallel: 'auto', isolate: true, ...config.loop, enabled: loop, decisionPolicy }
-    config.runner = { ...config.runner, agent: runner }
+    const priorRunner = existing?.runner?.agent ?? existing?.agents[0]
+    const selectPresetModel = presetWorkers.length > 0 && runner === 'qwen' && (!existing || (priorRunner !== undefined && priorRunner !== runner))
+    if (selectPresetModel && priorRunner !== 'qwen') config.runner = { permissions: config.runner?.permissions }
+    config.runner = { ...config.runner, agent: runner, ...(selectPresetModel && !config.runner?.model ? { model: presetWorkers[0]!.model } : {}) }
     const existingWorkers = config.routing?.workers ?? []
+    const baseWorkers = existingWorkers.length > 0 && !opts.routingPreset ? existingWorkers : defaultRoutingWorkers(agents).filter(worker => !modelProviders.length || worker.agent !== 'qwen')
+    const workers = [...baseWorkers, ...presetWorkers.filter(worker => !baseWorkers.some(existing => existing.id === worker.id))]
     config.routing = {
       ...config.routing,
       enabled: routing,
@@ -126,8 +138,9 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
       assessmentPolicy: existing?.routing?.assessmentPolicy ?? (existing ? 'on-demand' : 'prepared'),
       fallback: existing?.routing?.fallback ?? (existing ? 'parent' : 'block'),
       ...(config.routing?.orchestrator ? { orchestrator: config.routing.orchestrator } : {}),
-      workers: existingWorkers.length > 0 && !opts.routingPreset ? existingWorkers : defaultRoutingWorkers(agents),
+      workers,
     }
+    YokeConfigSchema.parse(config)
     saveConfig(targetDir, config)
     console.log(`Yoke setup complete: agents=${agents.join(',')} · runner=${runner} · loop=${loop ? 'on' : 'off'} · routing=${routing ? 'on' : 'off'} · decisions=${decisionPolicy}`)
     return 0
