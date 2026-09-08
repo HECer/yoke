@@ -6,8 +6,8 @@ loop:
   parallel: 1
   isolate: false
   timeoutMinutes: 30
-  maxCallMinutes: 30
-  progressTimeoutMinutes: 12
+  maxCallMinutes: 60
+  progressTimeoutMinutes: 20
   onAmbiguity: resolve
 runner:
   agent: codex
