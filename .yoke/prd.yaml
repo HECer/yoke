@@ -104,7 +104,7 @@
         and survive URL navigation without leaking secrets.
       verify:
         - npm test -- tests/dashboard/page.test.ts --testNamePattern=sort
-  passes: false
+  passes: true
   needs:
     - dashboard-history-api
     - dashboard-controls

@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "storyId": "dashboard-shell",
+  "generatedAt": "2026-09-08T17:51:36.424Z",
+  "criteria": [
+    {
+      "id": "shell",
+      "text": "The dashboard renders a modern control-room shell with persistent navigation, command bar, attention region, metric strip, and ranked project rows.",
+      "verify": [
+        "npm test -- tests/dashboard/page.test.ts --testNamePattern=shell"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    },
+    {
+      "id": "themes",
+      "text": "Dark and light themes use shared CSS tokens, respect system preference on first load, persist explicit choice, and retain readable contrast.",
+      "verify": [
+        "npm test -- tests/dashboard/page.test.ts --testNamePattern=themes"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    },
+    {
+      "id": "sort",
+      "text": "Search, status, date scope, and project sort controls compose correctly and survive URL navigation without leaking secrets.",
+      "verify": [
+        "npm test -- tests/dashboard/page.test.ts --testNamePattern=sort"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    }
+  ]
+}

@@ -2,14 +2,20 @@ import { expect, it } from 'vitest'
 import { createContext, runInContext } from 'node:vm'
 import { dashboardPage } from '../../src/dashboard/page.js'
 
-function dashboardContext() {
+function dashboardContext(options: { storage?: Record<string, string>; prefersDark?: boolean } = {}) {
   const html = dashboardPage('a'.repeat(64), 'validNonce')
   const script = /<script[^>]*>([\s\S]*?)<\/script>/u.exec(html)![1]
+  const storage = {
+    getItem: (key: string) => options.storage?.[key] ?? null,
+    setItem: (key: string, value: string) => { if (options.storage) options.storage[key] = value },
+  }
   const context = createContext({
     AbortController,
     URLSearchParams,
-    document: { getElementById: () => ({}) },
+    document: { documentElement: { dataset: {}, style: {} }, getElementById: () => ({}) },
     fetch: () => new Promise(() => {}),
+    localStorage: storage,
+    matchMedia: () => ({ matches: options.prefersDark ?? false }),
     setTimeout,
   })
   runInContext(script, context)
@@ -105,4 +111,56 @@ it('invalidates stale responses, bounds workspace work to three requests and sto
     return {max,started,values};
   })()`, context)
   expect({ ...result, values: [...result.values] }).toEqual({ max: 3, started: 3, values: [1, 2, 3] })
+})
+
+it('renders the control-room shell and ranks project rows by the selected metric', () => {
+  const html = dashboardPage('a'.repeat(64), 'validNonce')
+  expect(html).toContain('class="control-room-shell"')
+  expect(html).toContain('class="command-bar"')
+  expect(html).toContain('id="attention-region"')
+  expect(html).toContain('class="metric-strip"')
+  expect(html).toContain('class="project-row"')
+  expect(html).toContain('Ranked projects')
+
+  const context = dashboardContext()
+  const result = runInContext(`rankProjects([
+    {id:'one',name:'One',attention:1,tokens:200},
+    {id:'two',name:'Two',attention:3,tokens:100},
+    {id:'three',name:'Three',attention:2,tokens:null}
+  ],'tokens').map(project=>project.id)`, context)
+  expect([...result]).toEqual(['one', 'two', 'three'])
+})
+
+it('uses system themes on first load and persists an explicit theme choice', () => {
+  const html = dashboardPage('a'.repeat(64), 'validNonce')
+  expect(html).toContain('--canvas:')
+  expect(html).toContain('@media (prefers-color-scheme:dark)')
+  expect(html).toContain('localStorage')
+
+  const storage: Record<string, string> = {}
+  const context = dashboardContext({ storage, prefersDark: true })
+  expect(runInContext("themeState()", context)).toBe('dark')
+  expect(storage['yoke-dashboard-theme']).toBeUndefined()
+  runInContext("setTheme('light')", context)
+  expect(storage['yoke-dashboard-theme']).toBe('light')
+  expect(runInContext("themeState()", context)).toBe('light')
+})
+
+it('composes search, status, date scope, and project sort in URL navigation without secrets', () => {
+  const context = dashboardContext()
+  const state = runInContext("parseNavigationHash('#screen=overview&query=ship&status=attention&sort=tokens&period=7&group=week&from=2026-09-01&to=2026-09-07&token=secret')", context)
+  expect({ ...state }).toMatchObject({ screen: 'overview', query: 'ship', status: 'attention', sort: 'tokens', period: 7, group: 'week', from: '2026-09-01', to: '2026-09-07' })
+  const serialized = runInContext('serializeNavigationHash(' + JSON.stringify({ ...state }) + ')', context)
+  expect(serialized).toContain('query=ship')
+  expect(serialized).toContain('status=attention')
+  expect(serialized).toContain('sort=tokens')
+  expect(serialized).not.toContain('secret')
+  expect({ ...runInContext('parseNavigationHash(' + JSON.stringify(serialized) + ')', context) }).toMatchObject({ query: 'ship', status: 'attention', sort: 'tokens', period: 7, group: 'week', from: '2026-09-01', to: '2026-09-07' })
+
+  const result = runInContext(`visibleProjects([
+    {id:'one',name:'One',root:'/one',goal:{objective:'Ship one'},errors:[],attention:1,tokens:200},
+    {id:'two',name:'Two',root:'/two',goal:{objective:'Ship two'},status:{state:'blocked'},errors:[],attention:3,tokens:100},
+    {id:'three',name:'Three',root:'/three',errors:[],attention:2,tokens:300}
+  ],'ship','attention',Date.parse('2026-09-07T12:00:00Z'),'tokens').map(project=>project.id)`, context)
+  expect([...result]).toEqual(['two'])
 })
