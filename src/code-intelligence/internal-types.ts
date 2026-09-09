@@ -1,0 +1,6 @@
+export type Item = { item_id: string; kind: 'symbol' | 'code' | 'document' | 'memory' | 'summary'; path: string | null; excerpt: string; evidence_ids: string[]; rank: number }
+export type Symbol = { symbol_id: string; name: string; path: string | null; kind: string; signature: string | null; evidence_ids: string[] }
+export type Reference = { symbol_id: string; path: string | null; line: number | null; excerpt: string; evidence_ids: string[] }
+export type Diagnostic = { path: string | null; line: number | null; severity: 'error' | 'warning' | 'info' | 'unknown'; message: string; evidence_ids: string[] }
+export type Edge = { from: string; to: string; relation: 'calls' | 'references' | 'imports' | 'implements' | 'extends' | 'docs' | 'rationale_for' | 'related_to'; evidence_ids: string[] }
+export type Provenance = { backend: 'graft' | 'graphify' | 'serena-lsp' | 'serena-jetbrains' | 'yoke'; version: string; source_path: string | null; content_hash: string | null; byte_range: { start: number; end: number } | null; origin: 'parser' | 'resolver' | 'lsp' | 'ide' | 'llm' | 'manual'; resolution: 'resolved' | 'unresolved' | 'ambiguous' | 'not_applicable'; freshness: 'current' | 'stale' | 'unknown' }

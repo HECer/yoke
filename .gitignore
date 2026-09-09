@@ -4,6 +4,7 @@ dist/
 .worktrees/
 .yoke/worktrees/
 .yoke/backup/
+.yoke/code-intelligence/
 
 # Yoke's own retrofit output when dogfooding `yoke retrofit .` against this
 # repo — these are generated artifacts, not source. Root-anchored so the canon's

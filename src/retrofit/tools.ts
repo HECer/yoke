@@ -1,4 +1,5 @@
 import type { CodeGraph } from './config.js'
+import type { CodeIntelligenceMode } from '../code-intelligence/contracts.js'
 
 export interface McpServerConfig {
   command: string
@@ -16,16 +17,17 @@ const CODE_GRAPH_SERVERS: Record<CodeGraph, McpServerConfig> = {
   },
 }
 
-export function mcpServers(codeGraph: CodeGraph = 'graphify'): Record<string, McpServerConfig> {
-  return {
-    [codeGraph]: CODE_GRAPH_SERVERS[codeGraph],
+export function mcpServers(codeGraph: CodeGraph = 'graphify', codeIntelligence: CodeIntelligenceMode = 'off', targetDir = '.'): Record<string, McpServerConfig> {
+  if (codeIntelligence !== 'off') return {
+    'code-intelligence': { command: 'yoke', args: ['code-intelligence-server', `--workspace=${targetDir}`, `--mode=${codeIntelligence}`] },
     playwright: { command: 'npx', args: ['@playwright/mcp@latest'] },
   }
+  return { [codeGraph]: CODE_GRAPH_SERVERS[codeGraph], playwright: { command: 'npx', args: ['@playwright/mcp@latest'] } }
 }
 
 /** OpenCode-family CLIs use an object with a local command array, not Claude's mcpServers shape. */
-export function openCodeMcpServers(codeGraph: CodeGraph = 'graphify'): Record<string, { type: 'local'; command: string[]; enabled: true }> {
-  return Object.fromEntries(Object.entries(mcpServers(codeGraph)).map(([name, server]) => [name, {
+export function openCodeMcpServers(codeGraph: CodeGraph = 'graphify', codeIntelligence: CodeIntelligenceMode = 'off', targetDir = '.'): Record<string, { type: 'local'; command: string[]; enabled: true }> {
+  return Object.fromEntries(Object.entries(mcpServers(codeGraph, codeIntelligence, targetDir)).map(([name, server]) => [name, {
     type: 'local' as const,
     command: [server.command, ...server.args],
     enabled: true as const,

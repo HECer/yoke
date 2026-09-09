@@ -7,7 +7,7 @@ import { registerProject, listProjects, unregisterProject } from './dashboard/re
 import { startDashboard } from './dashboard/server.js'
 import { createProjectGoal, readProjectGoal, runProjectGoal, pauseProjectGoal, goalHandoff, budgetProjectGoal } from './goals/command.js'
 import { validateCanon } from './canon/validate.js'
-import type { Agent, DecisionPolicy } from './retrofit/config.js'
+import type { Agent, CodeIntelligenceMode, DecisionPolicy } from './retrofit/config.js'
 import { runRetrofit } from './retrofit/command.js'
 import { setLoopEnabled, loopStatus, runLoopCommand } from './loop/run-command.js'
 import { runContextInit, runContextStatus } from './context/command.js'
@@ -23,6 +23,7 @@ import { runUpgrade } from './update/upgrade.js'
 import { AGENT_LIST, isSupportedAgent, SUPPORTED_AGENTS } from './agents/catalog.js'
 import { printAudit, runAudit } from './audit/command.js'
 import { runSetup } from './setup/command.js'
+import { runCodeIntelligenceServer } from './code-intelligence/mcp-server.js'
 import { pendingChanges, queueChange } from './change/inbox.js'
 import {
   answerPendingDecision, answeredDecisionResumeIsValid, clearDecisionResume, decisionProcessingExists, decisionResumeMatchesCurrent,
@@ -109,6 +110,8 @@ export function parseQualityFlags(args: readonly string[]): { readonly ok: true;
 export function main(argv: string[]): number | Promise<number> {
   const [cmd, ...rest] = argv
   switch (cmd) {
+    case 'code-intelligence-server':
+      return runCodeIntelligenceServer(rest).then(() => 0).catch(error => { console.error(`Code intelligence server: ${(error as Error).message}`); return 2 })
     case 'setup': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
       const valid: Agent[] = [...SUPPORTED_AGENTS]
@@ -126,6 +129,8 @@ export function main(argv: string[]): number | Promise<number> {
       if (runnerArg && !valid.includes(runnerArg as Agent)) { console.error(`Invalid --runner value: ${runnerArg}`); return 1 }
       const graphArg = rest.find(a => a.startsWith('--code-graph='))?.slice('--code-graph='.length)
       if (graphArg && graphArg !== 'graphify' && graphArg !== 'serena') { console.error(`Invalid --code-graph value: ${graphArg}`); return 1 }
+      const intelligenceArg = rest.find(a => a.startsWith('--code-intelligence='))?.slice('--code-intelligence='.length)
+      if (intelligenceArg && !['off', 'shadow', 'active'].includes(intelligenceArg)) { console.error(`Invalid --code-intelligence value: ${intelligenceArg}`); return 1 }
       const policyArg = rest.find(a => a.startsWith('--decision-policy='))?.slice('--decision-policy='.length)
       if (policyArg && policyArg !== 'auto' && policyArg !== 'critical') { console.error(`Invalid --decision-policy value: ${policyArg}`); return 1 }
       const loop = rest.includes('--loop') ? true : rest.includes('--no-loop') ? false : undefined
@@ -139,6 +144,7 @@ export function main(argv: string[]): number | Promise<number> {
         modelProviders: modelProviders as ModelProvider[] | undefined,
         host: hostArg as Agent | undefined, agents, runner: runnerArg as Agent | undefined,
         codeGraph: graphArg as 'graphify' | 'serena' | undefined,
+        codeIntelligence: intelligenceArg as CodeIntelligenceMode | undefined,
         loop, routing, decisionPolicy: policyArg as DecisionPolicy | undefined,
         routingStrategy: routingStrategy as import('./retrofit/config.js').RoutingStrategy | undefined,
         routingPreset: rest.includes('--routing-preset'),
@@ -230,7 +236,9 @@ export function main(argv: string[]): number | Promise<number> {
         console.error(`Invalid --code-graph value: ${cgArg} (expected graphify|serena)`)
         return 1
       }
-      return runRetrofit(targetDir, { loop, agents, codeGraph })
+      const ciArg = rest.find(a => a.startsWith('--code-intelligence='))?.slice('--code-intelligence='.length)
+      if (ciArg && !['off', 'shadow', 'active'].includes(ciArg)) { console.error(`Invalid --code-intelligence value: ${ciArg} (expected off|shadow|active)`); return 1 }
+      return runRetrofit(targetDir, { loop, agents, codeGraph, codeIntelligence: ciArg as CodeIntelligenceMode | undefined })
     }
     case 'change': {
       const sub = rest[0]
@@ -528,7 +536,7 @@ export function main(argv: string[]): number | Promise<number> {
       return runUpgrade()
     default:
       console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
-      console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--loop] | change <add|status> [dir] | prd <draft|check|assess> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] [--reviewer=<${AGENT_LIST}>] [--base=<ref>] [--focus="..."] | design-scan [dir] [--max=N] [--report] | flow-smoke [dir] [--url=<baseUrl>] [--label=<name>] | upgrade>`)
+      console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--code-intelligence=off|shadow|active] [--loop] | change <add|status> [dir] | code-intelligence-server --workspace=<dir> --mode=<mode> | prd <draft|check|assess> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] | design-scan [dir] | flow-smoke [dir] | upgrade>`)
       return cmd ? 1 : 0
   }
 }

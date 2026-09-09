@@ -22,6 +22,14 @@ describe('tools', () => {
     ])
   })
 
+  it('publishes one Yoke facade in federated mode without duplicate backend tools', () => {
+    const servers = mcpServers('serena', 'active', '/workspace/project')
+    expect(Object.keys(servers)).toEqual(['code-intelligence', 'playwright'])
+    expect(servers['code-intelligence']).toEqual({ command: 'yoke', args: ['code-intelligence-server', '--workspace=/workspace/project', '--mode=active'] })
+    expect(servers).not.toHaveProperty('serena')
+    expect(servers).not.toHaveProperty('graphify')
+  })
+
   it('rtkInstruction mentions prefixing commands with rtk', () => {
     expect(rtkInstruction()).toMatch(/rtk/i)
   })

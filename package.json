@@ -1,6 +1,6 @@
 {
   "name": "@hecer/yoke",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "description": "One harness, seven agents, zero trust in \"done\" — cross-agent coding harness for Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo and Pi: one skill canon, mechanical safety gates, an autonomous loop with screenshot/video proofs.",
   "type": "module",
   "bin": {

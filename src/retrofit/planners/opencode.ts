@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadManifest } from '../../canon/manifest.js'
 import type { Action } from '../plan.js'
-import type { CodeGraph } from '../config.js'
+import type { CodeGraph, CodeIntelligenceMode } from '../config.js'
 import { openCodeMcpServers, rtkInstruction } from '../tools.js'
 import { PRESERVE_SCAFFOLD } from '../preserve.js'
 import { skillPackageActions } from '../skill-actions.js'
@@ -19,7 +19,7 @@ tools:
 Review the observed diff and test evidence. Do not modify files. Return only actionable findings grounded in evidence.
 `
 
-export function planOpenCode(canonDir: string, _targetDir: string, codeGraph: CodeGraph = 'graphify'): Action[] {
+export function planOpenCode(canonDir: string, targetDir: string, codeGraph: CodeGraph = 'graphify', codeIntelligence: CodeIntelligenceMode = 'off'): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const baseline = readFileSync(join(canonDir, 'AGENTS.md'), 'utf8')
   const actions: Action[] = manifest.skills.flatMap(skill => skillPackageActions(canonDir, skill, 'opencode'))
@@ -37,7 +37,7 @@ export function planOpenCode(canonDir: string, _targetDir: string, codeGraph: Co
       content: JSON.stringify({
         $schema: 'https://opencode.ai/config.json',
         instructions: ['AGENTS.md', '.yoke/context/*.md'],
-        mcp: openCodeMcpServers(codeGraph),
+        mcp: openCodeMcpServers(codeGraph, codeIntelligence, targetDir),
       }, null, 2) + '\n',
       reason: 'OpenCode instructions + MCP servers',
     },

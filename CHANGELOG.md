@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.15.0 — 2026-09-09
+
+### Added
+- Add opt-in federated Code Intelligence that composes Graft, Graphify and Serena behind one Yoke-controlled MCP facade with six stable tools for context, symbols, traces, impact and edit workflows.
+- Add pinned backend adapters, explicit coverage/provenance/freshness evidence, content-addressed workspace snapshots and bounded local policy checks.
+- Add isolated edit previews and guarded apply transactions with approval, snapshot freshness, exclusive locking and idempotency checks; Yoke's existing review, verify and commit gates remain authoritative.
+
+### Changed
+- Add `off`, `shadow` and `active` Code Intelligence modes to setup and retrofit. `off` preserves the legacy `codeGraph` path unchanged; `shadow` is read-only; `active` enables preview and approved edits.
+- Keep backend runtimes external and configurable instead of vendoring or silently installing them. Pin the validated integration targets to Graft `0.17.0`, Graphify `0.9.56` and Serena `1.7.1-dev`.
+- Add the [Code Intelligence guide](docs/CODE-INTELLIGENCE.md), including setup, backend requirements, safety boundaries, limitations and the Pi integration note.
+
+### Migration and validation limits
+- No migration is required. Existing projects remain on the legacy path until `yoke setup` or `yoke retrofit` is run with `--code-intelligence=shadow` or `--code-intelligence=active`.
+- Validated with the Code Intelligence contract/coordinator/snapshot/MCP tests, TypeScript lint/build, documentation metadata, package dry run and the facade MCP handshake. The full suite retains one pre-existing provider-process timing failure; it is reproduced independently and is not caused by this release.
+- This release does not claim that every language or backend is available in every environment. Backend failures are surfaced as partial coverage or an explicit unavailable capability, never silently treated as complete evidence.
+
 ## 1.14.0 — 2026-09-09
 
 ### Added

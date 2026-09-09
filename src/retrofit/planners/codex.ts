@@ -2,12 +2,12 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadManifest } from '../../canon/manifest.js'
 import type { Action } from '../plan.js'
-import type { CodeGraph } from '../config.js'
+import type { CodeGraph, CodeIntelligenceMode } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
 import { skillPackageActions } from '../skill-actions.js'
 
-function tomlMcp(codeGraph: CodeGraph): string {
-  const servers = mcpServers(codeGraph)
+function tomlMcp(codeGraph: CodeGraph, codeIntelligence: CodeIntelligenceMode, targetDir: string): string {
+  const servers = mcpServers(codeGraph, codeIntelligence, targetDir)
   // Codex reads MCP servers from ~/.codex/config.toml. This project-level file is a
   // ready-to-merge snippet; users append these blocks to their global config.
   return Object.entries(servers)
@@ -18,7 +18,7 @@ function tomlMcp(codeGraph: CodeGraph): string {
     .join('\n')
 }
 
-export function planCodex(canonDir: string, _targetDir: string, codeGraph: CodeGraph = 'graphify'): Action[] {
+export function planCodex(canonDir: string, targetDir: string, codeGraph: CodeGraph = 'graphify', codeIntelligence: CodeIntelligenceMode = 'off'): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const baseline = readFileSync(join(canonDir, 'AGENTS.md'), 'utf8')
   const actions: Action[] = manifest.skills.flatMap(skill => skillPackageActions(canonDir, skill, 'codex'))
@@ -40,8 +40,8 @@ export function planCodex(canonDir: string, _targetDir: string, codeGraph: CodeG
     {
       kind: 'write',
       target: '.codex/config.toml',
-      content: `# Yoke project configuration. Codex loads this in trusted repositories.\n\n[features]\nhooks = true\n\n${tomlMcp(codeGraph)}`,
-      reason: 'MCP servers (code-graph + playwright)',
+      content: `# Yoke project configuration. Codex loads this in trusted repositories.\n\n[features]\nhooks = true\n\n${tomlMcp(codeGraph, codeIntelligence, targetDir)}`,
+      reason: codeIntelligence === 'off' ? 'MCP servers (code-graph + playwright)' : 'Yoke code-intelligence facade + playwright',
     },
     {
       kind: 'write',

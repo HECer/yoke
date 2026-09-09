@@ -1,9 +1,9 @@
 <div align="center">
 
-<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.14.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
+<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.15.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
 
-<!-- yoke:version:start -->1.14.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1258<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.15.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->1268<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1258%20defined-blue.svg)
+![Tests](https://img.shields.io/badge/tests-1268%20defined-blue.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini%20%7C%20Qwen%20%7C%20OpenCode%20%7C%20Kilo%20%7C%20Pi-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -27,7 +27,7 @@
 
 > **TL;DR** — `yoke setup .` asks six questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. Add `--parallel=N` for dependency-aware workers, or declare a reference and add `--quality` for a bounded critic/repair gauntlet. If any blocking gate is red, nothing is committed. Proof lives in `.yoke/proof/<story>/`.
 
-**New in 1.13.0:** first-class [OpenCode, Kilo and Pi integrations](docs/HARNESSES.md), including native headless invocation, provider/model/variant routing, retrofit artifacts, role configuration and provider telemetry. [Qwen Code hardening and explicit DeepSeek/Kimi API model profiles](docs/QWEN-MODEL-SUPPORT.md) remain available. Since 1.10.0, Yoke also includes [dashboard search, filters and period comparisons](docs/DASHBOARD-EVOLUTION.md), [batch task assessments with separate planning models](docs/CAPABILITY-ROUTING.md), and [Windows sandbox preflight and process supervision](docs/WINDOWS-RUNNER-VALIDATION.md). Existing routing settings remain authoritative. See the [changelog](CHANGELOG.md) and the [harness integration guide](docs/HARNESSES.md) for limitations and setup.
+**New in 1.15.0:** federated [Code Intelligence](docs/CODE-INTELLIGENCE.md) composes Graft, Graphify and Serena behind one Yoke-controlled MCP surface, with structural and semantic evidence, content-addressed snapshots, partial-coverage reporting and isolated edit previews. It is opt-in: use `off` for the unchanged legacy path, `shadow` for read-only canaries, or `active` for previews and approved edits. The [1.14.0 dashboard overhaul](docs/DASHBOARD-OVERHAUL.md) and first-class [OpenCode, Kilo and Pi integrations](docs/HARNESSES.md) remain available. See the [changelog](CHANGELOG.md) and [Code Intelligence guide](docs/CODE-INTELLIGENCE.md) for setup and limitations.
 
 OpenCode, Kilo and Pi are real CLI integrations, not bundled runtimes or credentials. OpenCode/Kilo use their JSON headless modes and local MCP configuration; Pi uses JSONL and explicit tool allowlists, but has no native MCP, sub-agent or plan layer. Read the [integration guide](docs/HARNESSES.md) before selecting a permission profile.
 
@@ -208,10 +208,11 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke projects add\|list\|remove` | Register a project, list registrations or remove a reference by ID | `0` · `2` invalid/unavailable |
 | `yoke check [dir] [--json] [--requirement=] [--protect [--refresh]]` | Execute acceptance checks or explicitly pin their infrastructure | `0` passed/pinned · `1` failed · `2` unverified/unavailable |
 | `yoke goal set\|run\|resume\|pause\|status\|handoff\|budget [dir]` | Durable objectives, provider handoff, protected checks and checkpoint budgets | run/resume: `0` complete · `1` unfinished · `2` unavailable |
-| `yoke setup [dir] [--yes] [--host=] [--agent=] [--runner=] [--code-graph=] [--decision-policy=] [--loop\|--no-loop] [--routing\|--no-routing] [--model-provider=deepseek,kimi]` | Shared setup for all seven harnesses; optional DeepSeek/Kimi API profiles run through Qwen | `0` · `1` invalid setup |
+| `yoke setup [dir] [--yes] [--host=] [--agent=] [--runner=] [--code-graph=] [--code-intelligence=off\|shadow\|active] [--decision-policy=] [--loop\|--no-loop] [--routing\|--no-routing] [--model-provider=deepseek,kimi]` | Shared setup for all seven harnesses; optional federated code intelligence and DeepSeek/Kimi API profiles | `0` · `1` invalid setup |
+| `yoke code-intelligence-server [--workspace=] [--mode=off\|shadow\|active]` | Serve the single Yoke-controlled MCP facade for federated code intelligence | `0` · `1` invalid/unavailable |
 | `yoke validate [canonDir]` | Validate the canon (schema, frontmatter, templates) | `0` valid · `1` errors |
 | `yoke new <dir> [--idea=] [--agent=] [--runner=] [--loop]` | Greenfield bootstrap: git init → scaffold → retrofit → context → PRD (drafted from `--idea`) → committed | `0` · `1` usage / non-empty dir / draft failed (scaffold survives) · `2` draft agent unavailable |
-| `yoke retrofit [dir] [--agent=claude,codex,gemini,qwen,opencode,kilo,pi\|all] [--code-graph=graphify\|serena] [--loop]` | Install/update the harness for the selected agents, non-destructively | `0` |
+| `yoke retrofit [dir] [--agent=claude,codex,gemini,qwen,opencode,kilo,pi\|all] [--code-graph=graphify\|serena] [--code-intelligence=off\|shadow\|active] [--loop]` | Install/update the harness for the selected agents, non-destructively | `0` |
 | `yoke prd draft [dir] --idea= [--runner=] [--force]` | Idea → 5–12 stories with testable acceptance criteria | `0` · `1` invalid/guarded · `2` agent unavailable |
 | `yoke prd check [dir]` | PRD lint gate (schema, dependencies, cycles, duplicate ids, acceptance) | `0` valid · `1` violations |
 | `yoke change add\|status [dir] [--idea=]` | Queue a change at any time; the loop turns it into append-only stories at the next safe boundary | `0` · `1` invalid inbox/request |
@@ -852,7 +853,7 @@ Yoke's guardrails are **mechanical, not advisory** — the loop blocks on a dirt
 
 ## 🧠 Choose your code-graph
 
-`yoke retrofit --code-graph=graphify|serena` (default `graphify`, remembered per project). The `yoke-retrofit` skill asks and recommends based on the project.
+`yoke retrofit --code-graph=graphify|serena` (default `graphify`, remembered per project) selects the legacy single graph. For complete code intelligence, enable the federated facade with `yoke retrofit --code-intelligence=active` (or `shadow` for a read-only canary). See the [Code Intelligence guide](docs/CODE-INTELLIGENCE.md).
 
 | | **graphify** | **Serena** |
 |---|---|---|
@@ -861,6 +862,8 @@ Yoke's guardrails are **mechanical, not advisory** — the loop blocks on a dirt
 | Token efficiency | ~70× reduction on large mixed repos | standard, no index to go stale |
 | Best for | rapid exploration / migration / onboarding | systematic refactoring in typed codebases |
 | Caveat | heuristic edges; static index can go stale | one language server per language |
+
+The federated mode composes both structural and semantic evidence and adds Graphify's architecture/document graph. It exposes one Yoke-controlled MCP surface, content-addressed snapshots, partial-coverage reporting and isolated edit previews; the legacy `codeGraph` setting remains valid and unchanged when code intelligence is `off`.
 
 ## 🪙 Token efficiency
 
@@ -903,6 +906,7 @@ canon/            # the source of truth — harness-agnostic
   AGENTS.md  skills/  policy/  loop/  tools/  manifest.yaml
 src/
   canon/          # manifest schema + validator (yoke validate)
+  code-intelligence/ # federated MCP facade, adapters, snapshots and guarded edits
   change/         # append-only change inbox · planning · independent coverage review
   retrofit/       # detect · plan · apply · planners (all seven harnesses) · tools
   loop/           # prd · gates · runner · verify · git/worktree · loop · run-command · lock · cleanup
@@ -925,7 +929,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1258 tests)
+npm test          # vitest (1268 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

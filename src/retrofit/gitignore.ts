@@ -4,6 +4,7 @@ import { join } from 'node:path'
 export const YOKE_IGNORE_LINES = [
   '.yoke/worktrees/',
   '.yoke/backup/',
+  '.yoke/code-intelligence/',
   '.yoke/loop-status.json',
   '.yoke/loop.log',
   '.yoke/loop.lock',
