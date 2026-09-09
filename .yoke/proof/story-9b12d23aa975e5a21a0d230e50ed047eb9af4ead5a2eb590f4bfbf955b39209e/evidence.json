@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "storyId": "dashboard-foundation",
+  "generatedAt": "2026-09-08T16:13:14.039Z",
+  "criteria": [
+    {
+      "id": "server",
+      "text": "The dashboard has typed, bounded helpers for workspace analytics, project history/events, and typed control payloads while preserving existing routes.",
+      "verify": [
+        "npm test -- tests/dashboard/server.test.ts --testNamePattern=server"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    },
+    {
+      "id": "analytics",
+      "text": "Dashboard projections preserve unknown usage and measurement coverage instead of converting unavailable values to zero.",
+      "verify": [
+        "npm test -- tests/dashboard/analytics.test.ts --testNamePattern=analytics"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    },
+    {
+      "id": "security",
+      "text": "New dashboard reads and writes remain loopback-only, same-origin, session-authorized, path-safe, and protected against untrusted HTML.",
+      "verify": [
+        "npm test -- tests/dashboard/server.test.ts --testNamePattern=security"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    }
+  ]
+}

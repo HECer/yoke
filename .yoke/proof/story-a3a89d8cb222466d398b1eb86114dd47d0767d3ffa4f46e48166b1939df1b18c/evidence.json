@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "storyId": "dashboard-history-api",
+  "generatedAt": "2026-09-08T16:54:34.247Z",
+  "criteria": [
+    {
+      "id": "history",
+      "text": "Workspace and project APIs expose bounded date-range and bucketed aggregates for tokens, calls, outcomes, time, and cost coverage.",
+      "verify": [
+        "npm test -- tests/dashboard/analytics.test.ts --testNamePattern=history"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    },
+    {
+      "id": "runs",
+      "text": "Project history groups recorded events and measurements by run and exposes agent, provider, model, variant, role, phase, and timestamps when available.",
+      "verify": [
+        "npm test -- tests/dashboard/server.test.ts --testNamePattern=runs"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    },
+    {
+      "id": "ranking",
+      "text": "Workspace projections rank projects and execution dimensions by attention, activity, tokens, cost, acceptance, and name with deterministic tie breaking.",
+      "verify": [
+        "npm test -- tests/dashboard/analytics.test.ts --testNamePattern=ranking"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    }
+  ]
+}

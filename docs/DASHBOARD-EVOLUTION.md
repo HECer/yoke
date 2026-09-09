@@ -1,6 +1,6 @@
 # Dashboard evolution
 
-The local dashboard is an actionable workspace for registered Yoke projects. It reads the same saved project, loop, goal, acceptance, and measurement data as the CLI. Project-controlled text is rendered through `textContent`, and the server remains bound to the loopback interface with same-origin authorization for pause requests.
+The local dashboard is an actionable control room for registered Yoke projects. It reads the same saved project, loop, goal, acceptance, and measurement data as the CLI. Project-controlled text is rendered through `textContent`, and the server remains bound to the loopback interface with same-origin session authorization for typed controls. The full feature contract is in [DASHBOARD-OVERHAUL.md](DASHBOARD-OVERHAUL.md).
 
 ## Overview
 
@@ -10,13 +10,27 @@ Cards also show the reported current task and saved blocker reason when availabl
 
 An active loop report more than 20 minutes old is labeled **unconfirmed**. This means Yoke has an old active report, not evidence that the process is still live. The overview can be searched by project name, canonical path, or goal objective and filtered to All, Active, or Needs attention. A no-match state explains the result and provides a clear action that resets both search and filter.
 
+## Workspace control room
+
+The overview ranks projects by attention, last activity, recorded tokens, reported cost, accepted work, or name. Search and status filters compose with the ranking, and the validated URL hash preserves the selected screen and time scope. A project row opens the live view without losing the operator’s navigation context.
+
+The project live view shows goal and loop state independently, freshness, current worker metadata, objective progress, last successful sync, pause/resume actions at the existing safe boundary, an operator-note form, a queued-change form, and a bounded expandable event timeline. Notes are append-only events. Changes become pending inbox requests and are consumed by the existing planning boundary; the browser cannot run arbitrary commands.
+
+## Measurement coverage
+
+The dashboard labels recorded, partial, unknown, stale, corrupt, unavailable, and empty data separately. **Measurement coverage** is always shown alongside analytics: missing provider usage or price is not reconstructed, and a missing bucket means no recorded activity rather than a measured zero. A stale active report is shown as unconfirmed, not healthy.
+
 ## Durable navigation
 
-The URL hash stores the current screen, project, project tab, period, UTC grouping, and complete custom date range. Supported screens are the overview, workspace comparison, and project detail. Supported project tabs are Now, Usage & time, and Results; periods are 1, 7, 30, 90, or 365 days; groupings are day, week, or month. Custom dates must be real ISO calendar dates in chronological order and cover at most 366 inclusive days.
+The URL hash stores the current screen, project, project tab, period, UTC grouping, ranking/filter state, and complete custom date range. Supported screens are the overview, workspace analytics, and project detail. Supported project tabs are Now, Usage & time, Results, and History; periods are 1, 7, 30, 90, or 365 days; groupings are day, week, or month. Custom dates must be real ISO calendar dates in chronological order and cover at most 366 inclusive days.
 
 Invalid hash state returns to the overview with the 30-day/day defaults. Browser back and forward, a page reload, and Refresh restore the validated state. Refresh reloads data without resetting the selected view or controls. Starting any navigation aborts earlier fetches and changes a request generation, so an older response cannot replace the current screen.
 
 The workspace comparison schedules at most three project analytics requests at once. If navigation changes, in-flight fetches are aborted and no additional obsolete project requests are scheduled. All projects and individual project links remain available in the navigation while viewing the comparison.
+
+## Analytics and history
+
+Workspace and project analytics expose time-bucketed recorded tokens, calls, duration, outcomes, cost state, and rankings by agent, provider, model, variant, role, phase, project, and run. The history explorer exposes at most 100 events in chronological order and identifies run, story, phase, agent/provider/model metadata, local time, and UTC time when recorded. Unknown values remain unknown; no chart or comparison converts missing measurements to zero.
 
 ## Usage comparisons
 

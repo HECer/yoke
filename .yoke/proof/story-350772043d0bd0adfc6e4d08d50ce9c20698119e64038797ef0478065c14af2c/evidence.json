@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "storyId": "dashboard-live-view",
+  "generatedAt": "2026-09-08T18:30:07.235Z",
+  "criteria": [
+    {
+      "id": "live",
+      "text": "A project view shows current goal/loop state, freshness, safe controls, objective progress, current worker metadata, and the last successful sync.",
+      "verify": [
+        "npm test -- tests/dashboard/page.test.ts --testNamePattern=live"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    },
+    {
+      "id": "timeline",
+      "text": "The project view renders a bounded chronological event timeline with expandable run, story, phase, agent, and token details plus local/UTC labeling.",
+      "verify": [
+        "npm test -- tests/dashboard/page.test.ts --testNamePattern=timeline"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    },
+    {
+      "id": "compose",
+      "text": "A user can add a note or queue a change from the live view and receives pending, applied, validation, and failure feedback.",
+      "verify": [
+        "npm test -- tests/dashboard/page.test.ts --testNamePattern=compose"
+      ],
+      "passed": true,
+      "summary": "1 criterion command passed"
+    }
+  ]
+}

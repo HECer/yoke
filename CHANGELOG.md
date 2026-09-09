@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.15.0 — 2026-09-09
+
+### Added
+- Add opt-in federated Code Intelligence that composes Graft, Graphify and Serena behind one Yoke-controlled MCP facade with six stable tools for context, symbols, traces, impact and edit workflows.
+- Add pinned backend adapters, explicit coverage/provenance/freshness evidence, content-addressed workspace snapshots and bounded local policy checks.
+- Add isolated edit previews and guarded apply transactions with approval, snapshot freshness, exclusive locking and idempotency checks; Yoke's existing review, verify and commit gates remain authoritative.
+
+### Changed
+- Add `off`, `shadow` and `active` Code Intelligence modes to setup and retrofit. `off` preserves the legacy `codeGraph` path unchanged; `shadow` is read-only; `active` enables preview and approved edits.
+- Keep backend runtimes external and configurable instead of vendoring or silently installing them. Pin the validated integration targets to Graft `0.17.0`, Graphify `0.9.56` and Serena `1.7.1-dev`.
+- Add the [Code Intelligence guide](docs/CODE-INTELLIGENCE.md), including setup, backend requirements, safety boundaries, limitations and the Pi integration note.
+
+### Migration and validation limits
+- No migration is required. Existing projects remain on the legacy path until `yoke setup` or `yoke retrofit` is run with `--code-intelligence=shadow` or `--code-intelligence=active`.
+- Validated with the Code Intelligence contract/coordinator/snapshot/MCP tests, TypeScript lint/build, documentation metadata, package dry run and the facade MCP handshake. The full suite retains one pre-existing provider-process timing failure; it is reproduced independently and is not caused by this release.
+- This release does not claim that every language or backend is available in every environment. Backend failures are surfaced as partial coverage or an explicit unavailable capability, never silently treated as complete evidence.
+
+## 1.14.0 — 2026-09-09
+
+### Added
+- Add a local-first workspace control room that ranks registered projects by attention, activity, recorded tokens, reported cost, acceptance, or name, with composable search, status filters, UTC scopes, and restorable view links.
+- Add workspace and project analytics with time buckets, token/call/duration/outcome summaries, provider/model/agent/role/phase/run rankings, usage comparisons, and visible measurement coverage.
+- Add project live operations for task and phase state, worker metadata, bounded event timelines, safe-boundary pause/resume, append-only operator notes, and queued change requests.
+- Add a responsive dashboard shell with dark/light themes, keyboard and reduced-motion support, explicit loading/empty/error/stale states, and readable narrow-screen navigation.
+
+### Changed
+- Base dashboard views on durable local history and versioned events while keeping unknown, partial, corrupt, unavailable, and stale telemetry explicit instead of treating it as zero.
+- Keep dashboard controls on the existing loop/goal runner and lock boundaries; browser requests remain typed, same-origin, loopback-only, and unable to execute arbitrary shell commands.
+
+### Fixed
+- Scope dashboard loop verification to the intended local project and retain focused coverage for dashboard authorization, path safety, partial history, concurrency, navigation, and control behavior.
+- Improve light-theme contrast for the active navigation state and keep long project names inside desktop and mobile navigation areas.
+
+### Migration and validation limits
+- No migration is required. Start the local view with `yoke dashboard --no-register`, then register projects with `yoke projects add <path>` as needed. Existing dashboard settings remain local and authoritative.
+- Validated with the dashboard tests, TypeScript lint/build, canonical manifest validation, release metadata checks, package dry run, and real local browser screenshots at desktop and mobile sizes.
+- Dashboard data is limited to explicitly registered local projects and retained local telemetry. It does not provide remote multi-user access, reconstruct missing history, prove requested models were used, or execute arbitrary browser-supplied commands. Pause/resume operates only at existing safe loop/goal boundaries.
+- This release targets npm package 1.14.0; npm publication is triggered by the matching published GitHub release and verified separately.
+
 ## 1.13.0 — 2026-09-08
 
 ### Added

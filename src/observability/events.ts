@@ -8,10 +8,15 @@ export interface LoopEvent {
   id: string
   runId: string
   timestamp: string
-  type: 'status' | 'tokens' | 'phase-ended' | 'attempt-ended' | 'accepted'
+  type: 'status' | 'tokens' | 'phase-ended' | 'attempt-ended' | 'accepted' | 'operator-note'
   storyId?: string
   attemptId?: string
   phase?: string
+  agent?: string
+  provider?: string
+  model?: string
+  variant?: string
+  role?: string
   durationMs?: number
   outcome?: string
   data?: Record<string, unknown>
@@ -58,7 +63,7 @@ export function readEvents(root: string, limit: number = 200): LoopEvent[] {
         const stat = lstatSync(file)
         if (!stat.isFile() || stat.isSymbolicLink() || stat.size > EVENT_MAX_BYTES) return []
         const value = JSON.parse(readFileSync(file, 'utf8')) as LoopEvent
-        if (value?.schemaVersion !== 1 || typeof value.id !== 'string' || typeof value.runId !== 'string' || typeof value.timestamp !== 'string' || !Number.isFinite(Date.parse(value.timestamp)) || !['status', 'tokens', 'phase-ended', 'attempt-ended', 'accepted'].includes(value.type)) return []
+        if (value?.schemaVersion !== 1 || typeof value.id !== 'string' || typeof value.runId !== 'string' || typeof value.timestamp !== 'string' || !Number.isFinite(Date.parse(value.timestamp)) || !['status', 'tokens', 'phase-ended', 'attempt-ended', 'accepted', 'operator-note'].includes(value.type)) return []
         if (value.durationMs !== undefined && (!Number.isFinite(value.durationMs) || value.durationMs < 0)) return []
         return [value]
       } catch { return [] }

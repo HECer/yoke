@@ -5,8 +5,10 @@ import { tmpdir } from 'node:os'
 import { request } from 'node:http'
 import { registerProject, listProjects, unregisterProject } from '../../src/dashboard/registry.js'
 import { startDashboard } from '../../src/dashboard/server.js'
-import { createProjectGoal } from '../../src/goals/command.js'
+import { createProjectGoal, readProjectGoal } from '../../src/goals/command.js'
 import { appendEvent } from '../../src/observability/events.js'
+import { DASHBOARD_LIMITS } from '../../src/dashboard/contracts.js'
+import { pendingChanges } from '../../src/change/inbox.js'
 let root: string
 let oldState: string | undefined
 let server: Awaited<ReturnType<typeof startDashboard>> | undefined
@@ -76,6 +78,92 @@ it('uses the shared pause service only with same-origin session authorization', 
   expect((await fetch(`${server.url}api/projects/${project.id}/pause`, { method: 'POST', headers: { Origin: origin, 'x-yoke-token': token } })).status).toBe(200)
   expect(existsSync(join(root, '.yoke/goal.pause'))).toBe(true)
 })
+
+it('controls pause both loop and goal execution at their existing safe boundaries', async () => {
+  createProjectGoal(root, 'Test goal')
+  const project = registerProject(root)
+  server = await startDashboard({ port: 0 })
+  const html = await (await fetch(server.url)).text()
+  const token = /const sessionToken = "([a-f0-9]+)"/u.exec(html)![1]
+  const origin = server.url.slice(0, -1)
+  const response = await fetch(`${server.url}api/projects/${project.id}/pause`, {
+    method: 'POST', headers: { Origin: origin, 'x-yoke-token': token, 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'pause', command: 'echo must not run' }),
+  })
+  expect(response.status).toBe(400)
+  const accepted = await fetch(`${server.url}api/projects/${project.id}/pause`, {
+    method: 'POST', headers: { Origin: origin, 'x-yoke-token': token, 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'pause' }),
+  })
+  expect(accepted.status).toBe(200)
+  expect(await accepted.json()).toEqual({ status: 'pause-requested' })
+  expect(existsSync(join(root, '.yoke/loop.pause'))).toBe(true)
+  expect(existsSync(join(root, '.yoke/goal.pause'))).toBe(true)
+})
+
+it('resume delegates to the existing goal runner and reports a completed safe start', async () => {
+  mkdirSync(join(root, '.yoke'))
+  writeFileSync(join(root, '.yoke/acceptance.yaml'), 'version: 1\nprotected: [test.mjs]\ncriteria:\n- id: outcome\n  text: Expected outcome\n  commands: [node test.mjs]\n')
+  writeFileSync(join(root, 'test.mjs'), 'process.exit(0)')
+  createProjectGoal(root, 'Test goal')
+  const project = registerProject(root)
+  server = await startDashboard({ port: 0 })
+  const html = await (await fetch(server.url)).text()
+  const token = /const sessionToken = "([a-f0-9]+)"/u.exec(html)![1]
+  const origin = server.url.slice(0, -1)
+  const response = await fetch(`${server.url}api/projects/${project.id}/resume`, {
+    method: 'POST', headers: { Origin: origin, 'x-yoke-token': token },
+  })
+  expect(response.status).toBe(202)
+  expect(await response.json()).toEqual({ status: 'resume-requested' })
+  await new Promise(resolve => setTimeout(resolve, 20))
+  expect(readProjectGoal(root)?.status).toBe('complete')
+})
+
+it('resume refuses a duplicate start while the project lock is held', async () => {
+  createProjectGoal(root, 'Test goal')
+  writeFileSync(join(root, '.yoke/loop.lock'), JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }))
+  const project = registerProject(root)
+  server = await startDashboard({ port: 0 })
+  const html = await (await fetch(server.url)).text()
+  const token = /const sessionToken = "([a-f0-9]+)"/u.exec(html)![1]
+  const origin = server.url.slice(0, -1)
+  const response = await fetch(`${server.url}api/projects/${project.id}/resume`, {
+    method: 'POST', headers: { Origin: origin, 'x-yoke-token': token },
+  })
+  expect(response.status).toBe(409)
+  expect(await response.json()).toMatchObject({ status: 'already-running' })
+})
+
+it('notes are bounded append-only timeline events and changes remain pending inbox data', async () => {
+  const project = registerProject(root)
+  server = await startDashboard({ port: 0 })
+  const html = await (await fetch(server.url)).text()
+  const token = /const sessionToken = "([a-f0-9]+)"/u.exec(html)![1]
+  const origin = server.url.slice(0, -1)
+  const note = '<script>alert(1)</script>'
+  const noteResponse = await fetch(`${server.url}api/projects/${project.id}/notes`, {
+    method: 'POST', headers: { Origin: origin, 'x-yoke-token': token, 'content-type': 'application/json' },
+    body: JSON.stringify({ note }),
+  })
+  expect(noteResponse.status).toBe(200)
+  expect(await noteResponse.json()).toEqual({ status: 'note-added' })
+  const detail = await (await fetch(`${server.url}api/projects/${project.id}`)).json()
+  expect(detail.events.find((event: { type: string }) => event.type === 'operator-note').data.note).toBe(note)
+  expect((await fetch(`${server.url}api/projects/${project.id}/notes`, {
+    method: 'POST', headers: { Origin: origin, 'x-yoke-token': token, 'content-type': 'application/json' },
+    body: JSON.stringify({ note: 'x'.repeat(4001) }),
+  })).status).toBe(400)
+
+  const changeResponse = await fetch(`${server.url}api/projects/${project.id}/changes`, {
+    method: 'POST', headers: { Origin: origin, 'x-yoke-token': token, 'content-type': 'application/json' },
+    body: JSON.stringify({ request: 'Add a billing portal' }),
+  })
+  expect(changeResponse.status).toBe(200)
+  const change = await changeResponse.json()
+  expect(change).toMatchObject({ status: 'pending', requestId: expect.any(String) })
+  expect(pendingChanges(root)[0]).toMatchObject({ id: change.requestId, request: 'Add a billing portal' })
+})
 it('retains per-attempt tokens and partial call measurement for project details', async () => {
   mkdirSync(join(root, '.yoke'))
   writeFileSync(join(root, '.yoke/goal.json'), JSON.stringify({ objective: 'Tokens', status: 'blocked', attempts: [{ provider: 'gemini', success: false, inputTokens: 20, outputTokens: 5 }] }))
@@ -85,4 +173,47 @@ it('retains per-attempt tokens and partial call measurement for project details'
   const data = await (await fetch(`${server.url}api/projects/${project.id}`)).json()
   expect(data.goal.attempts[0]).toMatchObject({ inputTokens: 20, outputTokens: 5 })
   expect(data.status.measurement).toMatchObject({ measuredCalls: 2, unknownCalls: 1 })
+})
+
+it('server exposes bounded workspace analytics and project event history', async () => {
+  const project = registerProject(root)
+  appendEvent(root, { runId: 'run', type: 'accepted', timestamp: '2026-09-06T10:00:00Z' })
+  server = await startDashboard({ port: 0 })
+  const workspace = await (await fetch(`${server.url}api/workspace/analytics?from=2026-09-01&to=2026-10-01&bucket=week`)).json()
+  expect(workspace.projects[0].id).toBe(project.id)
+  const history = await (await fetch(`${server.url}api/projects/${project.id}/history?from=2026-09-01&to=2026-10-01&limit=${DASHBOARD_LIMITS.events}`)).json()
+  expect(history.events).toHaveLength(1)
+  expect((await fetch(`${server.url}api/projects/${project.id}/history?limit=${DASHBOARD_LIMITS.events + 1}`)).status).toBe(400)
+})
+
+it('server exposes runs grouped in history with recorded execution metadata', async () => {
+  const project = registerProject(root)
+  appendEvent(root, { runId: 'run-details', timestamp: '2026-09-06T10:00:00Z', type: 'tokens', storyId: 'story', attemptId: 'attempt', data: { agent: 'codex', provider: 'openai', model: 'gpt-5', variant: 'high', role: 'worker', inputTokens: 20, outputTokens: 5, usageAvailable: true } })
+  appendEvent(root, { runId: 'run-details', timestamp: '2026-09-06T10:01:00Z', type: 'phase-ended', storyId: 'story', attemptId: 'attempt', phase: 'implementing', durationMs: 60000 })
+  appendEvent(root, { runId: 'run-details', timestamp: '2026-09-06T10:02:00Z', type: 'attempt-ended', storyId: 'story', attemptId: 'attempt', outcome: 'passed', data: { usageAvailable: true } })
+  server = await startDashboard({ port: 0 })
+  const data = await (await fetch(`${server.url}api/projects/${project.id}/history?from=2026-09-01&to=2026-10-01`)).json()
+  expect(data.runs).toHaveLength(1)
+  expect(data.runs[0]).toMatchObject({ runId: 'run-details', agent: 'codex', provider: 'openai', model: 'gpt-5', variant: 'high', role: 'worker', phase: 'implementing', startedAt: '2026-09-06T10:00:00.000Z', endedAt: '2026-09-06T10:02:00.000Z' })
+  expect(data.runs[0].timestamps).toEqual(['2026-09-06T10:00:00.000Z', '2026-09-06T10:01:00.000Z', '2026-09-06T10:02:00.000Z'])
+  expect(data.runs[0].events).toHaveLength(3)
+})
+
+it('server validates typed control payloads', async () => {
+  createProjectGoal(root, 'Test goal')
+  const project = registerProject(root)
+  server = await startDashboard({ port: 0 })
+  const html = await (await fetch(server.url)).text()
+  const token = /const sessionToken = "([a-f0-9]+)"/u.exec(html)![1]
+  const origin = server.url.slice(0, -1)
+  const response = await fetch(`${server.url}api/projects/${project.id}/pause`, { method: 'POST', headers: { Origin: origin, 'x-yoke-token': token, 'content-type': 'application/json' }, body: JSON.stringify({ action: 'resume' }) })
+  expect(response.status).toBe(400)
+})
+
+it('security rejects absolute-form cross-origin reads', async () => {
+  registerProject(root)
+  server = await startDashboard({ port: 0 })
+  const url = new URL(server.url)
+  const status = await new Promise<number>(resolve => { request({ hostname: url.hostname, port: Number(url.port), path: 'http://evil.example/api/projects' }, response => { response.resume(); resolve(response.statusCode!) }).end() })
+  expect(status).toBe(403)
 })

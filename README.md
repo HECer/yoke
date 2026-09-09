@@ -1,9 +1,9 @@
 <div align="center">
 
-<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.13.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
+<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.15.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
 
-<!-- yoke:version:start -->1.13.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1241<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.15.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->1268<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1241%20defined-blue.svg)
+![Tests](https://img.shields.io/badge/tests-1268%20defined-blue.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini%20%7C%20Qwen%20%7C%20OpenCode%20%7C%20Kilo%20%7C%20Pi-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -27,7 +27,7 @@
 
 > **TL;DR** — `yoke setup .` asks six questions and installs the native harness for your agent. `yoke new my-app --idea="..."` bootstraps a project and drafts its story backlog. `yoke loop run my-app --isolate --review` then implements it behind hard gates: **clean tree → acceptance criteria → your real tests green → an independent model approves → commit**. Add `--parallel=N` for dependency-aware workers, or declare a reference and add `--quality` for a bounded critic/repair gauntlet. If any blocking gate is red, nothing is committed. Proof lives in `.yoke/proof/<story>/`.
 
-**New in 1.13.0:** first-class [OpenCode, Kilo and Pi integrations](docs/HARNESSES.md), including native headless invocation, provider/model/variant routing, retrofit artifacts, role configuration and provider telemetry. [Qwen Code hardening and explicit DeepSeek/Kimi API model profiles](docs/QWEN-MODEL-SUPPORT.md) remain available. Since 1.10.0, Yoke also includes [dashboard search, filters and period comparisons](docs/DASHBOARD-EVOLUTION.md), [batch task assessments with separate planning models](docs/CAPABILITY-ROUTING.md), and [Windows sandbox preflight and process supervision](docs/WINDOWS-RUNNER-VALIDATION.md). Existing routing settings remain authoritative. See the [changelog](CHANGELOG.md) and the [harness integration guide](docs/HARNESSES.md) for limitations and setup.
+**New in 1.15.0:** federated [Code Intelligence](docs/CODE-INTELLIGENCE.md) composes Graft, Graphify and Serena behind one Yoke-controlled MCP surface, with structural and semantic evidence, content-addressed snapshots, partial-coverage reporting and isolated edit previews. It is opt-in: use `off` for the unchanged legacy path, `shadow` for read-only canaries, or `active` for previews and approved edits. The [1.14.0 dashboard overhaul](docs/DASHBOARD-OVERHAUL.md) and first-class [OpenCode, Kilo and Pi integrations](docs/HARNESSES.md) remain available. See the [changelog](CHANGELOG.md) and [Code Intelligence guide](docs/CODE-INTELLIGENCE.md) for setup and limitations.
 
 OpenCode, Kilo and Pi are real CLI integrations, not bundled runtimes or credentials. OpenCode/Kilo use their JSON headless modes and local MCP configuration; Pi uses JSONL and explicit tool allowlists, but has no native MCP, sub-agent or plan layer. Read the [integration guide](docs/HARNESSES.md) before selecting a permission profile.
 
@@ -40,11 +40,11 @@ yoke projects add /path/to/backend
 yoke dashboard --no-register
 ```
 
-Open the printed `http://127.0.0.1:...` URL. Each registered project has its own goals, tasks and evidence. The dashboard shows available worker state, per-task duration estimates, planned start offsets, input/output tokens, costs and unknown measurements. You can request a goal pause at a safe boundary.
+Open the printed `http://127.0.0.1:...` URL. Each registered project has its own goals, tasks and evidence. The dashboard is a local control room with an overview/ranking screen, project live view, bounded **History explorer**, and Workspace analytics by UTC time bucket. It shows worker state, agent/provider/model/variant/role/phase metadata when recorded, per-task duration estimates, planned start offsets, input/output tokens, reported costs, outcomes, and explicit unknown or partial measurements. Dark and light themes, keyboard navigation, responsive layouts, and reduced-motion handling are included.
 
-The dashboard includes attention-first project search and filters, restorable view links, and usage comparisons against the preceding period. See [dashboard behavior and measurement limits](docs/DASHBOARD-EVOLUTION.md).
+The dashboard includes attention-first project search and filters, project ranking by attention, last activity, token usage, reported cost, acceptance, or name, restorable view links, and usage comparisons against the preceding period. From a project’s live view you can request a safe-boundary pause or resume, add an operator note, and use **Queue a change** for the next planning boundary. See [dashboard behavior and measurement limits](docs/DASHBOARD-EVOLUTION.md) and the [dashboard overhaul contract](docs/DASHBOARD-OVERHAUL.md).
 
-Projects are registered explicitly; this version does not automatically discover every process or aggregate other computers. Start/resume and budget changes use the CLI. Missing history appears as unknown; time ranges are empirical estimates, not exact deadlines.
+Projects are registered explicitly; this version does not automatically discover every process or aggregate other computers. Dashboard controls call the existing goal/loop pause and resume boundaries and never execute arbitrary shell commands. Change requests are append-only pending inbox entries, not immediate code changes. The server stays loopback-only and POST actions require same-origin session authorization; the local Yoke process remains the authority for execution. Missing history appears as unknown; time ranges are empirical estimates, not exact deadlines. Read the [overhaul contract](docs/DASHBOARD-OVERHAUL.md) for data limits and non-goals.
 
 ### Verified goals and efficient execution
 
@@ -209,6 +209,7 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke check [dir] [--json] [--requirement=] [--protect [--refresh]]` | Execute acceptance checks or explicitly pin their infrastructure | `0` passed/pinned · `1` failed · `2` unverified/unavailable |
 | `yoke goal set\|run\|resume\|pause\|status\|handoff\|budget [dir]` | Durable objectives, provider handoff, protected checks and checkpoint budgets | run/resume: `0` complete · `1` unfinished · `2` unavailable |
 | `yoke setup [dir] [--yes] [--host=] [--agent=] [--runner=] [--code-graph=] [--code-intelligence=off\|shadow\|active] [--decision-policy=] [--loop\|--no-loop] [--routing\|--no-routing] [--model-provider=deepseek,kimi]` | Shared setup for all seven harnesses; optional federated code intelligence and DeepSeek/Kimi API profiles | `0` · `1` invalid setup |
+| `yoke code-intelligence-server [--workspace=] [--mode=off\|shadow\|active]` | Serve the single Yoke-controlled MCP facade for federated code intelligence | `0` · `1` invalid/unavailable |
 | `yoke validate [canonDir]` | Validate the canon (schema, frontmatter, templates) | `0` valid · `1` errors |
 | `yoke new <dir> [--idea=] [--agent=] [--runner=] [--loop]` | Greenfield bootstrap: git init → scaffold → retrofit → context → PRD (drafted from `--idea`) → committed | `0` · `1` usage / non-empty dir / draft failed (scaffold survives) · `2` draft agent unavailable |
 | `yoke retrofit [dir] [--agent=claude,codex,gemini,qwen,opencode,kilo,pi\|all] [--code-graph=graphify\|serena] [--code-intelligence=off\|shadow\|active] [--loop]` | Install/update the harness for the selected agents, non-destructively | `0` |
@@ -852,7 +853,7 @@ Yoke's guardrails are **mechanical, not advisory** — the loop blocks on a dirt
 
 ## 🧠 Choose your code-graph
 
-`yoke retrofit --code-graph=graphify|serena` (default `graphify`, remembered per project) selects the legacy single graph. For complete code intelligence, enable the federated facade with `yoke retrofit --code-intelligence=active` (or `shadow` for read-only comparison). See the [Code Intelligence guide](docs/CODE-INTELLIGENCE.md).
+`yoke retrofit --code-graph=graphify|serena` (default `graphify`, remembered per project) selects the legacy single graph. For complete code intelligence, enable the federated facade with `yoke retrofit --code-intelligence=active` (or `shadow` for a read-only canary). See the [Code Intelligence guide](docs/CODE-INTELLIGENCE.md).
 
 | | **graphify** | **Serena** |
 |---|---|---|
@@ -905,6 +906,7 @@ canon/            # the source of truth — harness-agnostic
   AGENTS.md  skills/  policy/  loop/  tools/  manifest.yaml
 src/
   canon/          # manifest schema + validator (yoke validate)
+  code-intelligence/ # federated MCP facade, adapters, snapshots and guarded edits
   change/         # append-only change inbox · planning · independent coverage review
   retrofit/       # detect · plan · apply · planners (all seven harnesses) · tools
   loop/           # prd · gates · runner · verify · git/worktree · loop · run-command · lock · cleanup
@@ -927,7 +929,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1241 tests)
+npm test          # vitest (1268 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```
