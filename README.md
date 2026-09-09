@@ -1,8 +1,8 @@
 <div align="center">
 
-<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.13.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
+<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.14.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
 
-<!-- yoke:version:start -->1.13.0<!-- yoke:version:end -->
+<!-- yoke:version:start -->1.14.0<!-- yoke:version:end -->
 <!-- yoke:tests:start -->1258<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi<!-- yoke:agents:end -->

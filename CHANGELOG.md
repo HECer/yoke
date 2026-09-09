@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.14.0 — 2026-09-09
+
+### Added
+- Add a local-first workspace control room that ranks registered projects by attention, activity, recorded tokens, reported cost, acceptance, or name, with composable search, status filters, UTC scopes, and restorable view links.
+- Add workspace and project analytics with time buckets, token/call/duration/outcome summaries, provider/model/agent/role/phase/run rankings, usage comparisons, and visible measurement coverage.
+- Add project live operations for task and phase state, worker metadata, bounded event timelines, safe-boundary pause/resume, append-only operator notes, and queued change requests.
+- Add a responsive dashboard shell with dark/light themes, keyboard and reduced-motion support, explicit loading/empty/error/stale states, and readable narrow-screen navigation.
+
+### Changed
+- Base dashboard views on durable local history and versioned events while keeping unknown, partial, corrupt, unavailable, and stale telemetry explicit instead of treating it as zero.
+- Keep dashboard controls on the existing loop/goal runner and lock boundaries; browser requests remain typed, same-origin, loopback-only, and unable to execute arbitrary shell commands.
+
+### Fixed
+- Scope dashboard loop verification to the intended local project and retain focused coverage for dashboard authorization, path safety, partial history, concurrency, navigation, and control behavior.
+- Improve light-theme contrast for the active navigation state and keep long project names inside desktop and mobile navigation areas.
+
+### Migration and validation limits
+- No migration is required. Start the local view with `yoke dashboard --no-register`, then register projects with `yoke projects add <path>` as needed. Existing dashboard settings remain local and authoritative.
+- Validated with the dashboard tests, TypeScript lint/build, canonical manifest validation, release metadata checks, package dry run, and real local browser screenshots at desktop and mobile sizes.
+- Dashboard data is limited to explicitly registered local projects and retained local telemetry. It does not provide remote multi-user access, reconstruct missing history, prove requested models were used, or execute arbitrary browser-supplied commands. Pause/resume operates only at existing safe loop/goal boundaries.
+- This release targets npm package 1.14.0; npm publication is triggered by the matching published GitHub release and verified separately.
+
 ## 1.13.0 — 2026-09-08
 
 ### Added
