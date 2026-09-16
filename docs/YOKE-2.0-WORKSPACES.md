@@ -4,14 +4,15 @@ Status: **M0 workspace-planning preview**, not a shared-checkout executor. This 
 
 ## What the comparison actually shows
 
-BridgeMind's Code Workbench launches independent seats. Its documented default is a shared checkout, with an optional separate Git worktree per seat. Workbench is not the same thing as a coordinated Swarm: several terminals sharing files do not automatically share a plan, acceptance contract or reliable ownership protocol. The supplied screenshot also shows both isolation choices; the disabled worktree option says the selected folder is not a Git repository. This is not evidence that BridgeMind lacks worktree support.
+The supplied BridgeMind screenshot shows multiple-seat controls and the isolation choices **Shared checkout** and **New worktree**. Shared checkout is selected in that screenshot; the disabled worktree option says the selected folder is not a Git repository. This is not evidence that BridgeMind lacks worktree support. Its current public Code Mode page confirms project-folder sessions, real terminals and Solo/Pair/Workbench/Swarm presets, but does not specify a conflict-lock protocol or a universal isolation default. Several terminals sharing files do not automatically share a plan, acceptance contract or safe ownership protocol.
 
-Orca also documents multi-agent conversations inside a single worktree. Therefore "BridgeMind shares, Orca isolates" is not a sound architectural distinction. The useful questions are who owns mutation, what snapshot a reader sees, how effects are bounded, and who accepts the integrated result.
+Orca's current worktree documentation describes a task-native workspace with its own files, branch and agent terminals. It also documents shared dependency/cache paths, which may be symlinked. Therefore worktree separation alone does not prove all resources are isolated. The useful questions are who owns mutation, what snapshot a reader sees, how effects are bounded, and who accepts the integrated result. No automatic same-worktree conversation mechanism is assumed here.
 
 Primary references:
 
-- https://docs.bridgemind.ai/docs/code-mode (Workbench, shared checkout and optional per-seat worktrees)
-- https://www.onorca.dev/docs/multi-agent-setup (multiple agents in one worktree)
+- User-supplied BridgeMind launch-screen screenshot (seat count and isolation choices; not a runtime safety test)
+- https://docs.bridgemind.ai/docs/code-mode (project folders, terminals and multi-session presets)
+- https://www.onorca.dev/docs/model/worktrees (task worktrees, agent terminals and shared directories)
 - https://git-scm.com/docs/git-worktree (linked worktrees share repository data)
 
 ## Yoke today, not a proposed greenfield system
