@@ -6,6 +6,7 @@ import { parseAdmissionInput, planAdmission } from './admission.js'
 import { budgetSummary, parseLimits } from './budget.js'
 import { previewOrcaWorkerStart, probeOrca } from './orca.js'
 import { initializeLedger, readLedger } from './store.js'
+import { planWorkspace } from './workspace-plan.js'
 
 function readJson(file: string): unknown {
   if (statSync(file).size > 4 * 1024 * 1024) throw new Error('Input exceeds 4 MiB')
@@ -13,12 +14,14 @@ function readJson(file: string): unknown {
 }
 const HELP = `Yoke 2.0 control-plane preview (not a production 2.0 release)
   node dist/control-plane/cli.js plan <manifest.json>
+  node dist/control-plane/cli.js workspace-plan <manifest.json>
   node dist/control-plane/cli.js orca-doctor
   node dist/control-plane/cli.js orca-preview <launch.json>
   node dist/control-plane/cli.js budget-show <project>
   node dist/control-plane/cli.js budget-init <project> <limits.json>
 
-plan / orca-preview do not launch agents, execute commands, or persist reservations.
+plan / workspace-plan / orca-preview do not launch agents or persist reservations.
+workspace-plan describes topology and required barriers, not execution authorization.
 Only budget-init writes state, and it never resets an existing ledger.
 Use the existing yoke goal / loop / check commands for real execution and acceptance.`
 export async function main(argv: readonly string[]): Promise<number> {
@@ -30,6 +33,10 @@ export async function main(argv: readonly string[]): Promise<number> {
       const input = parseAdmissionInput(readJson(args[0]!)), plan = planAdmission(input)
       print({ preview: true, effects: 'none', ...plan, budget: budgetSummary(plan.ledger) })
       return plan.decisions.some(decision => decision.status === 'blocked') ? 1 : 0
+    }
+    if (command === 'workspace-plan' && args.length === 1) {
+      const plan = planWorkspace(readJson(args[0]!)); print(plan)
+      return plan.status === 'blocked' ? 1 : 0
     }
     if (command === 'orca-doctor' && args.length === 0) { const probe = await probeOrca(); print(probe); return 2 }
     if (command === 'orca-preview' && args.length === 1) { print(previewOrcaWorkerStart(readJson(args[0]!))); return 0 }
