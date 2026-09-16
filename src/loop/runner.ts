@@ -26,6 +26,8 @@ export interface AgentContext {
 }
 
 export interface AgentResult {
+  /** Trusted controller callback, never deserialized from worker output. Blocks stale native snapshots. */
+  assertStableCandidate?: () => void
   success: boolean
   infrastructureFailure?: boolean
   summary: string

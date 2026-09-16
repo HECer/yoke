@@ -24,7 +24,7 @@ node dist/control-plane/cli.js budget-init /path/to/project docs/examples/contro
 
 `budget-show` does not initialize state. `budget-init` is the **only mutating CLI command** in this preview. It explicitly creates `.yoke/control-plane/budget.json` and uses the existing Yoke project lock. It never resets existing history or edits existing configuration.
 
-The internal `transactLedger` API uses an expected revision under the same project lock. Old reservations cannot be erased, reordered or have finalized usage rewritten. New entries must first be persisted as in-flight intents, fit the budget and respect concurrency. This low-level API is for trusted adapters, not a remote authorization endpoint. Calls already holding the project lock must not reacquire it: M1 must integrate at the owning transaction boundary rather than nesting this API in an existing locked runner.
+The internal `transactLedger` API uses an expected revision under the same project lock. Old reservations cannot be erased, reordered or have finalized usage rewritten. New entries must first be persisted as in-flight intents, fit the budget and respect concurrency. This low-level API is for trusted adapters, not a remote authorization endpoint. Calls already holding the project lock use the new `transactLedgerOwned` API with their actual owner token. It revalidates ownership/revision without reacquiring or releasing the lock. The first [native managed-edit adapter](NATIVE-WORKSPACES.md) uses it from the existing serial isolated loop; other native and external runner paths are not yet wired into this ledger.
 
 Units:
 
@@ -57,6 +57,10 @@ The executable is resolved once: explicit `ORCA_CLI_COMMAND`, development binary
 `assessEvidence` checks integrated-stage evidence against Task/Attempt/Dispatch IDs and snapshot, acceptance, policy and environment digests. Candidate output, missing checks, stale fingerprints and unverified checks cannot pass. It does not execute tests, authenticate the producer or update legacy `Story.passes`. Only a trusted verification adapter may use these receipts as input to the existing acceptance system.
 
 Write scopes use literal repository-relative prefixes, case-folded conservatively for Windows/POSIX planning. Absolute paths, traversal and globs are rejected. `.git`, `.yoke` and explicitly protected scopes are blocked. These are lexical scheduling constraints, not filesystem permissions or protection against a hostile same-user process. The store rejects existing state-directory symlinks and uses bounded reads, file fsync and atomic replacement; directory/power-loss/network-filesystem guarantees remain platform-dependent.
+
+## Native execution beyond the M0 CLI
+
+The `workspace-snapshot <project> <file> [file ...]` diagnostic reads explicit bounded UTF-8 files and prints hashes, not source. It grants no write authority and does not freeze a live host filesystem. Executable managed edits are explicitly configured through the existing loop, not through `workspace-plan`. See [the M1 guide](NATIVE-WORKSPACES.md) for the action schema, safety boundary, accounting scope and recovery limits.
 
 ## Tests
 

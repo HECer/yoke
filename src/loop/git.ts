@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import type { GitOps } from './gates.js'
 import { sanitizeCommitMessage, type CommitIdentity } from './identity.js'
 
-export const RUNTIME_PATHS = [".yoke/supervision", ".yoke/provider-processes", '.yoke/artifacts', '.yoke/events', '.yoke/history', '.yoke/routing', '.yoke/checks', '.yoke/goal.json', '.yoke/goal.pause', '.yoke/loop-status.json', '.yoke/loop.lock', '.yoke/loop.lock.takeover', '.yoke/loop.lock.takeover.recovery', '.yoke/runner.pid', '.yoke/story-durations.json']
+export const RUNTIME_PATHS = ['.yoke/control-plane', ".yoke/supervision", ".yoke/provider-processes", '.yoke/artifacts', '.yoke/events', '.yoke/history', '.yoke/routing', '.yoke/checks', '.yoke/goal.json', '.yoke/goal.pause', '.yoke/loop-status.json', '.yoke/loop.lock', '.yoke/loop.lock.takeover', '.yoke/loop.lock.takeover.recovery', '.yoke/runner.pid', '.yoke/story-durations.json']
 // Directory pathspecs include descendants and also exclude the directory entry.
 export const RUNTIME_EXCLUDES = RUNTIME_PATHS.map(path => `:(exclude)${path}`)
 

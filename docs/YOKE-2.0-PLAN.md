@@ -231,13 +231,23 @@ Messen: akzeptierte Ergebnisse, Regressionen, Zeit bis zur Abnahme, gesamte Rech
 
 Fehlerinjektion gehört zum Benchmark: Prozessabbruch, verlorene Antwort, doppelte Nachricht, veränderte Akzeptanzdatei, neuer Target-Commit, fehlendes Usage-Event, nicht verfügbare Runtime, konkurrierender Schreibbereich und überschrittenes Budget. Die Mechanik muss vor einer breiten autonomen Nutzung bestehen.
 
-## 16. Tatsächlicher M0-Lieferumfang und Grenzen
+## 16. Ursprünglicher M0-Lieferumfang und Grenzen
+
+Dieser Abschnitt beschreibt den ursprünglichen M0-Stand. Die später implementierte native Teilintegration steht in Abschnitt 17.
 
 Implementiert sind die Dateien in `src/control-plane`, die gemeinsamen Vertragsfälle unter `tests/control-plane`, Beispiele und die [Bedienungsanleitung](CONTROL-PLANE-PREVIEW.md). Die Dateien werden von der vorhandenen TypeScript-Konfiguration mitgebaut. Es kommen keine Laufzeitabhängigkeiten hinzu.
 
 Die lokalen Vertragsfälle sind mit Node 22.16.0 und TypeScript für den neuen Quellteil sowie den unverändert übernommenen State-/Lock-Helfern ausführbar geprüft worden. Das ist nicht dasselbe wie ein vollständiger lokaler Testlauf aller Yoke-Module. GitHub-CI-Resultate müssen anhand des konkreten PR-Commits zusätzlich überprüft werden.
 
 Nicht implementiert: produktive Einbindung in Goal/Loop, verteilte Lease-/Outbox-Ausführung, gestartete Orca-Worker, Live-Abnahme mit authentifizierten Modellen, persistente Agenten-Memory-Verwaltung, Routinen-Daemon und ein fertig veröffentlichtes Yoke 2.0. Nicht behauptet: garantierte Kostensenkung, Modellparität, harte externe Kostendeckel oder OS-Sandboxing durch diese Vorschau.
+
+## 17. Implementierter M1-Teilschritt: kontrollierte native Textänderungen
+
+Der Branch enthält jetzt einen tatsächlich ausführbaren, opt-in nativen Datenadapter: `actions[].kind: workspace-edit` läuft durch den bestehenden seriellen, isolierten Loop. Er verwendet dessen echte Projektsperre und persistierte Worktree-Eigentümerschaft, reserviert Budget vor der Veröffentlichung und übergibt den Kandidaten an die bisherigen Gates. Die [Bedienungsanleitung](NATIVE-WORKSPACES.md) enthält Schema, Aktivierung und die genauen Grenzen.
+
+Unveränderliche Dateisnapshots, ein einzelner widerrufbarer Schreibzugang und SHA-256-Vorbedingungen schützen Operationen innerhalb der implementierten Schnittstelle. Ein Abnahme-Guard bindet den Kandidaten vor den Tests und kontrolliert Kandidateninhalt/HEAD sowie den Integrationsstand erneut nach Gates und Review. Er erkennt bleibende Veränderungen, verhindert aber keine beliebigen Betriebssystem-Schreibzugriffe oder vorübergehende Write-and-Restore-Manipulationen.
+
+Dies ist keine Freigabe gewöhnlicher CLI-Agenten als sicherer gemeinsamer Schreibverbund. Externe Prozessbäume, echte OS-Isolation, modellbasierte Live-Beobachter, vollständige Budgetabdeckung aller Rollen und automatische Crash-Reconciliation bleiben offen. M1 ist damit teilweise implementiert, nicht pauschal abgeschlossen. Der neue native Pfad ist mit echten temporären Git-Repositories und einem echten Testprozess prüfbar; es werden keine Modellkosten oder allgemeine Beschleunigungen behauptet. Versionen und bestehende Standardmodi bleiben unverändert.
 
 ## Primärquellen und Reproduzierbarkeit
 

@@ -147,3 +147,14 @@ describe('realGitOps', () => {
     expect(realGitOps.isClean(dir)).toBe(true)
   })
 })
+
+for (const prestaged of [false, true]) it(`never stages native budget, intent or backup files (pre-staged=${prestaged})`, () => {
+  const state = join(dir, '.yoke', 'control-plane')
+  mkdirSync(state, { recursive: true })
+  for (const name of ['budget.json', 'prepared.json', 'before.json']) writeFileSync(join(state, name), 'private runtime data')
+  if (prestaged) git('add', '-f', '--', '.yoke/control-plane')
+  writeFileSync(join(dir, 'b.txt'), 'accepted code')
+  realGitOps.commitAll(dir, 'native candidate')
+  expect(execFileSync('git', ['ls-files', '.yoke/control-plane'], { cwd: dir }).toString()).toBe('')
+  expect(realGitOps.isClean(dir)).toBe(true)
+})

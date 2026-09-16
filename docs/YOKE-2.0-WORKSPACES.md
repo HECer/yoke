@@ -1,6 +1,6 @@
 # Yoke 2.0: shared knowledge, controlled mutation
 
-Status: **M0 workspace-planning preview**, not a shared-checkout executor. This extends [the 2.0 plan](YOKE-2.0-PLAN.md) and [control-plane preview](CONTROL-PLANE-PREVIEW.md). Inspected production base: `4c8654e1e8639ddd3c308db8aded0701d8cebcbf` (1.15.1). Package versions and native execution defaults are unchanged.
+Status: **M0 workspace-planning preview**, plus an unreleased [M1 native text-broker execution path](NATIVE-WORKSPACES.md). The planner itself is not a shared-checkout executor. This extends [the 2.0 plan](YOKE-2.0-PLAN.md) and [control-plane preview](CONTROL-PLANE-PREVIEW.md). Inspected production base: `4c8654e1e8639ddd3c308db8aded0701d8cebcbf` (1.15.1). Package versions and native execution defaults are unchanged.
 
 ## What the comparison actually shows
 
@@ -94,4 +94,4 @@ npx tsx tests/control-plane/run-workspace-cases.ts
 
 Focused local validation: TypeScript compilation of the workspace module and its unchanged validation dependency; 66 cases passed on Node 22.16.0. The dependency copy was checked against repository blob `a609ce60280e24acba7c3020b854c822bb3a5daf`. This is not a full-repository regression run, CLI end-to-end test, filesystem isolation test or authenticated model benchmark. Check the exact commit's CI separately.
 
-Not implemented here: live shared-write dispatch, real capability probes for these guarantees, writer fencing, snapshot freeze enforcement, process migration, a patch broker, automatic effect discovery, new billing guarantees or a production 2.0 release. Existing production paths remain unchanged.
+Not implemented here: live shared-write dispatch, real capability probes for these guarantees, writer fencing, snapshot freeze enforcement, process migration, a patch broker, automatic effect discovery, new billing guarantees or a production 2.0 release. Existing default production paths remain unchanged; the opt-in native data adapter and its verification guard are documented separately in [Native workspaces](NATIVE-WORKSPACES.md).

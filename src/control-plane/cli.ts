@@ -7,6 +7,7 @@ import { budgetSummary, parseLimits } from './budget.js'
 import { previewOrcaWorkerStart, probeOrca } from './orca.js'
 import { initializeLedger, readLedger } from './store.js'
 import { planWorkspace } from './workspace-plan.js'
+import { captureWorkspaceSnapshot } from './workspace-snapshot.js'
 
 function readJson(file: string): unknown {
   if (statSync(file).size > 4 * 1024 * 1024) throw new Error('Input exceeds 4 MiB')
@@ -15,6 +16,7 @@ function readJson(file: string): unknown {
 const HELP = `Yoke 2.0 control-plane preview (not a production 2.0 release)
   node dist/control-plane/cli.js plan <manifest.json>
   node dist/control-plane/cli.js workspace-plan <manifest.json>
+  node dist/control-plane/cli.js workspace-snapshot <project> <file> [file ...]
   node dist/control-plane/cli.js orca-doctor
   node dist/control-plane/cli.js orca-preview <launch.json>
   node dist/control-plane/cli.js budget-show <project>
@@ -22,6 +24,7 @@ const HELP = `Yoke 2.0 control-plane preview (not a production 2.0 release)
 
 plan / workspace-plan / orca-preview do not launch agents or persist reservations.
 workspace-plan describes topology and required barriers, not execution authorization.
+workspace-snapshot reads bounded explicit text files; it does not freeze an external writer.
 Only budget-init writes state, and it never resets an existing ledger.
 Use the existing yoke goal / loop / check commands for real execution and acceptance.`
 export async function main(argv: readonly string[]): Promise<number> {
@@ -37,6 +40,11 @@ export async function main(argv: readonly string[]): Promise<number> {
     if (command === 'workspace-plan' && args.length === 1) {
       const plan = planWorkspace(readJson(args[0]!)); print(plan)
       return plan.status === 'blocked' ? 1 : 0
+    }
+    if (command === 'workspace-snapshot' && args.length >= 2) {
+      const snapshot = captureWorkspaceSnapshot(args[0]!, args.slice(1))
+      print({ effects: 'none', capture: 'observed-files-not-a-live-freeze', id: snapshot.id, coverage: snapshot.coverage, files: snapshot.files })
+      return 0
     }
     if (command === 'orca-doctor' && args.length === 0) { const probe = await probeOrca(); print(probe); return 2 }
     if (command === 'orca-preview' && args.length === 1) { print(previewOrcaWorkerStart(readJson(args[0]!))); return 0 }

@@ -361,6 +361,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
           reporter.blocked(reason)
           return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
         }
+        result.assertStableCandidate?.()
         const criteriaVerdict = runCriterionGates(opts, wt, story)
         if (!criteriaVerdict.passed) {
           result.routing?.recordOutcome(false)
@@ -432,6 +433,8 @@ export function runLoop(opts: LoopOptions): LoopResult {
           result.routing?.recordOutcome(false); reporter.blocked(protection)
           return { status: 'blocked', iterations, reason: protection, finalProgress: progress(stories) }
         }
+        // Managed native data edits pin the candidate through every gate and review.
+        result.assertStableCandidate?.()
         // The worktree is a checkout of committed HEAD, so the agent above reads
         // context from HEAD's .yoke/context — commit context changes for --isolate
         // to honour them. We write the decision here so `integrate` carries it back.

@@ -1,6 +1,6 @@
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { acquireLock, releaseLock } from '../loop/lock.js'
+import { acquireLock, readLock, releaseLock } from '../loop/lock.js'
 import { statePath } from '../workspace/state.js'
 import { type BudgetLedger, type BudgetLimits, createLedger, parseLedger, reserveBudget, RESOURCE_KEYS } from './budget.js'
 import { fail, integer, record } from './validation.js'
@@ -8,7 +8,7 @@ import { fail, integer, record } from './validation.js'
 export interface LedgerSnapshot { readonly version: 1; readonly revision: number; readonly ledger: BudgetLedger }
 const MAX_BYTES = 4 * 1024 * 1024
 function rootPath(root: string): string {
-  const canonical = realpathSync(root)
+  const canonical = realpathSync.native(root)
   if (!statSync(canonical).isDirectory()) fail('invalid_root', 'Project root must be a directory')
   // Validate the shared lock paths BEFORE acquireLock can write under .yoke.
   for (const name of ['loop.lock', 'loop.lock.takeover', 'loop.lock.takeover.recovery']) statePath(canonical, name)
@@ -52,10 +52,30 @@ export function initializeLedger(root: string, limits: BudgetLimits): LedgerSnap
     return save(canonical, { version: 1, revision: 0, ledger: createLedger(limits) })
   })
 }
+/** Existing lock ownership, not an additional lease or a caller-supplied boolean. */
+export function assertLedgerOwner(root: string, ownerToken: string): string {
+  const canonical = rootPath(root)
+  const lock = readLock(canonical)
+  if (!ownerToken || lock?.pid !== process.pid || lock.ownerToken !== ownerToken ||
+      existsSync(statePath(canonical, 'loop.lock.takeover')) || existsSync(statePath(canonical, 'loop.lock.takeover.recovery'))) {
+    fail('lock_not_owned', 'The current process must own the existing project lock')
+  }
+  return canonical
+}
+const transactions = new Set<string>()
 /** Optimistic revision check inside Yoke's existing cross-process project lock. */
 export function transactLedger(root: string, expectedRevision: number, update: (ledger: BudgetLedger) => BudgetLedger): LedgerSnapshot {
+  return locked(root, canonical => transactLedgerOwned(canonical, readLock(canonical)!.ownerToken!, expectedRevision, update))
+}
+
+/** Native loops already hold the lock: validate their exact token; never reacquire/release it. */
+export function transactLedgerOwned(root: string, ownerToken: string, expectedRevision: number, update: (ledger: BudgetLedger) => BudgetLedger): LedgerSnapshot {
   integer(expectedRevision, 'expectedRevision')
-  return locked(root, canonical => {
+  const canonical = assertLedgerOwner(root, ownerToken)
+  const transactionKey = process.platform === 'win32' ? canonical.toLowerCase() : canonical
+  if (transactions.has(transactionKey)) fail('reentrant_transaction', 'Nested ledger transactions are not supported')
+  transactions.add(transactionKey)
+  try {
     const current = readLedger(canonical)
     if (!current) fail('ledger_missing', 'Initialize the control-plane budget explicitly')
     if (current.revision !== expectedRevision) fail('stale_revision', 'Ledger changed; re-read and recompute admission')
@@ -75,7 +95,9 @@ export function transactLedger(root: string, expectedRevision: number, update: (
       if (item.usage !== null) fail('invalid_new_reservation', 'Commit a new in-flight reservation before recording settlement')
       reconciled = reserveBudget(reconciled, { id: item.id, taskId: item.taskId, role: item.role, requested: item.requested }).ledger
     }
+    assertLedgerOwner(canonical, ownerToken)
+    if (JSON.stringify(readLedger(canonical)) !== JSON.stringify(current)) fail('stale_revision', 'Ledger changed during the transaction')
     if (JSON.stringify(current.ledger) === JSON.stringify(next)) return current
     return save(canonical, { version: 1, revision: current.revision + 1, ledger: next })
-  })
+  } finally { transactions.delete(transactionKey) }
 }
