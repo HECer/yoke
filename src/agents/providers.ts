@@ -57,6 +57,9 @@ export function buildProviderInvocation(
   output: { schemaFile?: string; jsonSchema?: Record<string, unknown> } = {},
 ): AgentInvocation {
   const parsedSelection = ModelSelectionSchema.parse(selection)
+  if (['opencode', 'kilo', 'pi'].includes(agent) && parsedSelection.reasoningEffort && parsedSelection.variant && parsedSelection.reasoningEffort !== parsedSelection.variant) {
+    throw new Error(`${agent} reasoningEffort and variant selections must match`)
+  }
   if (agent === 'gemini' && parsedSelection.bare) throw new Error('Gemini does not support the bare startup selection')
   if (agent === 'gemini' && parsedSelection.reasoningEffort) throw new Error('Gemini does not support the reasoningEffort selection')
   if (agent === 'gemini' && parsedSelection.nativeMultiAgent === true) throw new Error('Gemini does not support enabling the nativeMultiAgent selection')
@@ -99,7 +102,7 @@ export function buildProviderInvocation(
     else if (agent === 'pi') args.push('--thinking', parsedSelection.reasoningEffort)
   }
   if (parsedSelection.variant) {
-    if (agent === 'opencode' || agent === 'kilo') args.push('--variant', parsedSelection.variant)
+    if ((agent === 'opencode' || agent === 'kilo') && !parsedSelection.reasoningEffort) args.push('--variant', parsedSelection.variant)
     else if (agent === 'pi') {
       if (parsedSelection.reasoningEffort && parsedSelection.reasoningEffort !== parsedSelection.variant) throw new Error('Pi reasoningEffort and variant selections must match')
       if (!parsedSelection.reasoningEffort) args.push('--thinking', parsedSelection.variant)

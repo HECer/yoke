@@ -9,6 +9,13 @@ You are operating in a project retrofitted by Yoke. Follow these always:
 
 This file is the portable baseline. Agent-specific instructions are generated alongside it (CLAUDE.md, GEMINI.md).
 
+## Host capabilities and execution budgets
+
+- Use only tools and skills actually installed in the host. Legacy `superpowers:` references in adapted skills refer to the corresponding local skill; `test-driven-development` maps to `tdd`. Do not install another plugin just to resolve a namespace.
+- When Yoke owns the loop, worker concurrency, verification, and integration remain under its control. Do not start nested loops or native subagents from a worker. Without native delegation, work serially and expose missing independent-review evidence.
+- Run focused checks for quick feedback, but never skip required acceptance, protected, integration, or release gates. Cache evidence only when code, configuration, and environment still match.
+- Distinguish observed durations from future estimates. Report the sample count, empirical range, and unknown waiting time; a timeout is a budget, not a promised completion time. Do not reduce reasoning or test scope merely to meet an estimate.
+
 ## Skill routing & precedence
 
 When several skills could match the same task, resolve deterministically:

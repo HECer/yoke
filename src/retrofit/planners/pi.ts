@@ -22,7 +22,7 @@ export function planPi(canonDir: string, _targetDir: string, _codeGraph: CodeGra
       kind: 'write',
       target: '.pi/settings.json',
       merge: true,
-      content: JSON.stringify({ skills: ['.pi/skills'] }, null, 2) + '\n',
+      content: JSON.stringify({ skills: ['./skills'] }, null, 2) + '\n',
       reason: 'Pi project skill discovery',
     },
   )

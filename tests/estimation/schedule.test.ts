@@ -1,6 +1,12 @@
 import { expect, it } from 'vitest'
 import { estimateSchedule } from '../../src/estimation/schedule.js'
 const history = [{ storyId: 'past', ms: 1000 }]
+it('uses per-story ranges instead of scaling by unrelated pooled durations', () => {
+  const measured = [100, 200, 300].map(ms => ({ storyId: 'a', ms }))
+    .concat([1000, 2000, 3000].map(ms => ({ storyId: 'b', ms })))
+  expect(estimateSchedule([{ id: 'a' }, { id: 'b', needs: ['a'] }], 2, measured))
+    .toMatchObject({ available: true, etaMs: 2200, lowerMs: 1100, upperMs: 3300, confidence: 'low' })
+})
 it('estimates parallel critical paths with dependencies and exclusive areas', () => {
   const result = estimateSchedule([{ id: 'a', area: 'db' }, { id: 'b', area: 'db' }, { id: 'c' }, { id: 'd', needs: ['a', 'b'] }], 2, history)
   expect(result).toMatchObject({ available: true, etaMs: 3000, sampleCount: 1, confidence: 'low' })

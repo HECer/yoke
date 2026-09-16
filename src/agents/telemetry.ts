@@ -1,5 +1,6 @@
 import type { Agent } from '../retrofit/config.js'
 import type { ProviderTelemetry } from './types.js'
+import { createPiTelemetry } from './pi-telemetry.js'
 
 type JsonParseResult =
   | { readonly ok: true; readonly value: unknown }
@@ -41,13 +42,17 @@ export function parseProviderResult(agent: Agent, output: string): unknown {
   if (agent === 'qwen') return parseQwenResult(output)
 
   const fragments: string[] = []
+  let structuredResult: unknown
   for (const line of output.split(/\r?\n/u)) {
     const parsed = parseJson(line)
     if (!parsed.ok || !isRecord(parsed.value)) continue
     const event = parsed.value
+    if (agent === 'claude' && event.parent_tool_use_id != null) continue
+    if (event.type === 'error' || event.type === 'turn.failed' ||
+      (event.type === 'result' && (event.is_error === true || event.status === 'error'))) return null
     switch (agent) {
       case 'claude':
-        if (event.type === 'result' && directMachineResult(event.structured_output) !== undefined) return event.structured_output
+        if (event.type === 'result' && directMachineResult(event.structured_output) !== undefined) structuredResult = event.structured_output
         if (event.type === 'result' && typeof event.result === 'string') fragments.push(event.result)
         break
       case 'codex': {
@@ -66,6 +71,7 @@ export function parseProviderResult(agent: Agent, output: string): unknown {
       }
       case 'pi':
         if (event.type === 'message_end' && isRecord(event.message) && event.message.role === 'assistant') {
+          if (event.message.stopReason === 'error' || event.message.stopReason === 'aborted') return null
           const text = textContent(event.message.content)
           if (text) fragments.push(text)
         }
@@ -73,6 +79,7 @@ export function parseProviderResult(agent: Agent, output: string): unknown {
     }
   }
 
+  if (structuredResult !== undefined) return structuredResult
   const joined = parseJson(fragments.join(''))
   if (joined.ok) {
     const direct = directMachineResult(joined.value)
@@ -110,6 +117,14 @@ function parseQwenResult(output: string): unknown {
 }
 
 export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderTelemetry {
+  if (agent === 'pi') {
+    const accumulator = createPiTelemetry()
+    for (const line of lines) {
+      const parsed = parseJson(line)
+      if (parsed.ok && isRecord(parsed.value)) accumulator.consume(parsed.value)
+    }
+    return accumulator.finish()
+  }
   let inputTokens: number | undefined
   let cachedInputTokens: number | undefined
   let cacheWriteInputTokens: number | undefined
@@ -121,13 +136,12 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
   const harnessTotals = agent === 'opencode' || agent === 'kilo'
     ? { input: 0, output: 0, cached: 0, cacheWrite: 0, reasoning: 0, cost: 0, hasInput: false, hasOutput: false, hasCached: false, hasCacheWrite: false, hasReasoning: false, hasCost: false }
     : undefined
-  let piUsage: Record<string, unknown> | undefined
   for (const line of lines) {
     let parsed: unknown
     try { parsed = JSON.parse(line) } catch { continue }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue
     const event = parsed as Record<string, unknown>
-    if (agent === 'qwen' && event.parent_tool_use_id != null) continue
+    if ((agent === 'qwen' || agent === 'claude') && event.parent_tool_use_id != null) continue
     const message = event.message && typeof event.message === 'object' ? event.message as Record<string, unknown> : undefined
     const stats = event.stats && typeof event.stats === 'object' ? event.stats as Record<string, unknown> : undefined
     const part = event.part && typeof event.part === 'object' ? event.part as Record<string, unknown> : undefined
@@ -147,7 +161,6 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
       if (stepReasoning !== undefined) { harnessTotals.reasoning += stepReasoning; harnessTotals.hasReasoning = true }
       if (stepCost !== undefined) { harnessTotals.cost += stepCost; harnessTotals.hasCost = true }
     }
-    if (agent === 'pi' && event.type === 'message_update' && event.usage && typeof event.usage === 'object') piUsage = event.usage as Record<string, unknown>
     const usage = (event.usage && typeof event.usage === 'object'
       ? event.usage
       : message?.usage && typeof message.usage === 'object'
@@ -203,20 +216,6 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
     if (costValue !== undefined) totalCostUsd = costValue
     const eventModel = event.model ?? message?.model ?? firstModel?.[0]
     if (typeof eventModel === 'string' && eventModel && reportedModels.length <= 1) model = eventModel
-  }
-  if (piUsage) {
-    const piInput = finite(piUsage.input)
-    const piOutput = finite(piUsage.output)
-    const piCached = finite(piUsage.cacheRead)
-    const piCacheWrite = finite(piUsage.cacheWrite)
-    const piReasoning = finite(piUsage.reasoning)
-    const piCost = isRecord(piUsage.cost) ? finite(piUsage.cost.total) : undefined
-    if (piInput !== undefined) inputTokens = piInput
-    if (piOutput !== undefined) outputTokens = piOutput
-    if (piCached !== undefined) cachedInputTokens = piCached
-    if (piCacheWrite !== undefined) cacheWriteInputTokens = piCacheWrite
-    if (piReasoning !== undefined) reasoningOutputTokens = piReasoning
-    if (piCost !== undefined) totalCostUsd = piCost
   }
   if (harnessTotals) {
     if (harnessTotals.hasInput) inputTokens = harnessTotals.input

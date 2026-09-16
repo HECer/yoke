@@ -55,7 +55,9 @@ describe('native OpenCode, Kilo, and Pi retrofit planners', () => {
       'AGENTS.md', '.pi/settings.json', '.pi/skills/tdd/SKILL.md', '.pi/skills/release/SKILL.md',
     ]))
     const settings = JSON.parse(String(actions.find(action => action.target === '.pi/settings.json')!.content))
-    expect(settings.skills).toEqual(['.pi/skills'])
+    expect(settings.skills).toEqual(['./skills'])
+    expect(String(actions.find(action => action.target === '.pi/skills/release/SKILL.md')!.content)).toContain('disable-model-invocation: true')
+    expect(String(actions.find(action => action.target === '.pi/skills/tdd/SKILL.md')!.content)).not.toContain('disable-model-invocation: true')
     expect(String(actions.find(action => action.target === 'AGENTS.md')!.content)).toContain('rtk')
   })
 })

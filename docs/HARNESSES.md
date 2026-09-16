@@ -4,6 +4,10 @@ Yoke 1.13.0 adds first-class adapters for OpenCode, Kilo and Pi coding agent. Th
 
 This is a CLI integration, not an authentication bundle. Install the selected harness, log in or configure its API provider, and verify it independently before starting a Yoke loop.
 
+For current Pi installations, the official package is `@earendil-works/pi-coding-agent` (the executable remains `pi`). Pi support has existed since Yoke 1.13.0; no additional adapter is required.
+
+Pi project trust is separate from Yoke's permission profile. Current Pi ignores project-local settings and skills in headless mode unless the project is trusted. Review the project resources, open Pi interactively, use `/trust`, then restart before running Yoke. Yoke does not silently grant project trust or enable arbitrary project extensions. For isolated worktrees, review the applicable trust scope as well. See [Pi project trust](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/README.md#project-trust).
+
 ## Setup and retrofit
 
 Select one of the new harnesses explicitly:
@@ -57,6 +61,8 @@ runner:
 ```
 
 This becomes `--provider openai --model gpt-5.6 --thinking high`. Pi calls `variant` and `reasoningEffort` the same underlying thinking-level selection; configuring both with different values is rejected.
+
+OpenCode and Kilo likewise map these two fields to a single `--variant`: matching values are emitted once and conflicting values are rejected before spawning a process.
 
 The same fields are available on routing workers and quality critic/repair roles. Routing evidence is keyed by harness, provider, model, reasoning effort and variant, so a model profile does not inherit another profile's success history.
 

@@ -8,6 +8,11 @@ import { loadManifest } from '../../src/canon/manifest.js'
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 
 describe('real canon', () => {
+  it('ships the three referenced delegation templates', () => {
+    for (const role of ['implementer', 'spec-reviewer', 'code-quality-reviewer']) {
+      expect(readFileSync(join(repoRoot, 'canon/skills/subagent-driven-development', `${role}-prompt.md`), 'utf8')).toContain('Acceptance')
+    }
+  })
   it('validates with zero errors', () => {
     const errors = validateCanon(join(repoRoot, 'canon')).filter(i => i.level === 'error')
     expect(errors).toEqual([])

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.15.1 — 2026-09-16
+
+### Fixed
+- Sum finalized Pi assistant-turn usage without counting streamed snapshots or replayed transcripts twice; preserve missing measurements and multiple model identities.
+- Recognize successful Pi/OpenCode/Kilo tool events as watchdog progress without relaxing execution budgets.
+- Reject structured verdicts followed by terminal provider errors, reject errored/aborted Pi verdicts, and exclude Claude child-agent verdicts/usage from parent results.
+- Validate OpenCode/Kilo effort aliases consistently; emit a single variant flag.
+- Correct Pi settings-relative skill discovery and enforce manual-only skill invocation using Pi's native frontmatter.
+- Estimate schedule ranges from per-story scenarios and retain low confidence for sparse task-specific evidence.
+- Ship eight missing delegation/review/debugging/testing resources and clarify host capability, worker-budget and verification rules in the shared skills; remove unsupported quality/speed claims.
+- Keep coordinator unit tests offline by stubbing the separate preview backend; verify actual isolated edits and preservation of the source project.
+- Synchronize previously stale Claude/Codex plugin, Gemini extension and Canon versions with the npm package.
+
+### Migration and validation limits
+- Refresh generated skills with a reviewed `yoke retrofit . --agent=all` (or the selected agent). Current Pi requires explicit project trust to load project-local resources; Yoke does not grant it automatically. See [harness setup](docs/HARNESSES.md).
+- Existing custom configuration remains authoritative. No timeout or acceptance-gate defaults were weakened. Time ranges remain empirical, not guaranteed deadlines.
+- See the [audit and validation limits](docs/AGENT-HARDENING-2026-09-16.md). No authenticated seven-agent benchmark or guaranteed speed/quality improvement is claimed.
+- Local verification: 1,281 tests passed, two platform-specific tests skipped; TypeScript lint/build, Canon validation, documentation metadata, package dry run and dependency audit passed.
+
 ## 1.15.0 — 2026-09-09
 
 ### Added

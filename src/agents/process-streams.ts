@@ -1,6 +1,7 @@
 import type { Agent } from '../retrofit/config.js'
 import { parseProviderTelemetry } from './telemetry.js'
 import type { ProviderTelemetry } from './types.js'
+import { createPiTelemetry } from './pi-telemetry.js'
 
 export interface BoundedOutput {
   append(text: string): void
@@ -32,6 +33,7 @@ export interface TelemetryAccumulator {
 }
 
 export function createTelemetryAccumulator(agent: Agent): TelemetryAccumulator {
+  const pi = agent === 'pi' ? createPiTelemetry() : undefined
   let trailing = ''
   let telemetry: ProviderTelemetry = { usageAvailable: false }
   let reportedModels: string[] = []
@@ -40,6 +42,13 @@ export function createTelemetryAccumulator(agent: Agent): TelemetryAccumulator {
     : undefined
   const update = (lines: readonly string[]): void => {
     for (const line of lines) {
+      if (pi) {
+        try {
+          const event: unknown = JSON.parse(line)
+          if (event && typeof event === 'object' && !Array.isArray(event)) pi.consume(event as Record<string, unknown>)
+        } catch { /* non-JSON diagnostics carry no usage */ }
+        continue
+      }
       const next = parseProviderTelemetry(agent, [line])
       if (next.reportedModels) reportedModels = next.reportedModels
       else if (next.tokens?.model) reportedModels = [next.tokens.model]
@@ -68,6 +77,7 @@ export function createTelemetryAccumulator(agent: Agent): TelemetryAccumulator {
     finish(): ProviderTelemetry {
       if (trailing) update([trailing])
       trailing = ''
+      if (pi) return pi.finish()
       if (stepTotals && (stepTotals.hasInput || stepTotals.hasOutput)) {
         const latest = telemetry.tokens
         const inputTokens = stepTotals.hasInput ? stepTotals.input : latest?.inputTokens

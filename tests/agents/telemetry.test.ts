@@ -2,6 +2,22 @@ import { describe, expect, it } from 'vitest'
 import { parseProviderResult, parseProviderTelemetry } from '../../src/agents/telemetry.js'
 
 describe('provider telemetry', () => {
+  it.each(['claude', 'codex', 'gemini', 'opencode', 'kilo'] as const)('rejects %s verdicts followed by terminal errors', agent => {
+    const verdict = '{"schemaVersion":1,"ok":true}'
+    const envelopes = {
+      claude: { type: 'result', result: verdict },
+      codex: { type: 'item.completed', item: { type: 'agent_message', text: verdict } },
+      gemini: { type: 'message', role: 'assistant', content: verdict },
+      opencode: { type: 'text', part: { text: verdict } },
+      kilo: { type: 'text', part: { text: verdict } },
+    }
+    expect(parseProviderResult(agent, [envelopes[agent], { type: 'error', error: 'failed' }].map(event => JSON.stringify(event)).join('\n'))).toBeNull()
+  })
+  it('does not use Claude child-agent usage or structured verdicts as parent results', () => {
+    const child = { type: 'result', parent_tool_use_id: 'child', structured_output: { schemaVersion: 1, ok: true }, usage: { input_tokens: 99, output_tokens: 9 } }
+    expect(parseProviderResult('claude', JSON.stringify(child))).toBeNull()
+    expect(parseProviderTelemetry('claude', [JSON.stringify(child)])).toEqual({ usageAvailable: false })
+  })
   it('prefers normalized aggregate aliases over per-model fallback totals', () => {
     expect(parseProviderTelemetry('gemini', [JSON.stringify({ type: 'result', stats: { usage: { inputTokens: 100, outputTokens: 20 }, models: { flash: { input: 10, output: 2 }, pro: { input: 10, output: 2 } } } })]))
       .toEqual({ usageAvailable: true, reportedModels: ['flash', 'pro'], tokens: { inputTokens: 100, outputTokens: 20 } })

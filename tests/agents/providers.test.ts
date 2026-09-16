@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { buildProviderInvocation } from '../../src/agents/providers.js'
 
 describe('provider invocations', () => {
+  it.each(['opencode', 'kilo'] as const)('rejects conflicting %s effort aliases and emits matching aliases once', agent => {
+    expect(() => buildProviderInvocation(agent, 'P', '/w', 'safe', { reasoningEffort: 'low', variant: 'high' })).toThrow(/must match/)
+    const args = buildProviderInvocation(agent, 'P', '/w', 'safe', { reasoningEffort: 'high', variant: 'high' }).args
+    expect(args.filter(arg => arg === '--variant')).toHaveLength(1)
+  })
   it('requests Gemini streaming output in every permission profile', () => {
     for (const profile of ['safe', 'unsafe', 'read-only'] as const) {
       expect(buildProviderInvocation('gemini', 'P', '/w', profile).args.join(' ')).toContain('--output-format stream-json')
