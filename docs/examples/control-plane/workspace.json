@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "mode": "auto",
+  "baseSnapshot": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "inventory": "complete",
+  "externalWriters": 0,
+  "guarantees": {
+    "readOnlyEnforcement": "supported",
+    "exclusiveWriter": "supported",
+    "stableSnapshot": "supported",
+    "isolatedWorktrees": "supported"
+  },
+  "participants": [
+    { "id": "implementer", "purpose": "implement", "effects": "workspace-write", "consistency": "live" },
+    { "id": "explorer", "purpose": "inspect", "effects": "read-only", "consistency": "snapshot" },
+    { "id": "observer", "purpose": "inspect", "effects": "read-only", "consistency": "live" },
+    { "id": "test-runner", "purpose": "verify", "effects": "workspace-write", "consistency": "snapshot" }
+  ]
+}

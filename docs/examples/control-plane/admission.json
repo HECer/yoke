@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "runtime": {
+    "id": "synthetic-runtime",
+    "status": "available",
+    "capabilities": {
+      "isolated-workspace": "supported",
+      "structured-result": "supported"
+    }
+  },
+  "ledger": {
+    "version": 1,
+    "limits": {
+      "tokens": 50000,
+      "costMicrousd": 5000000,
+      "computeMs": 300000,
+      "maxActive": 2
+    },
+    "reservations": []
+  },
+  "profiles": [
+    {
+      "id": "implementer",
+      "role": "Implement bounded code changes; independent acceptance is still required",
+      "engine": "codex",
+      "writeScopes": [
+        "src",
+        "tests/unit"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "api",
+      "profileId": "implementer",
+      "dependsOn": [],
+      "writeScopes": [
+        "src/api"
+      ],
+      "requires": [
+        "isolated-workspace",
+        "structured-result"
+      ],
+      "reservationId": "attempt:api:1",
+      "requested": {
+        "tokens": 10000,
+        "costMicrousd": 1000000,
+        "computeMs": 60000
+      }
+    },
+    {
+      "id": "ui",
+      "profileId": "implementer",
+      "dependsOn": [],
+      "writeScopes": [
+        "src/ui"
+      ],
+      "requires": [
+        "isolated-workspace",
+        "structured-result"
+      ],
+      "reservationId": "attempt:ui:1",
+      "requested": {
+        "tokens": 10000,
+        "costMicrousd": 1000000,
+        "computeMs": 60000
+      }
+    },
+    {
+      "id": "integration",
+      "profileId": "implementer",
+      "dependsOn": [
+        "api",
+        "ui"
+      ],
+      "writeScopes": [
+        "tests/unit"
+      ],
+      "requires": [
+        "isolated-workspace",
+        "structured-result"
+      ],
+      "reservationId": "attempt:integration:1",
+      "requested": {
+        "tokens": 10000,
+        "costMicrousd": 1000000,
+        "computeMs": 60000
+      }
+    }
+  ],
+  "accepted": [],
+  "activeWrites": [],
+  "protectedScopes": [
+    "tests/acceptance"
+  ]
+}

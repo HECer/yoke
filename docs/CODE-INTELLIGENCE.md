@@ -12,6 +12,8 @@ yoke setup . --yes --code-intelligence=active
 yoke retrofit . --code-intelligence=active
 ```
 
+Backend modes: `off | shadow | active`.
+
 The default is `off`, which preserves the previous `codeGraph` behavior. `shadow` enables a read-only canary and keeps all edits blocked. `active` enables read operations and snapshot-bound edit previews. The generated host configuration exposes only Yoke's facade, so an agent cannot accidentally combine duplicate backend tools.
 
 ## Backend roles and tested pins

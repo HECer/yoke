@@ -1,3 +1,4 @@
+import { loadAcceptance } from '../check/command.js'
 import { roleSelection } from "../routing/capability.js"
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
@@ -440,7 +441,10 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
 
   if (config.actions?.length) {
     if (parallel > 1 || candidates > 1) { console.error('Configured tool actions currently require --parallel=1 --candidates=1'); return 2 }
-    runner = makeActionRunner(config.actions, runner)
+    if (config.actions.some(action => 'kind' in action) && (!isolate || opts.git || opts.resumeWorktree)) {
+      console.error('Managed workspace edits require real, fresh --isolate worktrees; no injected Git or resume mode')
+      return 2
+    }
   }
   let review = opts.reviewRunner
   let reviewProvider: string = 'unknown'
@@ -565,6 +569,14 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }).then(code => reconcileDecisionResume() ?? code).finally(() => releaseLock(targetDir, lock.ownerToken))
   }
   try {
+    if (config.actions?.length) {
+      const managed = config.actions.some(action => 'kind' in action)
+      runner = makeActionRunner(config.actions, runner, managed ? {
+        projectRoot: targetDir,
+        ownerToken: lock.ownerToken!,
+        protectedScopes: [...(loadAcceptance(targetDir)?.protected ?? [])],
+      } : undefined)
+    }
     const maxIterations = opts.maxIterations ?? Number.POSITIVE_INFINITY
     const result = runLoop({
       prdPath: path,

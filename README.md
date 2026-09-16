@@ -3,7 +3,7 @@
 <h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.15.1/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
 
 <!-- yoke:version:start -->1.15.1<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1283<!-- yoke:tests:end -->
+<!-- yoke:tests:start -->1553<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1283%20defined-blue.svg)
+![Tests](https://img.shields.io/badge/tests-1553%20defined-blue.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini%20%7C%20Qwen%20%7C%20OpenCode%20%7C%20Kilo%20%7C%20Pi-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -32,6 +32,10 @@
 OpenCode, Kilo and Pi are real CLI integrations, not bundled runtimes or credentials. OpenCode/Kilo use their JSON headless modes and local MCP configuration; Pi uses JSONL and explicit tool allowlists, but has no native MCP, sub-agent or plan layer. Read the [integration guide](docs/HARNESSES.md) before selecting a permission profile.
 
 **Fixed in 1.15.1:** multi-turn Pi usage accounting, provider error/progress handling, task-specific time ranges and missing skill resources. Pi has been supported since **1.13.0**; current Pi versions require explicit project trust for project-local skills in headless runs. The [agent/skill hardening audit](docs/AGENT-HARDENING-2026-09-16.md) documents the fixes, migration notes and validation limits.
+
+### Unreleased 2.0 branch: native managed edits
+
+The [native workspace M1 slice](docs/NATIVE-WORKSPACES.md) connects bounded, preconditioned text edits to the existing isolated loop, project lock, budget ledger and acceptance gates. Immutable readers share revisions; a revocable single writer publishes candidate edits. Source changes during gates/review block acceptance. This opt-in branch feature is **not in the 1.15.1 npm release** and does not sandbox ordinary CLI agents or launch an Orca runtime. The [workspace planner](docs/YOKE-2.0-WORKSPACES.md) remains advisory; the [2.0 roadmap](docs/YOKE-2.0-PLAN.md) separates the remaining milestones.
 
 ### One dashboard, multiple projects
 
@@ -931,7 +935,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1283 tests)
+npm test          # vitest (1553 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

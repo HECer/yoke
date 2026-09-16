@@ -5,6 +5,7 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/worktrees/',
   '.yoke/backup/',
   '.yoke/code-intelligence/',
+  '.yoke/control-plane/',
   '.yoke/loop-status.json',
   '.yoke/loop.log',
   '.yoke/loop.lock',

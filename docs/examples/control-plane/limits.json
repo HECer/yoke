@@ -1,0 +1,6 @@
+{
+  "tokens": 50000,
+  "costMicrousd": 5000000,
+  "computeMs": 300000,
+  "maxActive": 2
+}
