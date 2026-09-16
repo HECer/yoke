@@ -1,45 +1,39 @@
-name: M1 Windows failure diagnostics
+name: M1 metadata object preparation
 on:
   push:
     branches: [feat/yoke-2-control-plane-foundation]
     paths: [.github/workflows/dev-windows-diagnostic.yml]
 permissions:
-  actions: read
+  contents: write
 jobs:
-  diagnostics:
+  metadata:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Extract failures from the existing Windows job
+      - name: Prepare the exact reviewed README blob without changing refs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           node --input-type=module <<'JS'
           import assert from 'node:assert/strict';
-          import { writeFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
           assert.equal(process.env.GITHUB_REPOSITORY, 'HECer/yoke');
-          const response = await fetch('https://api.github.com/repos/HECer/yoke/actions/jobs/105005703806/logs', {
-            headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' },
-            signal: AbortSignal.timeout(30000)
-          });
-          assert.ok(response.ok, `Cannot read job log: HTTP ${response.status}`);
-          const text = (await response.text()).replace(/\x1b\[[0-9;]*m/g, '');
-          assert.ok(text.length < 10 * 1024 * 1024, 'Unexpected log size');
-          const lines = text.split('\n');
-          const selected = new Set();
-          lines.forEach((line, index) => {
-            if (/FAIL |Failed Tests|AssertionError|Error:.*|Test Files|Tests\s+\d+ failed/.test(line)) {
-              for (let i = Math.max(0, index - 2); i < Math.min(lines.length, index + 22); i++) selected.add(i);
-            }
-          });
-          const result = [...selected].sort((a, b) => a - b).map(i => lines[i]).join('\n');
-          assert.ok(result.length < 200000, 'Diagnostic quota exceeded');
-          writeFileSync('/tmp/yoke-windows-failures.txt', result);
-          console.log('Extracted failure diagnostics into a short-lived artifact. No source or refs changed.');
+          const headers = { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' };
+          const base = 'https://api.github.com/repos/HECer/yoke/git/blobs';
+          const oldSha = '4f080f21c54dfc0fe38db18760c80d3a9001ac5d';
+          const response = await fetch(`${base}/${oldSha}`, { headers, signal: AbortSignal.timeout(30000) });
+          assert.ok(response.ok, `Cannot read README: HTTP ${response.status}`);
+          const old = await response.json();
+          const bytes = Buffer.from(old.content, 'base64');
+          const hash = bytes => createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+          assert.equal(hash(bytes), oldSha);
+          const text = bytes.toString('utf8');
+          assert.equal((text.match(/1549/g) || []).length, 3);
+          const content = Buffer.from(text.replaceAll('1549', '1553'));
+          const expected = 'd3ce8f783202c87dc3c09770fa4b3b66ad893964';
+          assert.equal(hash(content), expected);
+          const saved = await fetch(base, { method: 'POST', headers, body: JSON.stringify({ encoding: 'base64', content: content.toString('base64') }), signal: AbortSignal.timeout(30000) });
+          assert.ok(saved.ok, `Cannot prepare README blob: HTTP ${saved.status}`);
+          assert.equal((await saved.json()).sha, expected);
+          console.log(JSON.stringify({ path: 'README.md', blob: expected, refsChanged: false }));
           JS
-      - uses: actions/upload-artifact@v4
-        with:
-          name: yoke-windows-failures
-          path: /tmp/yoke-windows-failures.txt
-          retention-days: 1
-          if-no-files-found: error
