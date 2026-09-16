@@ -1,0 +1,32 @@
+name: M1 offline validation bundle
+on:
+  push:
+    branches: [feat/yoke-2-control-plane-foundation]
+    paths: [.github/workflows/dev-validation-bundle.yml]
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: Bundle only tracked source and installed dependencies
+        run: |
+          mkdir -p /tmp/yoke-offline
+          git archive --format=tar.gz HEAD > /tmp/yoke-offline/source.tar.gz
+          tar -czf /tmp/yoke-offline/dependencies.tar.gz node_modules
+          git rev-parse HEAD > /tmp/yoke-offline/commit.txt
+          sha256sum /tmp/yoke-offline/*.tar.gz > /tmp/yoke-offline/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yoke-m1-offline-validation
+          path: /tmp/yoke-offline/
+          retention-days: 1
+          if-no-files-found: error
