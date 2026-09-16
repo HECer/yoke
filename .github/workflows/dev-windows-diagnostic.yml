@@ -1,0 +1,45 @@
+name: M1 Windows failure diagnostics
+on:
+  push:
+    branches: [feat/yoke-2-control-plane-foundation]
+    paths: [.github/workflows/dev-windows-diagnostic.yml]
+permissions:
+  actions: read
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Extract failures from the existing Windows job
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { writeFileSync } from 'node:fs';
+          assert.equal(process.env.GITHUB_REPOSITORY, 'HECer/yoke');
+          const response = await fetch('https://api.github.com/repos/HECer/yoke/actions/jobs/105005703806/logs', {
+            headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json' },
+            signal: AbortSignal.timeout(30000)
+          });
+          assert.ok(response.ok, `Cannot read job log: HTTP ${response.status}`);
+          const text = (await response.text()).replace(/\x1b\[[0-9;]*m/g, '');
+          assert.ok(text.length < 10 * 1024 * 1024, 'Unexpected log size');
+          const lines = text.split('\n');
+          const selected = new Set();
+          lines.forEach((line, index) => {
+            if (/FAIL |Failed Tests|AssertionError|Error:.*|Test Files|Tests\s+\d+ failed/.test(line)) {
+              for (let i = Math.max(0, index - 2); i < Math.min(lines.length, index + 22); i++) selected.add(i);
+            }
+          });
+          const result = [...selected].sort((a, b) => a - b).map(i => lines[i]).join('\n');
+          assert.ok(result.length < 200000, 'Diagnostic quota exceeded');
+          writeFileSync('/tmp/yoke-windows-failures.txt', result);
+          console.log('Extracted failure diagnostics into a short-lived artifact. No source or refs changed.');
+          JS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yoke-windows-failures
+          path: /tmp/yoke-windows-failures.txt
+          retention-days: 1
+          if-no-files-found: error
