@@ -2,7 +2,7 @@ import { parse, stringify } from 'yaml'
 import { enumerateSkillPackage, type SkillEntry, type SkillPackageFile } from '../canon/skill-package.js'
 import type { Action } from './plan.js'
 
-type SkillProvider = 'claude' | 'codex' | 'gemini' | 'qwen' | 'opencode' | 'kilo' | 'pi'
+type SkillProvider = 'claude' | 'codex' | 'gemini' | 'qwen' | 'opencode' | 'kilo' | 'pi' | 'hermes'
 
 const roots: Record<SkillProvider, string> = {
   claude: '.claude/skills',
@@ -12,6 +12,7 @@ const roots: Record<SkillProvider, string> = {
   opencode: '.opencode/skills',
   kilo: '.kilo/skills',
   pi: '.pi/skills',
+  hermes: '.hermes/skills',
 }
 
 function manualClaudeSkill(content: Buffer, skill: SkillEntry): string {
@@ -59,7 +60,7 @@ export function skillPackageActions(canonDir: string, skill: SkillEntry, provide
     .map(file => ({
       kind: 'write' as const,
       target: `${roots[provider]}/${skill.id}/${file.relativePath}`,
-      content: (provider === 'claude' || provider === 'qwen' || provider === 'pi') && skill.invocation === 'manual' && file.relativePath === 'SKILL.md'
+      content: (provider === 'claude' || provider === 'qwen' || provider === 'pi' || provider === 'hermes') && skill.invocation === 'manual' && file.relativePath === 'SKILL.md'
         ? manualClaudeSkill(file.content, skill)
         : portableContent(file),
       executable: file.executable,

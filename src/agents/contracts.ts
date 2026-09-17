@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const AgentSchema = z.enum(['claude', 'codex', 'gemini', 'qwen', 'opencode', 'kilo', 'pi'])
+export const AgentSchema = z.enum(['claude', 'codex', 'gemini', 'qwen', 'opencode', 'kilo', 'pi', 'hermes'])
 export const PermissionProfileSchema = z.enum(['safe', 'unsafe', 'read-only'])
 
 export const ModelSelectionSchema = z.object({

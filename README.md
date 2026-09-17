@@ -1,15 +1,15 @@
 <div align="center">
 
-<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.15.1/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
+<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.16.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
 
-<!-- yoke:version:start -->1.15.1<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1283<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.16.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->1287<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
-<!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi<!-- yoke:agents:end -->
+<!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi | Hermes<!-- yoke:agents:end -->
 
-### One harness, seven agents — and zero trust in "done."
+### One harness, eight agents — and zero trust in "done."
 
-**Yoke** installs one curated canon of skills, **mechanical safety gates**, and tool wiring into any project — natively for **Claude Code, OpenAI Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo, and Pi coding agent**. Its opt-in loop implements and verifies stories before committing. Independent review and browser proofs run when configured; screenshots and videos require the browser smoke gate.
+**Yoke** installs one curated canon of skills, **mechanical safety gates**, and tool wiring into any project — natively for **Claude Code, OpenAI Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo, Pi coding agent, and Hermes Agent**. Its opt-in loop implements and verifies stories before committing. Independent review and browser proofs run when configured; screenshots and videos require the browser smoke gate.
 
 [![npm](https://img.shields.io/npm/v/%40hecer%2Fyoke?logo=npm&color=CB3837)](https://www.npmjs.com/package/@hecer/yoke)
 [![npm downloads](https://img.shields.io/npm/dm/%40hecer%2Fyoke?logo=npm)](https://www.npmjs.com/package/@hecer/yoke)
@@ -17,8 +17,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1283%20defined-blue.svg)
-![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini%20%7C%20Qwen%20%7C%20OpenCode%20%7C%20Kilo%20%7C%20Pi-8A2BE2)
+![Tests](https://img.shields.io/badge/tests-1287%20defined-blue.svg)
+![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini%20%7C%20Qwen%20%7C%20OpenCode%20%7C%20Kilo%20%7C%20Pi%20%7C%20Hermes-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
 **Install:** [`npm i -g @hecer/yoke`](https://www.npmjs.com/package/@hecer/yoke)
@@ -104,7 +104,7 @@ Agentic coding in 2026 fails in four well-documented ways. Yoke answers each one
 | 🌀 **Overnight loops going off the rails** | Raw Ralph-loop users "wake up to broken codebases that don't compile" | Yoke is **"Ralph, but with gates"**: clean-worktree gate, acceptance-criteria gate, green-tests gate, review gate, per-story worktree isolation, idle-timeout watchdog, single-flight lock, commit integrity. |
 | 😵 **Review fatigue** | AI adoption nearly doubles PR volume and review time; humans start skimming | **`yoke review`**: a second model writes a schema-validated pass/fail verdict — chainable into verify, pre-push, or CI. Cross-model review catches what self-review misses. |
 
-**Who it's for:** anyone driving Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo or Pi on real projects — especially if you use more than one, want autonomous runs you can trust, or are tired of "done" meaning "probably". Greenfield (`yoke new`) and brownfield (`yoke retrofit`) both work.
+**Who it's for:** anyone driving Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo, Pi or Hermes on real projects — especially if you use more than one, want autonomous runs you can trust, or are tired of "done" meaning "probably". Greenfield (`yoke new`) and brownfield (`yoke retrofit`) both work.
 
 **Who it's not for:** if you want a chat pair-programmer with no process, you don't need a harness. Yoke is for shipping with discipline.
 
@@ -159,7 +159,7 @@ The canon is also packaged as a Claude Code plugin — the repo is its own marke
 /plugin install yoke@yoke
 ```
 
-That gives you all canon skills under the `yoke:` namespace (e.g. `yoke:tdd`, `yoke:review`) inside Claude Code — no retrofit needed. The `yoke` CLI (loop, gates, retrofit for Codex/Gemini/Qwen/OpenCode/Kilo/Pi) still comes from `npm i -g @hecer/yoke`. Gemini CLI users can likewise `gemini extensions install https://github.com/HECer/yoke`.
+That gives you all canon skills under the `yoke:` namespace (e.g. `yoke:tdd`, `yoke:review`) inside Claude Code — no retrofit needed. The `yoke` CLI (loop, gates, retrofit for Codex/Gemini/Qwen/OpenCode/Kilo/Pi/Hermes) still comes from `npm i -g @hecer/yoke`. Gemini CLI users can likewise `gemini extensions install https://github.com/HECer/yoke`.
 
 For Codex, no preinstalled skill is required: run `npx @hecer/yoke setup .` in a terminal, or
 ask Codex to run the six-question Yoke setup flow. The retrofit writes native skills to
@@ -186,7 +186,7 @@ Auto-upgrade is deliberately **not** the default: a gate harness shouldn't chang
 
 ## 🤖 Driving it through an agent
 
-Yoke is meant to be operated *by* your coding agent — after a retrofit, the agent has the skills, the safety policy, and the routing, so it knows the methodology. Copy-paste prompts (identical wording works for Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo, and Pi):
+Yoke is meant to be operated *by* your coding agent — after a retrofit, the agent has the skills, the safety policy, and the routing, so it knows the methodology. Copy-paste prompts (identical wording works for Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo, Pi, and Hermes):
 
 > **Set it up** — *"Set up Yoke in this project. Ask me the Yoke setup questions one at a time with your recommendation, then run `yoke setup . --yes` with the selected host, agents, code graph, loop, runner, and decision policy. Commit in my configured identity."*
 
@@ -210,11 +210,11 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke projects add\|list\|remove` | Register a project, list registrations or remove a reference by ID | `0` · `2` invalid/unavailable |
 | `yoke check [dir] [--json] [--requirement=] [--protect [--refresh]]` | Execute acceptance checks or explicitly pin their infrastructure | `0` passed/pinned · `1` failed · `2` unverified/unavailable |
 | `yoke goal set\|run\|resume\|pause\|status\|handoff\|budget [dir]` | Durable objectives, provider handoff, protected checks and checkpoint budgets | run/resume: `0` complete · `1` unfinished · `2` unavailable |
-| `yoke setup [dir] [--yes] [--host=] [--agent=] [--runner=] [--code-graph=] [--code-intelligence=off\|shadow\|active] [--decision-policy=] [--loop\|--no-loop] [--routing\|--no-routing] [--model-provider=deepseek,kimi]` | Shared setup for all seven harnesses; optional federated code intelligence and DeepSeek/Kimi API profiles | `0` · `1` invalid setup |
+| `yoke setup [dir] [--yes] [--host=] [--agent=] [--runner=] [--code-graph=] [--code-intelligence=off\|shadow\|active] [--decision-policy=] [--loop\|--no-loop] [--routing\|--no-routing] [--model-provider=deepseek,kimi]` | Shared setup for all eight harnesses; optional federated code intelligence and DeepSeek/Kimi API profiles | `0` · `1` invalid setup |
 | `yoke code-intelligence-server [--workspace=] [--mode=off\|shadow\|active]` | Serve the single Yoke-controlled MCP facade for federated code intelligence | `0` · `1` invalid/unavailable |
 | `yoke validate [canonDir]` | Validate the canon (schema, frontmatter, templates) | `0` valid · `1` errors |
 | `yoke new <dir> [--idea=] [--agent=] [--runner=] [--loop]` | Greenfield bootstrap: git init → scaffold → retrofit → context → PRD (drafted from `--idea`) → committed | `0` · `1` usage / non-empty dir / draft failed (scaffold survives) · `2` draft agent unavailable |
-| `yoke retrofit [dir] [--agent=claude,codex,gemini,qwen,opencode,kilo,pi\|all] [--code-graph=graphify\|serena] [--code-intelligence=off\|shadow\|active] [--loop]` | Install/update the harness for the selected agents, non-destructively | `0` |
+| `yoke retrofit [dir] [--agent=claude,codex,gemini,qwen,opencode,kilo,pi,hermes\|all] [--code-graph=graphify\|serena] [--code-intelligence=off\|shadow\|active] [--loop]` | Install/update the harness for the selected agents, non-destructively | `0` |
 | `yoke prd draft [dir] --idea= [--runner=] [--force]` | Idea → 5–12 stories with testable acceptance criteria | `0` · `1` invalid/guarded · `2` agent unavailable |
 | `yoke prd check [dir]` | PRD lint gate (schema, dependencies, cycles, duplicate ids, acceptance) | `0` valid · `1` violations |
 | `yoke change add\|status [dir] [--idea=]` | Queue a change at any time; the loop turns it into append-only stories at the next safe boundary | `0` · `1` invalid inbox/request |
@@ -234,7 +234,7 @@ Three excellent projects, three different jobs. Honest version:
 | | [superpowers](https://github.com/obra/superpowers) (obra) | [gstack](https://github.com/garrytan/gstack) (Garry Tan) | **Yoke** |
 |---|---|---|---|
 | **What it is** | The canonical *skills methodology*: brainstorm → plan → TDD → review as composable skills | A *software factory* for Claude Code: ~40 role skills (QA, CSO, ship…) + a real Chromium browser layer | A *cross-agent harness*: one canon → native installs, plus a gated autonomous loop |
-| **Agents** | Claude Code first | Claude Code + hosts like Codex/Cursor/Kiro — **no Gemini CLI** | **Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo, Pi** from one source of truth |
+| **Agents** | Claude Code first | Claude Code + hosts like Codex/Cursor/Kiro — **no Gemini CLI** | **Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo, Pi, Hermes** from one source of truth |
 | **Enforcement** | Advisory — skills *describe* the discipline; following them is up to the agent | Skill-driven; browser QA is genuinely real | **Mechanical** — gates live in code: clean tree, acceptance criteria, green tests, review verdict, commit integrity |
 | **Autonomy** | Interactive sessions | Interactive slash-commands (`/qa`, `/ship`, …) | Opt-in **Ralph loop** with watchdog, worktree isolation, single-flight lock, per-story proofs |
 | **Visual QA** | — | **Best-in-class**: live browser daemon (Chromium/CDP) with deep interactive QA | Built-in `flow-smoke` gate: screenshots always, video on failure, labelled per story — lighter, but *enforced* and cross-agent |
@@ -242,7 +242,7 @@ Three excellent projects, three different jobs. Honest version:
 | **Footprint** | Markdown skills (plugin) | ~230 MB with browser runtime; hourly auto-update | Node CLI + markdown canon; Playwright only if you use flow-smoke, resolved **from your project** |
 | **License** | MIT | MIT | MIT |
 
-**They compose — use all three where they're strongest.** Yoke's canon *ships* the superpowers methodology natively for all seven agents (13 skills, [attributed](canon/skills/ATTRIBUTION.md)). And if gstack is installed, `yoke retrofit` detects it and adds a routing note to `CLAUDE.md` telling Claude to prefer gstack's live-browser `/qa`, `/cso`, and ship pipeline for what Yoke deliberately doesn't bundle — no dependency, no conflict, and non-Claude artifacts stay uniform.
+**They compose — use all three where they're strongest.** Yoke's canon *ships* the superpowers methodology natively for all eight agents (13 skills, [attributed](canon/skills/ATTRIBUTION.md)). And if gstack is installed, `yoke retrofit` detects it and adds a routing note to `CLAUDE.md` telling Claude to prefer gstack's live-browser `/qa`, `/cso`, and ship pipeline for what Yoke deliberately doesn't bundle — no dependency, no conflict, and non-Claude artifacts stay uniform.
 
 **Choose Yoke when** you run more than one agent, want autonomy you can audit (gates + proofs + logs), or want one place to maintain your team's methodology. **Choose gstack when** you live 100% in Claude Code and want the deepest interactive browser QA. **Choose superpowers when** you want the methodology alone, interactively, in Claude Code — or just use it *through* Yoke.
 
@@ -262,6 +262,7 @@ flowchart TD
     Skill --> OpenCode["OpenCode<br/>AGENTS.md · opencode.json · .opencode/skills"]
     Skill --> Kilo["Kilo<br/>AGENTS.md · kilo.jsonc · .kilo/skills"]
     Skill --> Pi["Pi<br/>AGENTS.md · .pi/settings.json · .pi/skills"]
+    Skill --> Hermes["Hermes<br/>AGENTS.md · .hermes/skills · yoke-reviewer.md"]
     Loop["🤖 yoke loop — autonomous Ralph loop<br/>gates · verify · review · isolation · proofs"]
     Claude -. drives .-> Loop
     Codex -. drives .-> Loop
@@ -270,6 +271,7 @@ flowchart TD
     OpenCode -. drives .-> Loop
     Kilo -. drives .-> Loop
     Pi -. drives .-> Loop
+    Hermes -. drives .-> Loop
 ```
 
 Three layers — **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) → **Loop** (`yoke loop`) — on top of a durable **Context layer** (`yoke context`).
@@ -285,6 +287,7 @@ Three layers — **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) 
 | **OpenCode** | Complete skill packages under `.opencode/skills/`, shared `AGENTS.md`, merged `opencode.json` (instructions + local MCP), and `.opencode/agents/yoke-reviewer.md` |
 | **Kilo** | Complete skill packages under `.kilo/skills/`, shared `AGENTS.md`, merged `kilo.jsonc` (instructions + local MCP), and `.kilo/agents/yoke-reviewer.md` |
 | **Pi** | Complete skill packages under `.pi/skills/`, shared `AGENTS.md`, and merged `.pi/settings.json`; Pi's tool allowlists are applied at invocation time |
+| **Hermes** | Complete skill packages under `.hermes/skills/`, shared `AGENTS.md`, and `.hermes/agents/yoke-reviewer.md` |
 
 > **rtk integration:** Claude receives its PreToolUse hook; Codex receives a native hook adapter around `rtk hook check`; Gemini retains instruction-mode fallback where its CLI has no equivalent command-rewrite lifecycle.
 
@@ -301,11 +304,11 @@ Three layers — **Canon** (`yoke validate`) → **Retrofit** (`yoke retrofit`) 
 
 `yoke retrofit` installs all of these into each selected agent natively. Provenance is credited in [`canon/skills/ATTRIBUTION.md`](canon/skills/ATTRIBUTION.md).
 
-To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.md` carries a **skill routing & precedence** block (methodology before role; one canonical entrypoint per concern — e.g. pre-merge code review is always `review`), emitted into all seven agents.
+To stop overlapping skills from auto-invoking against each other, `canon/AGENTS.md` carries a **skill routing & precedence** block (methodology before role; one canonical entrypoint per concern — e.g. pre-merge code review is always `review`), emitted into all eight agents.
 
 Each manifest entry also declares `invocation: auto|manual`. Retrofit translates that intent into
 the provider's native controls: Claude and Qwen disable model invocation for manual skills, Codex writes
-`agents/openai.yaml`, Gemini lists only automatic skills in its generated index, and OpenCode/Kilo/Pi
+`agents/openai.yaml`, Gemini lists only automatic skills in its generated index, and OpenCode/Kilo/Pi/Hermes
 receive complete project-local skill packages. Validation
 rejects conflicting package metadata and broken local Markdown links before anything is installed.
 
@@ -608,8 +611,8 @@ Loop runners disable native delegation in Codex, Claude, Gemini, Qwen, OpenCode 
 the Yoke worker budget. Integration retains its execution slot until the candidate lands.
 
 **Provider support:** adaptive routing uses Yoke's shared provider adapter and works with Claude
-Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo and Pi, including mixed-provider worker lists.
-Internal contract tests cover invocation and routing behavior for all seven providers. The measured
+Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo, Pi, and Hermes, including mixed-provider worker lists.
+Internal contract tests cover invocation and routing behavior for all eight providers. The measured
 performance evidence below is intentionally **Codex-only**; it does not claim equivalent savings
 until authenticated, repeated in-the-wild runs exist for each provider.
 
@@ -910,7 +913,7 @@ src/
   canon/          # manifest schema + validator (yoke validate)
   code-intelligence/ # federated MCP facade, adapters, snapshots and guarded edits
   change/         # append-only change inbox · planning · independent coverage review
-  retrofit/       # detect · plan · apply · planners (all seven harnesses) · tools
+  retrofit/       # detect · plan · apply · planners (all eight harnesses) · tools
   loop/           # prd · gates · runner · verify · git/worktree · loop · run-command · lock · cleanup
   quality/        # reference collection · blind critic · bounded repair · candidate comparison
   new/            # yoke new — greenfield bootstrap
@@ -931,7 +934,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1283 tests)
+npm test          # vitest (1287 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

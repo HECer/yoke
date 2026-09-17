@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.16.0 — 2026-09-17
+
+### Added
+- Add first-class adapter support for Nous Research's Hermes Agent (`hermes` CLI) as the eighth supported harness.
+- Add non-interactive execution for Hermes via `hermes chat --format stream-json --query-file -`.
+- Map permission profiles to Hermes toolset flags: `safe` to `--toolsets file,terminal`, `read-only` to `--toolsets file`, and `unsafe` to `--yolo`.
+- Add telemetry extraction for Hermes `stream-json` streams: assistant text deltas, token usage (`input`, `output`, `cache_read`, `cache_write`), total cost USD, and active model identities.
+- Recognize successful Hermes `tool_result` events as watchdog progress activity.
+- Add Hermes project marker detection (`.hermes`, `HERMES.md`, `hermes.yaml`, `hermes.json`) and host environment marker detection (`HERMES_SESSION_ID`, `HERMES_CONFIG`, `HERMES_HOME`).
+- Add Hermes retrofit planner generating complete skill packages under `.hermes/skills/`, shared `AGENTS.md` instructions, and a read-only reviewer agent (`.hermes/agents/yoke-reviewer.md`).
+- Add `hermes` to setup CLI options, routing worker presets (`hermes-standard`), fallback review providers, and runner affinity validation.
+- Add Hermes integration documentation in `docs/HARNESSES.md`.
+
+### Changed
+- Update README, package metadata, and manifests to reflect eight supported harnesses across invocation, routing, and retrofit architecture.
+- Synchronize Claude plugin, Codex plugin, Gemini extension, Canon, and npm package versions to 1.16.0.
+
+### Migration and validation limits
+- Run `yoke retrofit . --agent=hermes` or `yoke retrofit . --agent=all` to install native Hermes artifacts. External `hermes` CLI must be installed and configured separately; Yoke does not bundle runtimes or credentials.
+- Hermes runner does not support bare startup mode or native multi-agent delegation; Yoke enforces managed worker and single-flight execution boundaries.
+- Local verification: 1,285 tests passed, two platform-specific tests skipped, 141 test files passed; TypeScript lint/build, Canon validation, documentation metadata check, package dry run, and dependency audit passed.
+
 ## 1.15.1 — 2026-09-16
 
 ### Fixed

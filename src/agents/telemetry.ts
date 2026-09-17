@@ -49,7 +49,7 @@ export function parseProviderResult(agent: Agent, output: string): unknown {
     const event = parsed.value
     if (agent === 'claude' && event.parent_tool_use_id != null) continue
     if (event.type === 'error' || event.type === 'turn.failed' ||
-      (event.type === 'result' && (event.is_error === true || event.status === 'error'))) return null
+      (event.type === 'result' && (event.is_error === true || event.status === 'error' || event.error != null))) return null
     switch (agent) {
       case 'claude':
         if (event.type === 'result' && directMachineResult(event.structured_output) !== undefined) structuredResult = event.structured_output
@@ -75,6 +75,14 @@ export function parseProviderResult(agent: Agent, output: string): unknown {
           const text = textContent(event.message.content)
           if (text) fragments.push(text)
         }
+        break
+      case 'hermes':
+        if (event.type === 'result' && directMachineResult(event.structured_output ?? event.structured_result) !== undefined) {
+          structuredResult = event.structured_output ?? event.structured_result
+        }
+        if (event.type === 'text' && typeof event.text === 'string') fragments.push(event.text)
+        if (event.type === 'result' && typeof event.text === 'string') fragments.push(event.text)
+        if (event.type === 'result' && typeof event.result === 'string') fragments.push(event.result)
         break
     }
   }
@@ -167,7 +175,9 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
         ? message.usage
         : stats?.usage && typeof stats.usage === 'object'
           ? stats.usage
-          : stats) as Record<string, unknown> | undefined
+          : event.tokens && typeof event.tokens === 'object'
+            ? event.tokens
+            : stats) as Record<string, unknown> | undefined
     const models = isRecord(stats?.models) ? stats.models : undefined
     const modelEntries = models ? Object.entries(models) : []
     const firstModel = modelEntries.length === 1 ? modelEntries[0] : undefined
@@ -202,8 +212,8 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
       if (aggregateCached !== undefined) source.cached_input_tokens = aggregateCached
     }
     const inValue = finite(source?.input_tokens ?? source?.inputTokens ?? source?.prompt_tokens ?? source?.promptTokenCount ?? source?.input)
-    const cachedValue = finite(source?.cached_input_tokens ?? source?.cache_read_input_tokens ?? source?.cachedInputTokens ?? source?.cacheRead ?? source?.cachedContentTokenCount ?? source?.cached)
-    const cacheWriteValue = finite(source?.cache_write_input_tokens ?? source?.cache_creation_input_tokens ?? source?.cacheWriteInputTokens ?? source?.cacheWrite)
+    const cachedValue = finite(source?.cached_input_tokens ?? source?.cache_read_input_tokens ?? source?.cachedInputTokens ?? source?.cacheRead ?? source?.cachedContentTokenCount ?? source?.cached ?? source?.cache_read)
+    const cacheWriteValue = finite(source?.cache_write_input_tokens ?? source?.cache_creation_input_tokens ?? source?.cacheWriteInputTokens ?? source?.cacheWrite ?? source?.cache_write)
     const outValue = finite(source?.output_tokens ?? source?.outputTokens ?? source?.completion_tokens ?? source?.candidatesTokenCount ?? source?.output)
     const reasoningValue = finite(source?.reasoning_output_tokens ?? source?.reasoningOutputTokens ?? source?.thoughtsTokenCount ?? source?.thoughts)
     if (inValue !== undefined) inputTokens = inValue

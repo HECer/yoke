@@ -38,11 +38,11 @@ describe('yoke retrofit (integration, Claude)', () => {
   })
 
   it('is idempotent on a second run', () => {
-    runRetrofit(target, { loop: false })
+    runRetrofit(target, { loop: false, host: 'claude' })
     const agentsBefore = readFileSync(join(target, 'AGENTS.md'), 'utf8')
     const settingsPath = join(target, '.claude/settings.json')
     const settingsBefore = existsSync(settingsPath) ? readFileSync(settingsPath, 'utf8') : null
-    const code = runRetrofit(target, { loop: false })
+    const code = runRetrofit(target, { loop: false, host: 'claude' })
     expect(code).toBe(0)
     expect(readFileSync(join(target, 'AGENTS.md'), 'utf8')).toBe(agentsBefore)
     if (settingsBefore !== null) {

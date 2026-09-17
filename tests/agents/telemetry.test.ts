@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { parseProviderResult, parseProviderTelemetry } from '../../src/agents/telemetry.js'
 
 describe('provider telemetry', () => {
-  it.each(['claude', 'codex', 'gemini', 'opencode', 'kilo'] as const)('rejects %s verdicts followed by terminal errors', agent => {
+  it.each(['claude', 'codex', 'gemini', 'opencode', 'kilo', 'hermes'] as const)('rejects %s verdicts followed by terminal errors', agent => {
     const verdict = '{"schemaVersion":1,"ok":true}'
     const envelopes = {
       claude: { type: 'result', result: verdict },
@@ -10,6 +10,7 @@ describe('provider telemetry', () => {
       gemini: { type: 'message', role: 'assistant', content: verdict },
       opencode: { type: 'text', part: { text: verdict } },
       kilo: { type: 'text', part: { text: verdict } },
+      hermes: { type: 'text', text: verdict },
     }
     expect(parseProviderResult(agent, [envelopes[agent], { type: 'error', error: 'failed' }].map(event => JSON.stringify(event)).join('\n'))).toBeNull()
   })
@@ -120,6 +121,23 @@ describe('provider telemetry', () => {
     expect(parseProviderTelemetry('pi', output)).toMatchObject({
       usageAvailable: true,
       tokens: { inputTokens: 13, outputTokens: 9, cachedInputTokens: 4, cacheWriteInputTokens: 2, totalCostUsd: 0.009, model: 'gpt-5.6' },
+    })
+  })
+
+  it('parses Hermes stream-json text and result token usage', () => {
+    const output = [
+      JSON.stringify({ type: 'system', subtype: 'init', model: 'nous/hermes-3-405b' }),
+      JSON.stringify({ type: 'text', text: '{"schemaVersion":1,"value":"hermes"}' }),
+      JSON.stringify({
+        type: 'result',
+        tokens: { input: 25, output: 14, cache_read: 8, cache_write: 3 },
+        total_cost_usd: 0.005,
+      }),
+    ]
+    expect(parseProviderResult('hermes', output.join('\n'))).toEqual({ schemaVersion: 1, value: 'hermes' })
+    expect(parseProviderTelemetry('hermes', output)).toMatchObject({
+      usageAvailable: true,
+      tokens: { inputTokens: 25, outputTokens: 14, cachedInputTokens: 8, cacheWriteInputTokens: 3, totalCostUsd: 0.005, model: 'nous/hermes-3-405b' },
     })
   })
 })

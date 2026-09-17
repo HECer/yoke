@@ -43,6 +43,12 @@ const argsFor = (agent: Agent, permissions: PermissionProfile): string[] => {
     if (permissions !== 'unsafe') args.push('--tools', permissions === 'read-only' ? 'read,grep,find,ls' : 'read,bash,edit,write')
     return args
   }
+  if (agent === 'hermes') {
+    const args = ['chat', '--format', 'stream-json', '--query-file', '-']
+    if (permissions === 'unsafe') return [...args, '--yolo']
+    const toolsets = permissions === 'read-only' ? 'file' : 'file,terminal'
+    return [...args, '--toolsets', toolsets]
+  }
   if (permissions === 'unsafe') return ['--yolo', '--output-format', 'stream-json']
   const approval = permissions === 'read-only' ? 'plan' : 'auto_edit'
   return ['--approval-mode', approval, '--sandbox', '--output-format', 'stream-json']
@@ -57,7 +63,7 @@ export function buildProviderInvocation(
   output: { schemaFile?: string; jsonSchema?: Record<string, unknown> } = {},
 ): AgentInvocation {
   const parsedSelection = ModelSelectionSchema.parse(selection)
-  if (['opencode', 'kilo', 'pi'].includes(agent) && parsedSelection.reasoningEffort && parsedSelection.variant && parsedSelection.reasoningEffort !== parsedSelection.variant) {
+  if (['opencode', 'kilo', 'pi', 'hermes'].includes(agent) && parsedSelection.reasoningEffort && parsedSelection.variant && parsedSelection.reasoningEffort !== parsedSelection.variant) {
     throw new Error(`${agent} reasoningEffort and variant selections must match`)
   }
   if (agent === 'gemini' && parsedSelection.bare) throw new Error('Gemini does not support the bare startup selection')
@@ -66,8 +72,10 @@ export function buildProviderInvocation(
   if (agent === 'qwen' && parsedSelection.bare) throw new Error('Qwen does not support the bare startup selection')
   if (agent === 'qwen' && parsedSelection.reasoningEffort) throw new Error('Qwen does not support the reasoningEffort selection')
   if (agent === 'qwen' && parsedSelection.nativeMultiAgent === true) throw new Error('Qwen does not support enabling the nativeMultiAgent selection')
-  if (parsedSelection.provider && !['opencode', 'kilo', 'pi'].includes(agent)) throw new Error(`${agent} does not support an explicit provider selection`)
-  if (parsedSelection.variant && !['opencode', 'kilo', 'pi'].includes(agent)) throw new Error(`${agent} does not support a model variant selection`)
+  if (agent === 'hermes' && parsedSelection.bare) throw new Error('Hermes does not support the bare startup selection')
+  if (agent === 'hermes' && parsedSelection.nativeMultiAgent === true) throw new Error('Hermes does not support enabling the nativeMultiAgent selection')
+  if (parsedSelection.provider && !['opencode', 'kilo', 'pi', 'hermes'].includes(agent)) throw new Error(`${agent} does not support an explicit provider selection`)
+  if (parsedSelection.variant && !['opencode', 'kilo', 'pi', 'hermes'].includes(agent)) throw new Error(`${agent} does not support a model variant selection`)
   const args = argsFor(agent, permissions)
   if (output.schemaFile !== undefined || output.jsonSchema !== undefined) {
     if (agent === 'codex' && output.schemaFile && output.jsonSchema === undefined) {
@@ -77,9 +85,9 @@ export function buildProviderInvocation(
       const schema = JSON.stringify(output.jsonSchema)
       if (process.platform === 'win32') throw new Error('Inline structured output is unsupported by the Windows provider shell shim')
       args.push('--json-schema', schema)
-    } else if (!['opencode', 'kilo', 'pi'].includes(agent)) throw new Error(`${agent} structured output schema requires ${agent === 'codex' ? 'schemaFile' : agent === 'claude' ? 'jsonSchema' : 'a supported native schema option (unavailable)'}`)
+    } else if (!['opencode', 'kilo', 'pi', 'hermes'].includes(agent)) throw new Error(`${agent} structured output schema requires ${agent === 'codex' ? 'schemaFile' : agent === 'claude' ? 'jsonSchema' : 'a supported native schema option (unavailable)'}`)
   }
-  if (parsedSelection.provider && agent === 'pi') args.push('--provider', parsedSelection.provider)
+  if (parsedSelection.provider && (agent === 'pi' || agent === 'hermes')) args.push('--provider', parsedSelection.provider)
   if (parsedSelection.model) {
     const qualified = agent === 'qwen' && parsedSelection.model.includes('::')
       ? parsedSelection.model.match(/^(openai|anthropic|gemini|vertex-ai|qwen-oauth)::(.+)$/u) : undefined
@@ -100,12 +108,17 @@ export function buildProviderInvocation(
     else if (agent === 'codex') args.push('--config', `model_reasoning_effort=${parsedSelection.reasoningEffort}`)
     else if (agent === 'opencode' || agent === 'kilo') args.push('--variant', parsedSelection.reasoningEffort)
     else if (agent === 'pi') args.push('--thinking', parsedSelection.reasoningEffort)
+    else if (agent === 'hermes') args.push('--reasoning-effort', parsedSelection.reasoningEffort)
   }
   if (parsedSelection.variant) {
     if ((agent === 'opencode' || agent === 'kilo') && !parsedSelection.reasoningEffort) args.push('--variant', parsedSelection.variant)
     else if (agent === 'pi') {
       if (parsedSelection.reasoningEffort && parsedSelection.reasoningEffort !== parsedSelection.variant) throw new Error('Pi reasoningEffort and variant selections must match')
       if (!parsedSelection.reasoningEffort) args.push('--thinking', parsedSelection.variant)
+    }
+    else if (agent === 'hermes') {
+      if (parsedSelection.reasoningEffort && parsedSelection.reasoningEffort !== parsedSelection.variant) throw new Error('Hermes reasoningEffort and variant selections must match')
+      if (!parsedSelection.reasoningEffort) args.push('--reasoning-effort', parsedSelection.variant)
     }
   }
   if (agent === 'codex' && parsedSelection.nativeMultiAgent === false) args.push('--disable', 'multi_agent')
@@ -118,6 +131,7 @@ export function buildProviderInvocation(
     else if (agent === 'claude') args.push('--bare')
     else if (agent === 'opencode' || agent === 'kilo') args.push('--pure')
     else if (agent === 'pi') throw new Error('Pi does not support the bare startup selection')
+    else if (agent === 'hermes') throw new Error('Hermes does not support the bare startup selection')
   }
   if (agent === 'gemini' && parsedSelection.nativeMultiAgent === false) {
     return { command: process.execPath, args: [fileURLToPath(new URL('../../hooks/bounded-gemini.mjs', import.meta.url)), ...args], input: prompt, cwd }

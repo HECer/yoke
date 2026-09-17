@@ -105,6 +105,21 @@ describe('provider invocations', () => {
     expect(buildProviderInvocation('pi', 'P', '/w', 'unsafe').args).not.toContain('--tools')
   })
 
+  it('builds Hermes stream-json invocations with provider, model, reasoning-effort and toolsets', () => {
+    expect(buildProviderInvocation('hermes', 'P', '/w', 'safe', {
+      provider: 'openrouter', model: 'anthropic/claude-sonnet', reasoningEffort: 'high',
+    }).args).toEqual([
+      'chat', '--format', 'stream-json', '--query-file', '-',
+      '--toolsets', 'file,terminal',
+      '--provider', 'openrouter', '--model', 'anthropic/claude-sonnet', '--reasoning-effort', 'high',
+    ])
+    expect(buildProviderInvocation('hermes', 'P', '/w', 'read-only').args).toContain('--toolsets')
+    expect(buildProviderInvocation('hermes', 'P', '/w', 'read-only').args).toContain('file')
+    expect(buildProviderInvocation('hermes', 'P', '/w', 'unsafe').args).toContain('--yolo')
+    expect(() => buildProviderInvocation('hermes', 'P', '/w', 'safe', { bare: true })).toThrow(/Hermes.*bare/)
+    expect(() => buildProviderInvocation('hermes', 'P', '/w', 'safe', { nativeMultiAgent: true })).toThrow(/Hermes.*nativeMultiAgent/)
+  })
+
   it('rejects provider selectors containing Windows shell metacharacters', () => {
     expect(() => buildProviderInvocation('codex', 'P', '/w', 'safe', { model: 'safe&whoami' })).toThrow()
     expect(() => buildProviderInvocation('codex', 'P', '/w', 'safe', { reasoningEffort: 'high|whoami' })).toThrow()

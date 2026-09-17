@@ -9,6 +9,8 @@ describe('host-aware agent selection', () => {
     expect(detectHostAgent({ QWEN_CLI: '1' })).toBe('qwen')
     expect(detectHostAgent({ OPENCODE_CLIENT: 'cli' })).toBe('opencode')
     expect(detectHostAgent({ KILO_CLIENT: 'cli' })).toBe('kilo')
+    expect(detectHostAgent({ HERMES_SESSION_ID: 'session-123' })).toBe('hermes')
+    expect(detectHostAgent({ HERMES_HOME: 'C:/hermes' })).toBe('hermes')
   })
 
   it('prefers an active session marker over another provider home directory', () => {

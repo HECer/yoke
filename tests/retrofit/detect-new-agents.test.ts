@@ -5,13 +5,14 @@ import { tmpdir } from 'node:os'
 import { detectProject } from '../../src/retrofit/detect.js'
 
 describe('project detection for additional harnesses', () => {
-  it('detects OpenCode, Kilo, and Pi project markers', () => {
+  it('detects OpenCode, Kilo, Pi, and Hermes project markers', () => {
     const dir = mkdtempSync(join(tmpdir(), 'yoke-detect-'))
     try {
       mkdirSync(join(dir, '.opencode'))
       mkdirSync(join(dir, '.kilo'))
       mkdirSync(join(dir, '.pi'))
-      expect(detectProject(dir).agents).toEqual(['opencode', 'kilo', 'pi'])
+      mkdirSync(join(dir, '.hermes'))
+      expect(detectProject(dir).agents).toEqual(['opencode', 'kilo', 'pi', 'hermes'])
     } finally { rmSync(dir, { recursive: true, force: true }) }
   })
 })
