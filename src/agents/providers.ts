@@ -1,7 +1,9 @@
-import type { Agent } from '../retrofit/config.js'
+import { loadConfig, type Agent } from '../retrofit/config.js'
 import type { AgentInvocation, ModelSelection, PermissionProfile } from './types.js'
 import { ModelSelectionSchema } from './contracts.js'
 import { fileURLToPath } from 'node:url'
+
+const SOL_PI_EXTENSION = 'git:github.com/NVlabs/SoL-Pi@d7ecfc089944f0d04b80122a0a9a6ca0d786f3d0'
 
 export {
   providerSpawnOptions,
@@ -77,6 +79,13 @@ export function buildProviderInvocation(
   if (parsedSelection.provider && !['opencode', 'kilo', 'pi', 'hermes'].includes(agent)) throw new Error(`${agent} does not support an explicit provider selection`)
   if (parsedSelection.variant && !['opencode', 'kilo', 'pi', 'hermes'].includes(agent)) throw new Error(`${agent} does not support a model variant selection`)
   const args = argsFor(agent, permissions)
+  if (agent === 'pi' && loadConfig(cwd)?.solpi?.enabled) {
+    const [major, minor] = process.version.slice(1).split('.').map(Number)
+    if (major < 22 || (major === 22 && minor < 19)) {
+      throw new Error(`SoL-Pi requires Node.js 22.19 or newer; current version is ${process.version}`)
+    }
+    args.push('--extension', SOL_PI_EXTENSION)
+  }
   if (output.schemaFile !== undefined || output.jsonSchema !== undefined) {
     if (agent === 'codex' && output.schemaFile && output.jsonSchema === undefined) {
       if (/[\0\r\n]/u.test(output.schemaFile) || (process.platform === 'win32' && !/^[A-Za-z0-9_./:\\-]+$/u.test(output.schemaFile))) throw new Error('Invalid output schema file path')

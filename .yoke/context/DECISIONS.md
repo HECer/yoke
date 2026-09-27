@@ -25,3 +25,6 @@ codex implemented STORY-3
 
 ## 2026-09-27 — STORY-3: add per-project SoL-Pi controls to dashboard settings
 codex implemented STORY-3
+
+## 2026-09-27 — STORY-4: activate the pinned extension only for opted-in Pi invocations
+codex implemented STORY-4
