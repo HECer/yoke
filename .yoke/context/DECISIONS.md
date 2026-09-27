@@ -13,3 +13,6 @@ codex implemented dashboard-shell
 
 ## 2026-09-08 — dashboard-live-view: Build project live operations view
 codex implemented dashboard-live-view
+
+## 2026-09-27 — STORY-1: model optional SoL-Pi project settings
+codex implemented STORY-1
