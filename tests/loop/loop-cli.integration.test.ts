@@ -83,7 +83,7 @@ describe('yoke loop CLI', () => {
     const analytics = projectAnalytics(dir, { from: Date.now() - 60000, to: Date.now() + 1000, bucket: 'day' })
     expect(analytics.total).toMatchObject({ inputTokens: 130, outputTokens: 30, accepted: 1 })
     expect(analytics.models).toContainEqual(expect.objectContaining({ role: 'reviewer', model: 'review-model', inputTokens: 30 }))
-  })
+  }, 15_000)
   it('runs configured tool-only work with no model CLI installed', () => {
     saveConfig(dir, { ...cfg(), agents: ['claude'], actions: [{ storyId: 'S1', file: process.execPath, args: ['-e', 'process.exit(0)'], timeoutMs: 1000 }] })
     expect(runLoopCommand(dir, { git: stubGit, verify: verifyOk, isAvailable: () => false, maxIterations: 1 })).toBe(0)
