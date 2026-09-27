@@ -48,7 +48,7 @@ const SolPiOptionsSchema = z.object({
   onlineContextCompact: z.boolean().default(false),
   cacheWriteReadRatio: z.number().finite().nonnegative().default(12.5),
 })
-const SolPiSettingsSchema = SolPiOptionsSchema.extend({ enabled: z.boolean().default(false) }).strict()
+export const SolPiSettingsSchema = SolPiOptionsSchema.extend({ enabled: z.boolean().default(false) }).strict()
 export const SolPiNativeConfigSchema = SolPiOptionsSchema.extend({
   version: z.literal(1),
   evidencePreservingReducerProvider: z.string().min(1).optional(),

@@ -4,6 +4,7 @@ import { lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from '
 import { join } from 'node:path'
 import { parse } from 'yaml'
 import { z } from 'zod'
+import { configPath, defaultConfig, loadConfig, resolveSolPiSettings, saveConfig, SolPiSettingsSchema } from '../retrofit/config.js'
 import { listProjects, type RegisteredProject } from './registry.js'
 import { dashboardPage } from './page.js'
 import { readEvents } from '../observability/events.js'
@@ -80,6 +81,19 @@ function writePauseSignal(root: string): void {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error }
 }
 
+function assertSafeConfigTarget(root: string): void {
+  const directory = join(root, '.yoke')
+  const file = configPath(root)
+  try {
+    const stat = lstatSync(directory)
+    if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('Unsafe project settings target')
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+  try {
+    const stat = lstatSync(file)
+    if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('Unsafe project settings target')
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+}
+
 function projectIsRunning(root: string): boolean {
   if (activeResumes.has(root)) return true
   const lock = readLock(root)
@@ -138,10 +152,32 @@ export async function startDashboard(options: { port?: number } = {}): Promise<{
         try { period = parsePeriod(requested.searchParams); sort = parseRanking(requested.searchParams) } catch (error) { send(400, { error: (error as Error).message }); return }
         send(200, workspaceAnalytics(listProjects(), period, sort)); return
       }
-      const match = /^\/api\/projects\/([a-f0-9]{32})(\/pause|\/resume|\/notes|\/changes|\/analytics|\/history|\/events)?$/u.exec(path)
+      const match = /^\/api\/projects\/([a-f0-9]{32})(\/pause|\/resume|\/notes|\/changes|\/settings|\/analytics|\/history|\/events)?$/u.exec(path)
       if (match) {
         const project = listProjects().find(project => project.id === match[1])
         if (!project) { send(404, { error: 'Unknown project' }); return }
+        if (req.method === 'GET' && match[2] === '/settings') {
+          if (project.error) { send(409, { error: project.error }); return }
+          assertSafeConfigTarget(project.root)
+          const config = loadConfig(project.root) ?? defaultConfig('0.0.0')
+          send(200, resolveSolPiSettings(config)); return
+        }
+        if (req.method === 'POST' && match[2] === '/settings') {
+          let settings
+          try { settings = SolPiSettingsSchema.parse(await requestBody(req, {})) } catch (error) {
+            send((error as Error).message === 'Dashboard request body too large' ? 413 : 400, { error: (error as Error).message === 'Dashboard request body too large' ? (error as Error).message : 'Invalid project settings payload' }); return
+          }
+          if (project.error) { send(409, { error: project.error }); return }
+          try {
+            assertSafeConfigTarget(project.root)
+            const config = loadConfig(project.root) ?? defaultConfig('0.0.0')
+            saveConfig(project.root, { ...config, solpi: settings })
+          } catch (error) {
+            if ((error as Error).message === 'Unsafe project settings target') { send(409, { error: (error as Error).message }); return }
+            throw error
+          }
+          send(200, settings); return
+        }
         if (req.method === 'GET' && match[2] === '/analytics') {
           if (project.error) { send(409, { error: project.error }); return }
           let period

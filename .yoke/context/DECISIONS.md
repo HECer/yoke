@@ -16,3 +16,6 @@ codex implemented dashboard-live-view
 
 ## 2026-09-27 — STORY-1: model optional SoL-Pi project settings
 codex implemented STORY-1
+
+## 2026-09-27 — STORY-2: expose safe project settings endpoints
+codex implemented STORY-2
