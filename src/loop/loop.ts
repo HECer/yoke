@@ -1,5 +1,5 @@
 import { knownInfrastructureFailure } from "../routing/capability.js"
-import { existsSync, unlinkSync, readFileSync } from 'node:fs'
+import { existsSync, unlinkSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { acceptanceProtectionProblem } from '../check/command.js'
 import { join, relative } from 'node:path'
 import { isAcceptanceCriterion, loadPrd, savePrd, selectNextStory, allPass, progress, storyPathSegment, type AcceptanceCriterion, type Story } from './prd.js'
@@ -145,6 +145,16 @@ export interface LoopResult {
 // The loop consumes (deletes) it and stops with state 'paused' — never mid-story.
 export function pauseFilePath(targetDir: string): string {
   return join(targetDir, '.yoke', 'loop.pause')
+}
+
+/** Request a pause at the next safe story or exploration boundary. */
+export function requestLoopPause(targetDir: string): void {
+  const file = pauseFilePath(targetDir)
+  mkdirSync(join(targetDir, '.yoke'), { recursive: true })
+  try { writeFileSync(file, `${new Date().toISOString()}\n`, { flag: 'wx' }) }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+  }
 }
 
 function consumePause(targetDir: string): boolean {
