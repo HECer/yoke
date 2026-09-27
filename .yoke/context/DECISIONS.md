@@ -19,3 +19,9 @@ codex implemented STORY-1
 
 ## 2026-09-27 — STORY-2: expose safe project settings endpoints
 codex implemented STORY-2
+
+## 2026-09-27 — STORY-3: add per-project SoL-Pi controls to dashboard settings
+codex implemented STORY-3
+
+## 2026-09-27 — STORY-3: add per-project SoL-Pi controls to dashboard settings
+codex implemented STORY-3
