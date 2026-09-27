@@ -20,6 +20,7 @@ import { runStoryWorker, type StoryWorkerProvider } from './worker.js'
 import type { Verifier } from './verify.js'
 import type { QualityCommandHooks } from '../quality/command.js'
 import type { ProviderProcessResult } from '../agents/process.js'
+import { acquireSharedWorker, sharedPoolStatus } from './resource-pool.js'
 
 export type ParallelCommandInput = {
   readonly targetDir: string
@@ -79,6 +80,24 @@ export async function runParallelLoopCommand(input: ParallelCommandInput): Promi
     stories: loadPrd(input.prdPath),
     maxConcurrency: input.maxConcurrency,
     maxIterations: input.maxIterations,
+    acquireResource: async request => {
+      const started = Date.now()
+      const lease = await acquireSharedWorker({
+        targetDir: input.targetDir,
+        storyId: request.story.id,
+        provider: request.provider.provider,
+        role: request.role,
+        units: request.units,
+        signal: request.signal,
+      })
+      input.reporter.resourceWait?.({ id: request.story.id, title: request.story.title }, request.role, request.units, Date.now() - started, request.provider.provider)
+      return lease
+    },
+    resourceStatus: () => sharedPoolStatus(),
+    onIntegrationMetrics: (worker, queueWaitMs, integrationMs) => {
+      if (integrationMs === undefined) input.reporter.integrationQueueWait?.({ id: worker.story.id, title: worker.story.title }, queueWaitMs, worker.provider.provider)
+      else input.reporter.integrationDuration?.({ id: worker.story.id, title: worker.story.title }, integrationMs, worker.provider.provider)
+    },
     providers: input.providers,
     affinityProviders: input.affinityProviders,
     worktrees: adapters.worktrees,

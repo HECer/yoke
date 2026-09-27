@@ -32,6 +32,7 @@ import { designVerifier } from '../scan/gate.js'
 import { prepareIsolatedWorktree } from './recovery.js'
 import { AGENT_LIST, SUPPORTED_AGENTS } from '../agents/catalog.js'
 import type { StoryWorkerProvider } from './worker.js'
+import { MAX_PROJECT_WORKERS, sharedPoolStatus, withSharedWorkerSync } from './resource-pool.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -67,13 +68,20 @@ export function loopStatus(targetDir: string, now: () => Date = () => new Date()
     const p = progress(loadPrd(path))
     prog = `${p.passed}/${p.total} stories pass`
   }
+  const sharedPoolLine = (): string => {
+    try {
+      const pool = sharedPoolStatus()
+      return `Shared pool: ${pool.activeUnits}/${pool.limit} units · ${pool.activeByRole.implementation} implementation · ${pool.activeByRole.integration} integration · ${pool.waitingWorkers} waiting${pool.oldestWaitMs ? ` · oldest wait ${fmtDuration(pool.oldestWaitMs)}` : ''}`
+    } catch (error) { return `Shared pool unavailable: ${(error as Error).message}` }
+  }
   const st = readStatus(targetDir)
-  if (!st) return `Loop: ${enabled ? 'enabled' : 'disabled'}\nPRD: ${prog}`
+  if (!st) return `Loop: ${enabled ? 'enabled' : 'disabled'}\nPRD: ${prog}\n${sharedPoolLine()}`
   const head = `Loop: ${st.state.toUpperCase()}${st.story ? ` on ${st.story}${st.storyTitle ? ` "${st.storyTitle}"` : ''}` : ''}`
   const pct = st.percent !== undefined ? ` (${st.percent}%)` : ''
   const meta = [st.phase, `iteration ${st.iteration}`, `backlog ${st.progress.passed}/${st.progress.total}${pct}`, `updated ${relativeTime(st.updatedAt, now())}`]
     .filter(Boolean).join(' · ')
   const lines = [head, `  ${meta}`]
+  lines.push(`  ${sharedPoolLine()}`)
   for (const process of st.supervision ?? []) {
     lines.push(`  provider PID ${process.childPid ?? 'not started'}: ${process.state} · attempt ${process.retry + 1} · identity/liveness ${process.liveness ?? 'unknown'} · supervisor heartbeat ${relativeTime(process.heartbeatAt, now())} · last output ${process.lastOutputAt ? relativeTime(process.lastOutputAt, now()) : 'none'} · last successful tool/edit ${process.lastProgressAt ? relativeTime(process.lastProgressAt, now()) : 'none'}${process.reason ? ' · ' + process.reason : ''}`)
   }
@@ -82,7 +90,7 @@ export function loopStatus(targetDir: string, now: () => Date = () => new Date()
   }
   if (st.reason) lines.push(`  reason: ${st.reason}`)
   if (st.quality) lines.push(`  quality: round ${st.quality.currentRound} · ${st.quality.usedRepairs}${st.quality.unbounded ? ' unbounded repairs' : `/${st.quality.maxRepairs ?? 0} repairs`} · ${st.quality.policy}`)
-  if (st.parallel) lines.push(`  parallel ${st.parallel.dispatcherId}: ${st.parallel.activeWorkers}/${st.parallel.maxConcurrency} workers · ${st.parallel.queuedCandidates} queued · ${st.parallel.integrated} integrated · ${st.parallel.reopened} reopened`)
+  if (st.parallel) lines.push(`  parallel ${st.parallel.dispatcherId}: ${st.parallel.activeWorkers}/${st.parallel.maxConcurrency} workers (local; ${st.parallel.waitingWorkers ?? 0} waiting) · ${st.parallel.queuedIntegrations ?? st.parallel.queuedCandidates} queued for integration · ${st.parallel.integrated} integrated · ${st.parallel.reopened} reopened`)
   const integrator = st.parallel?.integrator
   if (integrator) {
     const quality = integrator.quality
@@ -159,8 +167,8 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     console.error('--resume-worktree requires --isolate --parallel=1 --candidates=1')
     return 2
   }
-  if (!Number.isInteger(parallel) || parallel < 1) {
-    console.error('--parallel must be a positive integer')
+  if (!Number.isInteger(parallel) || parallel < 1 || parallel > MAX_PROJECT_WORKERS) {
+    console.error(`--parallel must be an integer from 1 to ${MAX_PROJECT_WORKERS}`)
     return 2
   }
   if (!Number.isInteger(candidates) || candidates < 1 || candidates > 5) {
@@ -200,12 +208,26 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     console.error(`No PRD found at ${path}. Create one (see canon loop/prd.schema.md).`)
     return 2
   }
+  let sharedLimit: number
+  try { sharedLimit = sharedPoolStatus().limit }
+  catch (error) {
+    console.error(`Cannot read the shared Yoke worker pool: ${(error as Error).message}`)
+    return 2
+  }
   const parallelSetting = opts.parallelAuto ? 'auto' : opts.parallel ?? config.loop.parallel ?? 'auto'
   if (parallelSetting === 'auto') {
-    const pending = loadPrd(path).filter(story => !story.passes)
-    parallel = !opts.resumeWorktree && !config.actions?.length && pending.length > 1 && pending.every(story => story.writes?.length) ? 3 : 1
+    const stories = loadPrd(path)
+    const pending = stories.filter(story => !story.passes)
+    if (!opts.resumeWorktree && !config.actions?.length && pending.length > 1 && pending.every(story => story.writes?.length)) {
+      parallel = Math.min(sharedLimit, pending.length)
+    } else parallel = 1
   } else parallel = parallelSetting
+  if (candidates > sharedLimit) {
+    console.error(`--candidates=${candidates} exceeds the shared worker-pool limit (${sharedLimit}); raise YOKE_MAX_PARALLEL_WORKERS (maximum ${MAX_PROJECT_WORKERS}) or lower --candidates`)
+    return 2
+  }
   const isolate = opts.isolate ?? config.loop.isolate ?? true
+  const useParallelDispatcher = parallel > 1 || candidates > 1
   if (opts.resumeWorktree && (!isolate || parallel !== 1)) {
     console.error('--resume-worktree requires isolation and one worker')
     return 2
@@ -394,7 +416,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
 
   let runner = opts.runner
   if (!runner) {
-    const requiredProviders = parallel > 1 || candidates > 1
+    const requiredProviders = useParallelDispatcher
       ? [...new Set(loadPrd(path).filter(story => !story.passes).map(story => story.agent ?? runnerAgent))]
       : loadPrd(path).filter(story => !story.passes).every(story => config.actions?.some(action => action.storyId === story.id)) ? [] : [runnerAgent]
     const unavailableProvider = requiredProviders.find(agent => !available(agent))
@@ -435,7 +457,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
         })
       : makeRunner(runnerAgent, idleMs, runnerOpts)
     const announce = opts.json ? console.error : console.log
-    announce(`Runner: ${runnerAgent} · permissions: ${permissions} · routing: ${routingEnabled ? 'on' : routingRequested ? 'auto (parent; no worker profiles)' : 'off'} · workers: ${parallel} · isolation: ${isolate || parallel > 1 ? 'on' : 'off'} · cwd: ${targetDir}`)
+    announce(`Runner: ${runnerAgent} · permissions: ${permissions} · routing: ${routingEnabled ? 'on' : routingRequested ? 'auto (parent; no worker profiles)' : 'off'} · workers: ${parallel} local / ${sharedLimit} shared maximum · isolation: ${isolate || parallel > 1 ? 'on' : 'off'} · cwd: ${targetDir}`)
   }
 
   if (config.actions?.length) {
@@ -479,6 +501,17 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       let result: import('./runner.js').AgentResult | undefined
       try { result = reviewRunner(context); return result }
       finally { executionReporter?.addTokens({ inputTokens: 0, outputTokens: 0, measurementComplete: result?.tokens !== undefined, ...result?.tokens, provider: reviewProvider, role: 'reviewer', storyId: context.story.id, durationMs: Date.now() - started }) }
+    }
+  }
+  if (!useParallelDispatcher) {
+    if (runner) {
+      const unpooled = runner
+      runner = context => withSharedWorkerSync({ targetDir, storyId: context.story.id, provider: runnerAgent, role: 'implementation', onWait: waitMs => executionReporter?.resourceWait?.({ id: context.story.id, title: context.story.title }, 'implementation', 1, waitMs, runnerAgent) }, () => unpooled(context))
+    }
+    if (review) {
+      const unpooledReview = review
+      const provider = SUPPORTED_AGENTS.includes(reviewProvider as Agent) ? reviewProvider as Agent : runnerAgent
+      review = context => withSharedWorkerSync({ targetDir, storyId: context.story.id, provider, role: 'integration', onWait: waitMs => executionReporter?.resourceWait?.({ id: context.story.id, title: context.story.title }, 'integration', 1, waitMs, provider) }, () => unpooledReview(context))
     }
   }
   let lock: ReturnType<typeof acquireLock>
@@ -531,7 +564,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       return 1
     }
   }
-  if (parallel > 1 || candidates > 1) {
+  if (useParallelDispatcher) {
     return runParallelLoopCommand({
       targetDir,
       prdPath: path,

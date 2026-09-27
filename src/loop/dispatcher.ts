@@ -11,6 +11,7 @@ import { readyStories, writeScopesOverlap } from './scheduler.js'
 import type { VerifyResult } from './verify.js'
 import type { StoryWorkerCancellation, StoryWorkerProvider, StoryWorkerResult } from './worker.js'
 import { createWorkerCleanup } from './worker-cleanup.js'
+import type { PoolLease, PoolRole, SharedPoolStatus } from './resource-pool.js'
 
 export type DispatcherWorktree = { readonly path: string; readonly baseCommit: string }
 export type DispatcherWorkerInput = {
@@ -25,6 +26,7 @@ export type DispatcherWorkerInput = {
 export type DispatcherRebase = { readonly kind: 'rebased'; readonly expectedHead: string } | { readonly kind: 'reopen'; readonly reason: string }
 export type DispatcherGate = { readonly passed: boolean; readonly summary: string }
 export type DispatcherClock = () => Date
+export type DispatcherResourceRequest = { readonly story: Story; readonly provider: StoryWorkerProvider; readonly role: PoolRole; readonly units: number; readonly signal: AbortSignal }
 
 export interface DispatcherClaims {
   acquire(input: DispatcherWorkerInput): boolean
@@ -54,7 +56,7 @@ export type DispatcherGates = {
   readonly perf?: (path: string, story: Story) => VerifyResult
   readonly audit?: (path: string, story: Story) => VerifyResult
   readonly qualityReview?: (path: string, story: Story, worker: DispatcherWorkerInput) => DispatcherGate
-  readonly integrationPhase?: (worker: DispatcherWorkerInput, phase: 'committing' | undefined) => void
+  readonly integrationPhase?: (worker: DispatcherWorkerInput, phase: 'waiting-resource' | 'committing' | undefined) => void
 }
 
 export type DispatcherOptions = {
@@ -65,6 +67,9 @@ export type DispatcherOptions = {
   readonly worker: (input: DispatcherWorkerInput) => Promise<StoryWorkerResult>
   readonly candidateCount?: number
   readonly candidateCoordinator?: (input: DispatcherWorkerInput) => CandidateCoordinatorInput
+  readonly acquireResource?: (request: DispatcherResourceRequest) => Promise<PoolLease>
+  readonly resourceStatus?: () => SharedPoolStatus | undefined
+  readonly onIntegrationMetrics?: (input: DispatcherWorkerInput, queueWaitMs: number, integrationMs: number | undefined) => void
   readonly claims?: DispatcherClaims
   readonly worktrees: DispatcherWorktrees
   readonly git: DispatcherGit
@@ -80,8 +85,12 @@ export type DispatcherOptions = {
   readonly onProgress?: (status: {
     readonly dispatcherId: string
     readonly maxConcurrency: number
+    readonly workerUnitsPerStory: number
     readonly activeWorkers: number
+    readonly waitingWorkers: number
     readonly queuedCandidates: number
+    readonly queuedIntegrations: number
+    readonly globalPool?: SharedPoolStatus
     readonly integrated: number
     readonly reopened: number
     readonly iteration: number
@@ -99,7 +108,7 @@ export type DispatcherResult = {
   readonly failed: readonly string[]
 }
 
-type ActiveWorker = { readonly input: DispatcherWorkerInput; readonly controller: AbortController; readonly task: Promise<void> }
+type ActiveWorker = { readonly input: DispatcherWorkerInput; readonly controller: AbortController; readonly task: Promise<void>; phase: LoopPhase }
 
 function defaultClaims(targetDir: string, clock: DispatcherClock): DispatcherClaims {
   return {
@@ -146,6 +155,7 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
   const queue = new MergeQueue()
   const active = new Map<string, ActiveWorker>()
   const queued = new Map<string, Promise<void>>()
+  const integrationControllers = new Map<string, AbortController>()
   const areas = new Set<string>()
   const reservedWrites = new Map<string, readonly string[]>()
   const integrated: string[] = []
@@ -157,23 +167,31 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
   let providerIndex = 0
   let paused = false
   let cancellationReason: string | undefined
-  const reportProgress = (): void => options.onProgress?.({
-    dispatcherId,
-    maxConcurrency: options.maxConcurrency,
-    activeWorkers: active.size,
-    queuedCandidates: queued.size,
-    integrated: integrated.length,
-    reopened: reopened.length,
-    iteration: iterations,
-    progress: progress(options.stories),
-    workers: [...active.values()].map(worker => ({
-      story: worker.input.story.id,
-      storyTitle: worker.input.story.title,
-      provider: worker.input.provider.provider,
-      ...(worker.input.provider.model ? { model: worker.input.provider.model } : {}),
-      phase: 'implementing',
-    })),
-  })
+  const reportProgress = (): void => {
+    let globalPool: SharedPoolStatus | undefined
+    try { globalPool = options.resourceStatus?.() } catch { /* Resource status is observational; admission remains fail-closed. */ }
+    options.onProgress?.({
+      dispatcherId,
+      maxConcurrency: options.maxConcurrency,
+      workerUnitsPerStory: options.candidateCount && options.candidateCount > 1 && options.candidateCoordinator ? options.candidateCount : 1,
+      activeWorkers: active.size,
+      waitingWorkers: [...active.values()].filter(worker => worker.phase === 'waiting-resource').length,
+      queuedCandidates: queued.size,
+      queuedIntegrations: queued.size,
+      ...(globalPool ? { globalPool } : {}),
+      integrated: integrated.length,
+      reopened: reopened.length,
+      iteration: iterations,
+      progress: progress(options.stories),
+      workers: [...active.values()].map(worker => ({
+        story: worker.input.story.id,
+        storyTitle: worker.input.story.title,
+        provider: worker.input.provider.provider,
+        ...(worker.input.provider.model ? { model: worker.input.provider.model } : {}),
+        phase: worker.phase,
+      })),
+    })
+  }
 
   const providerFor = (story: Story): StoryWorkerProvider => {
     if (story.agent) {
@@ -210,9 +228,21 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
   }
   const enqueue = (input: DispatcherWorkerInput, result: Extract<StoryWorkerResult, { readonly kind: 'candidate' }>): void => {
     let reason = 'integrated verification failed'
+    const integrationQueuedAt = Date.now()
+    let integrationStartedAt: number | undefined
+    const integrationController = new AbortController()
+    integrationControllers.set(input.story.id, integrationController)
+    let integrationLease: PoolLease | undefined
     const task = queue.enqueue({
       storyId: input.story.id,
       rebase: async () => {
+        if (cancellationReason) throw new Error(cancellationReason)
+        options.onIntegrationMetrics?.(input, Date.now() - integrationQueuedAt, undefined)
+        if (options.acquireResource) {
+          options.gates.integrationPhase?.(input, 'waiting-resource')
+          integrationLease = await options.acquireResource({ story: input.story, provider: input.provider, role: 'integration', units: 1, signal: integrationController.signal })
+        }
+        integrationStartedAt = Date.now()
         if (cancellationReason) throw new Error(cancellationReason)
         if (!options.git.isClean(options.targetDir)) throw new Error('target working tree is not clean')
         const rebase = await options.git.rebase(input)
@@ -259,11 +289,18 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
           throw new Error(`unexpected merge result: ${String(unexpected)}`)
         }
       }
-    }).finally(() => {
+    }).finally(async () => {
       queued.delete(input.story.id)
+      integrationControllers.delete(input.story.id)
       options.gates.integrationPhase?.(input, undefined)
-      cleanup(input)
-      reportProgress()
+      try {
+        if (integrationLease) await integrationLease.release()
+        options.onIntegrationMetrics?.(input, Date.now() - integrationQueuedAt, integrationStartedAt === undefined ? undefined : Date.now() - integrationStartedAt)
+      }
+      finally {
+        cleanup(input)
+        reportProgress()
+      }
     })
     queued.set(input.story.id, task)
     reportProgress()
@@ -280,10 +317,21 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
     reservedWrites.set(story.id, story.writes ?? [])
     if (story.area) areas.add(story.area)
     const candidateDispatch = candidateRace
-    const task = (candidateDispatch && options.candidateCoordinator
-      ? Promise.resolve(options.candidateCoordinator(input)).then(coordinateCandidates).then(result => ({ source: 'candidates' as const, result }))
-      : options.worker(input).then(result => ({ source: 'worker' as const, result }))
-    ).then(async outcome => {
+    const activeWorker: ActiveWorker = { input, controller, task: Promise.resolve(), phase: options.acquireResource ? 'waiting-resource' : 'implementing' }
+    const task = Promise.resolve().then(async () => {
+      const workerLease = options.acquireResource
+        ? await options.acquireResource({ story, provider, role: 'implementation', units: candidateRace ? options.candidateCount! : 1, signal: controller.signal })
+        : undefined
+      activeWorker.phase = 'implementing'
+      reportProgress()
+      try {
+        return await (candidateDispatch && options.candidateCoordinator
+          ? Promise.resolve(options.candidateCoordinator(input)).then(coordinateCandidates).then(result => ({ source: 'candidates' as const, result }))
+          : options.worker(input).then(result => ({ source: 'worker' as const, result })))
+      } finally {
+        if (workerLease) await workerLease.release()
+      }
+    }).then(async outcome => {
       active.delete(story.id)
       claims.heartbeat(input)
       if (outcome.source === 'candidates') {
@@ -354,7 +402,8 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
       reportProgress()
       if (!(error instanceof Error)) throw error
     })
-    active.set(story.id, { input, controller, task })
+    Object.assign(activeWorker, { task })
+    active.set(story.id, activeWorker)
     reportProgress()
   }
   const cancel = (reason: string): void => {
@@ -364,14 +413,15 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
       claims.cancel?.(worker.input, reason)
       worker.controller.abort(reason)
     }
+    for (const controller of integrationControllers.values()) controller.abort(reason)
   }
   const run = async (): Promise<DispatcherResult> => {
     for (;;) {
       if (options.pause?.()) paused = true
       if (!paused && !cancellationReason && integrationBlocks.length === 0 && iterations < options.maxIterations) {
         const busy = new Set([...active.keys(), ...queued.keys(), ...failed])
-        // Integration/review retains its execution slot until the candidate lands.
-        const slots = Math.max(0, options.maxConcurrency - active.size - queued.size)
+        // Implementation slots are reusable while candidates wait for the separate integration lane.
+        const slots = Math.max(0, options.maxConcurrency - active.size)
         const ready = readyStories(options.stories, { activeAreas: areas, activeWrites: [...reservedWrites.values()] }).filter(story => !busy.has(story.id))
         let launched = 0
         for (const story of ready) {

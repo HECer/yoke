@@ -16,6 +16,7 @@ import { scanDir } from './scan/design.js'
 import { runNew } from './new/command.js'
 import { runPrdDraft, runPrdCheck } from './prd/command.js'
 import { runPrdAssess } from './prd/assess.js'
+import { runPrdDecompose } from './prd/decompose.js'
 import { runLoopCleanup } from './loop/cleanup.js'
 import { runFlowSmoke } from './smoke/command.js'
 import { maybeNotifyUpdate, currentYokeVersion } from './update/check.js'
@@ -400,7 +401,7 @@ export function main(argv: string[]): number | Promise<number> {
         const permissions = rest.includes('--unsafe') ? 'unsafe' as const : undefined
         const parallelArg = rest.find(a => a.startsWith('--parallel='))
         const parallel = parallelArg && parallelArg !== '--parallel=auto' ? Number(parallelArg.slice('--parallel='.length)) : undefined
-        if (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) { console.error(`Invalid --parallel value: ${parallelArg}`); return 1 }
+        if (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1 || parallel > 8)) { console.error(`Invalid --parallel value: ${parallelArg} (expected 1..8)`); return 1 }
         const json = rest.includes('--json')
         const routing = rest.includes('--routing') ? true : rest.includes('--no-routing') ? false : undefined
         const toArg = rest.find(a => a.startsWith('--timeout='))
@@ -458,6 +459,19 @@ export function main(argv: string[]): number | Promise<number> {
         if (runner && !SUPPORTED_AGENTS.includes(runner as Agent)) { console.error('Invalid planning runner'); return 1 }
         return runPrdAssess(targetDir, { runner: runner as Agent | undefined, story: rest.find(a => a.startsWith('--story='))?.slice('--story='.length), reassess: rest.includes('--reassess') })
       }
+      if (sub === 'decompose') {
+        const story = rest.find(a => a.startsWith('--story='))?.slice('--story='.length)
+        if (!story) {
+          console.error('usage: yoke prd decompose [dir] --story=<id> [--apply] [--runner=<agent>] [--timeout=<minutes>]')
+          return 1
+        }
+        const runner = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
+        if (runner && !SUPPORTED_AGENTS.includes(runner as Agent)) { console.error('Invalid planning runner'); return 1 }
+        const timeoutArg = rest.find(a => a.startsWith('--timeout='))
+        const timeoutMinutes = timeoutArg ? Number(timeoutArg.slice('--timeout='.length)) : undefined
+        if (timeoutMinutes !== undefined && (!Number.isFinite(timeoutMinutes) || timeoutMinutes < 0)) { console.error(`Invalid --timeout value: ${timeoutArg}`); return 1 }
+        return runPrdDecompose(targetDir, { story, apply: rest.includes('--apply'), runner: runner as Agent | undefined, timeoutMinutes })
+      }
       if (sub === 'draft') {
         const idea = rest.find(a => a.startsWith('--idea='))?.slice('--idea='.length)
         if (!idea) {
@@ -480,7 +494,7 @@ export function main(argv: string[]): number | Promise<number> {
         return runPrdDraft(targetDir, { idea, runner: runnerArg as Agent | undefined, force, timeoutMinutes })
       }
       if (sub === 'check') return runPrdCheck(targetDir)
-      console.log(`usage: yoke prd <draft|check|assess> [dir] [--idea="..."] [--runner=<${AGENT_LIST}>] [--story=<id>] [--reassess] [--force] [--timeout=<minutes>]`)
+      console.log(`usage: yoke prd <draft|check|assess|decompose> [dir] [--idea="..."] [--runner=<${AGENT_LIST}>] [--story=<id>] [--apply] [--reassess] [--force] [--timeout=<minutes>]`)
       return 1
     }
     case 'context': {
@@ -536,7 +550,7 @@ export function main(argv: string[]): number | Promise<number> {
       return runUpgrade()
     default:
       console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
-      console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--code-intelligence=off|shadow|active] [--loop] | change <add|status> [dir] | code-intelligence-server --workspace=<dir> --mode=<mode> | prd <draft|check|assess> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] | design-scan [dir] | flow-smoke [dir] | upgrade>`)
+      console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--code-intelligence=off|shadow|active] [--loop] | change <add|status> [dir] | code-intelligence-server --workspace=<dir> --mode=<mode> | prd <draft|check|assess|decompose> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] | design-scan [dir] | flow-smoke [dir] | upgrade>`)
       return cmd ? 1 : 0
   }
 }

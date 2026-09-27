@@ -25,7 +25,7 @@ export function appendLog(dir: string, line: string, capBytes: number = LOG_CAP_
 }
 
 export type LoopState = 'running' | 'blocked' | 'complete' | 'cap-reached' | 'paused'
-export type LoopPhase = 'implementing' | 'verifying' | 'design' | 'perf' | 'audit' | 'quality-preflight' | 'comparing' | 'selecting-candidate' | 'reviewing' | 'repairing' | 'committing'
+export type LoopPhase = 'waiting-resource' | 'implementing' | 'verifying' | 'design' | 'perf' | 'audit' | 'quality-preflight' | 'comparing' | 'selecting-candidate' | 'reviewing' | 'repairing' | 'committing'
 
 // Remaining-time estimate from observed story durations (current run first,
 // falling back to the persisted history of previous runs).
@@ -60,8 +60,12 @@ export interface ParallelWorkerStatus {
 export interface ParallelStatus {
   readonly dispatcherId: string
   readonly maxConcurrency: number
+  readonly workerUnitsPerStory?: number
   readonly activeWorkers: number
+  readonly waitingWorkers?: number
   readonly queuedCandidates: number
+  readonly queuedIntegrations?: number
+  readonly globalPool?: import('./resource-pool.js').SharedPoolStatus
   readonly integrated: number
   readonly reopened: number
   readonly iteration?: number
@@ -216,6 +220,9 @@ export interface LoopReporter {
   parallel?(status: ParallelStatus): void
   parallelWorker?(status: ParallelWorkerStatus): void
   parallelIntegrator?(status: ParallelWorkerStatus | null): void
+  resourceWait?(story: StoryRef, role: import('./resource-pool.js').PoolRole, units: number, waitMs: number, provider: string): void
+  integrationQueueWait?(story: StoryRef, waitMs: number, provider: string): void
+  integrationDuration?(story: StoryRef, durationMs: number, provider: string): void
 }
 
 export interface ReporterOpts {
@@ -395,7 +402,7 @@ export function makeReporter(
               selectedVariant: previous.selectedVariant,
               ...(previous.model ? { model: previous.model } : {}),
               provider: previous.provider,
-              ...(previous.phase ? { phase: previous.phase } : {}),
+              phase: worker.phase === 'implementing' && previous.phase && previous.phase !== 'waiting-resource' ? previous.phase : worker.phase,
               ...(previous.quality ? { quality: previous.quality } : {}),
             }
           : { ...worker, startedAt: now().toISOString() }
@@ -417,6 +424,24 @@ export function makeReporter(
         parallel,
         updatedAt: now().toISOString(),
       }, 'parallel', `  · parallel ${status.activeWorkers}/${status.maxConcurrency}`)
+    },
+    resourceWait(story, role, units, waitMs, provider) {
+      appendEvent(dir, {
+        runId,
+        timestamp: now().toISOString(),
+        type: 'phase-ended',
+        storyId: story.id,
+        phase: `resource-wait-${role}`,
+        provider,
+        durationMs: Math.max(0, waitMs),
+        data: { units },
+      })
+    },
+    integrationQueueWait(story, waitMs, provider) {
+      appendEvent(dir, { runId, timestamp: now().toISOString(), type: 'phase-ended', storyId: story.id, phase: 'integration-queue', provider, durationMs: Math.max(0, waitMs) })
+    },
+    integrationDuration(story, durationMs, provider) {
+      appendEvent(dir, { runId, timestamp: now().toISOString(), type: 'phase-ended', storyId: story.id, phase: 'integration', provider, durationMs: Math.max(0, durationMs) })
     },
     parallelWorker(status) {
       const base = current
