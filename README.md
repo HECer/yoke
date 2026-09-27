@@ -1,9 +1,9 @@
 <div align="center">
 
-<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.16.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
+<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.17.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
 
-<!-- yoke:version:start -->1.16.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1287<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.17.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->1298<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi | Hermes<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1287%20defined-blue.svg)
+![Tests](https://img.shields.io/badge/tests-1298%20defined-blue.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini%20%7C%20Qwen%20%7C%20OpenCode%20%7C%20Kilo%20%7C%20Pi%20%7C%20Hermes-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -69,7 +69,7 @@ in private, content-addressed local artifacts. Existing projects keep their seri
 safe 2 KiB preview / 8 KiB artifact defaults unless configured otherwise.
 
 Yoke 1.4 introduced opt-in parallel workers and a bounded, reference-driven quality gauntlet.
-Yoke 1.8.0 uses automatic parallelism for tasks with declared write scopes. See [the 1.4 migration guide](docs/MIGRATING-TO-1.4.md)
+Automatic parallelism was introduced in Yoke 1.8.0. This unreleased branch adds a shared cross-project worker pool. See [the 1.4 migration guide](docs/MIGRATING-TO-1.4.md)
 for the new flags, configuration, cleanup behavior, and review-verdict contract.
 
 Yoke 1.1 is safe-by-default: provider CLIs use autonomous sandbox profiles unless `--unsafe`
@@ -464,11 +464,15 @@ observability.
 
 ### Parallel workers and the quality gauntlet
 
-`--parallel=N` dispatches dependency-ready stories concurrently. Claims carry leases, workers use
-isolated worktrees, collision areas are serialized, and only a mechanically green candidate enters
-the FIFO integration queue. Integration repeats the project gates against the merged tree; a worker
-success can never bypass a red integrated result. `yoke loop status` reports the dispatcher,
-workers, providers, worktrees, lifecycle, queue, integrations, and reopened stories.
+`--parallel=N` dispatches dependency-ready stories concurrently. The default maximum is three
+shared worker units across Yoke projects; set `YOKE_MAX_PARALLEL_WORKERS=1..8` to change it.
+`--parallel` and `loop.parallel` accept 1–8. Candidate races consume one unit per simultaneous
+candidate. Claims carry leases, workers use isolated worktrees, collision areas and write scopes stay
+reserved through integration, and only a mechanically green candidate enters the FIFO integration
+queue. Integration has its own serialized lane, so it does not occupy an implementation slot while
+unrelated work proceeds. Integrated-tree gates remain mandatory. `yoke loop status` reports local
+workers, resource waits, shared capacity, integrations, and reopened stories. See
+[parallel execution and safe task decomposition](docs/parallel-execution.md).
 
 Quality is reference-driven and opt-in. Declare what one story should match:
 
@@ -655,8 +659,9 @@ cannot overwrite a shared registry file.
 
 Routing is not free: stories without a matching rule can add a controller call. Measure it
 on your own backlog rather than assuming a win. Routing now also runs within asynchronous
-parallel workers. Automatic parallelism starts at up to three workers when pending tasks declare
-write scopes; unknown scopes and configured tool actions keep execution serial. Isolation is
+parallel workers. Automatic parallelism uses up to the shared worker limit when pending tasks declare
+write scopes; the scheduler still serializes dependencies, collision areas, and overlapping scopes.
+Unknown scopes and configured tool actions keep automatic execution serial. Isolation is
 on by default. Explicit `--parallel=N`, `--no-routing` and `--no-isolate` remain available.
 See [execution defaults and dashboard measurement details](docs/VERIFIED-PROJECTS.md#execution-defaults-in-180).
 
@@ -934,7 +939,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1287 tests)
+npm test          # vitest (1298 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

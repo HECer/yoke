@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { acquireClaim, cleanupClaims, heartbeatClaim, readClaim, releaseClaim, requestClaimCancellation } from '../../src/loop/claims.js'
-import { acquireClaimOperation } from '../../src/loop/claim-lease.js'
+import { acquireClaimOperation, withClaimOperations } from '../../src/loop/claim-lease.js'
 import { storyPathSegment } from '../../src/loop/prd.js'
 
 let dir: string
@@ -13,6 +13,15 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-claim-')) })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('story claims', () => {
+  it('releases the operation lease if reading pool state throws', () => {
+    const file = join(dir, 'parallel-pool')
+    const context = { now: new Date(), staleMs: 30_000, isAlive: () => true }
+
+    expect(() => withClaimOperations(file, context, () => { throw new Error('corrupt pool state') }, () => [], () => true)).toThrow('corrupt pool state')
+    expect(existsSync(`${file}.operation`)).toBe(false)
+    expect(withClaimOperations(file, context, () => [], () => [], () => true)).toBe(true)
+  })
+
   it('acquires a complete versioned claim atomically and only its owner token releases it', () => {
     const claim = acquireClaim(dir, 'S1', 'dispatcher-a', {
       now: new Date(1_000),

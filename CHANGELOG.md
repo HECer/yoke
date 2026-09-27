@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.17.0 — 2026-09-27
+
+### Added
+- Coordinate weighted worker reservations across concurrent Yoke projects under a user-local pool. The default is three units, `YOKE_MAX_PARALLEL_WORKERS` accepts 1–8, and candidate races consume one unit per simultaneous candidate.
+- Add `yoke prd decompose --story=<id>` as a preview-first planner for splitting eligible stories into two independently scheduled children; `--apply` atomically replaces the parent and rewrites downstream dependencies after hash and schema checks.
+- Report shared capacity and resource waits in loop status and the dashboard. Record integration queue wait and duration, and forecast dependency-aware implementation work alongside a serialized integration lane.
+- Add a deterministic local dispatcher benchmark matrix for dependency chains, independent scopes and conflicting scopes.
+
+### Changed
+- Separate implementation slots from each project's integration queue. A completed candidate frees its implementation slot while retaining collision areas and write scopes through rebase, integrated-tree gates, commit and cleanup.
+- Keep single-worker runs on the serial path and reserve a shared unit around each agent invocation; use the dispatcher for multiple workers and competing candidate runs.
+- Cap explicit and configured per-project concurrency at eight. Automatic concurrency remains conservative and is now bounded by the shared cross-project limit.
+
+### Fixed
+- Release the shared claim-operation lease when pool-state parsing throws, so corrupt records fail closed without leaving later pool access stuck behind a leaked lock.
+
+### Migration and validation limits
+- Existing `loop.parallel` values above 8 must be lowered. The default shared cap can queue previously simultaneous project loops; set `YOKE_MAX_PARALLEL_WORKERS` to 1–8 for the desired user-level ceiling. Existing active workers are not cancelled when the cap is lowered.
+- Decomposition requires at least four structured criteria, at least two non-overlapping write scopes and no shared area. Child assessments/quality declarations need task-specific refresh; write scopes remain advisory.
+- Synthetic benchmark results use fixed local delays and make no model quality, token or provider-cost claims. Local release checks: 1,296 tests passed, two skipped across 143 files; lint/build, docs checks, package dry run, Canon validation and dependency audit passed.
+
 ## 1.16.0 — 2026-09-17
 
 ### Added

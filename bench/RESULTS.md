@@ -6,6 +6,29 @@ availability, verdict/blocker, conflicts, wall time, iterations, and final fixtu
 Fixture `string-kit` (3 stories, 16 pre-written assertions). Methodology and caveats:
 [README.md](README.md). One row per run — raw JSON in [`results/`](results/).
 
+## Synthetic dispatcher matrix (2026-09-27)
+
+One local run of `node bench/run-parallel-matrix.mjs` after the shared integration pipeline was
+implemented. Each case uses four stories, fixed 120 ms worker and 60 ms integration delays, and no
+provider calls. The measurements exercise dispatcher scheduling only; they are not model or
+repository performance evidence.
+
+| Scenario | Slots | Wall ms | Worker ms (summed) | Integration queue wait ms | Integration ms | Attempts | Accepted |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Dependency chain | 1 | 788 | 511 | 0 | 271 | 4 | 4 |
+| Dependency chain | 2 | 762 | 498 | 0 | 262 | 4 | 4 |
+| Dependency chain | 3 | 766 | 501 | 0 | 262 | 4 | 4 |
+| Independent scopes | 1 | 566 | 494 | 0 | 274 | 4 | 4 |
+| Independent scopes | 2 | 396 | 512 | 170 | 274 | 4 | 4 |
+| Independent scopes | 3 | 397 | 492 | 258 | 272 | 4 | 4 |
+| Conflicting scopes | 1 | 743 | 492 | 0 | 251 | 4 | 4 |
+| Conflicting scopes | 2 | 753 | 492 | 0 | 262 | 4 | 4 |
+| Conflicting scopes | 3 | 742 | 493 | 0 | 247 | 4 | 4 |
+
+The independent-scope case was about 30% shorter at two or three slots in this one synthetic run.
+Dependency and conflict cases remained effectively serial, as their constraints require. Repeat the
+matrix before drawing conclusions from small timing differences.
+
 ## Runs
 
 | Date | Runner | Model (reported) | Result | Wall-clock | Input tok | Output tok | First-pass stories | src LOC |

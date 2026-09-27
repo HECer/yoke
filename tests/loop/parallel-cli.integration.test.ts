@@ -20,6 +20,8 @@ vi.mock('../../src/loop/runner.js', async importOriginal => ({
   makeAsyncRunner,
 }))
 
+vi.mock('../../src/agents/process-incarnation.js', () => ({ processIncarnation: () => 'test-process:1' }))
+
 let dir: string
 
 const verifyOk: Verifier = () => ({ passed: true, summary: 'green' })

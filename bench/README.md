@@ -42,6 +42,7 @@ node bench/run-large.mjs --seed=G:\NN-Developed\Yoke-Testground\yoke-codex-study
 node bench/analyze-routing-study.mjs
 node bench/run-matrix.mjs --label=release-1.0
 node bench/output-compaction.mjs  # deterministic local gate-output benchmark; no provider call
+node bench/run-parallel-matrix.mjs # synthetic dispatcher; deterministic local delays, no provider call
 ```
 
 Each run copies the fixture to `bench/.runs/<fixture>-<runner>-<routing>-<stamp>` (or the
@@ -65,6 +66,15 @@ acceptance tests under fresh filenames after the agent run. This prevents an age
 visible test from turning into false benchmark evidence. A seed can provide `bench-acceptance.json`
 to declare its fixture identity and hidden-test files. `analyze-routing-study.mjs` validates and
 aggregates the checked-in three-pair Codex-only study.
+
+### Parallel dispatcher matrix
+
+`run-parallel-matrix.mjs` exercises the real dispatcher with a deterministic local worker over a
+dependency chain, independent write scopes and conflicting scopes at concurrency 1, 2 and 3. It
+reports wall time, summed worker time, integration queue wait, integration time, attempts and
+accepted results. Fixed delays make scheduler comparisons repeatable; these rows do not measure
+provider latency, token cost, model quality, global cross-project contention or large-repository
+work. Run `npm run build` first so `dist/loop/dispatcher.js` exists.
 
 ## Caveats (read before quoting numbers)
 
