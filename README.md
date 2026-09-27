@@ -33,6 +33,8 @@ OpenCode, Kilo and Pi are real CLI integrations, not bundled runtimes or credent
 
 **Fixed in 1.15.1:** multi-turn Pi usage accounting, provider error/progress handling, task-specific time ranges and missing skill resources. Pi has been supported since **1.13.0**; current Pi versions require explicit project trust for project-local skills in headless runs. The [agent/skill hardening audit](docs/AGENT-HARDENING-2026-09-16.md) documents the fixes, migration notes and validation limits.
 
+For SoL-Pi's paper results, opt-in behavior, runtime, trust, permissions, and data limits, see the [SoL-Pi integration guide](docs/SOL-PI.md).
+
 ### One dashboard, multiple projects
 
 ```sh

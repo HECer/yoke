@@ -31,3 +31,6 @@ codex implemented STORY-4
 
 ## 2026-09-27 — STORY-5: provide temporary SoL-Pi config safely in Pi workspaces
 codex implemented STORY-5
+
+## 2026-09-27 — STORY-6: document the integration limits and evidence
+codex implemented STORY-6
