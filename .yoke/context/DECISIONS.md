@@ -28,3 +28,6 @@ codex implemented STORY-3
 
 ## 2026-09-27 — STORY-4: activate the pinned extension only for opted-in Pi invocations
 codex implemented STORY-4
+
+## 2026-09-27 — STORY-5: provide temporary SoL-Pi config safely in Pi workspaces
+codex implemented STORY-5
