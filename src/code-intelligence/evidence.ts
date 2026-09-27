@@ -13,7 +13,7 @@ function textOf(raw: unknown): string {
   try { return JSON.stringify(raw) ?? '' } catch { return String(raw) }
 }
 function locate(text: string, root: string): { path: string | null; line: number | null } {
-  const match = /(?:^|[\s("'`])((?:[A-Za-z0-9_.@-]+[\\/])*[A-Za-z0-9_.@-]+\.[A-Za-z0-9]+):(\d+)/u.exec(text)
+  const match = /(?:^|[\s("'`])((?:[A-Za-z0-9_.@-]+[\\/])*[A-Za-z0-9_.@-]+\.[A-Za-z0-9]+):L?(\d+)/u.exec(text)
   if (!match) return { path: null, line: null }
   try { return { path: assertSafePath(root, match[1]!), line: Number(match[2]) } } catch { return { path: null, line: null } }
 }
@@ -39,6 +39,12 @@ export function normalizeItems(raw: unknown, options: EvidenceOptions, kind: Ite
     const excerpt = textOf(candidate).slice(0, maxChars)
     if (!excerpt) continue
     const p = makeProvenance(options, excerpt, excerpt.toLowerCase().includes('ambiguous') ? 'ambiguous' : 'resolved')
+    if (candidate && typeof candidate === 'object' && typeof candidate.relative_path === 'string') {
+      try {
+        p.source_path = assertSafePath(options.root, candidate.relative_path)
+        p.content_hash = options.snapshot.files.find(file => file.path === p.source_path)?.hash ?? null
+      } catch { p.source_path = null; p.content_hash = null; p.resolution = 'unresolved' }
+    }
     const id = evidenceId(p, excerpt); provenance.push(p)
     items.push({ item_id: `item-${hash(excerpt).slice(0, 24)}`, kind, path: p.source_path, excerpt, evidence_ids: [id], rank: items.length })
   }

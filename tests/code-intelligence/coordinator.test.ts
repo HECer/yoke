@@ -29,6 +29,18 @@ function adapter(name: 'graft' | 'graphify' | 'serena-lsp', result: unknown, cal
 }
 
 describe('code intelligence coordinator', () => {
+  it('does not invent a symbol from Graft prose search output', async () => {
+    const calls: string[] = []
+    const ci = new CodeIntelligenceCoordinator(root(), { adapters: {
+      graft: adapter('graft', 'graft ask — "answer"\n1. answer · function\n src/index.ts:L1-L1', calls),
+      'serena-lsp': adapter('serena-lsp', [{ name_path: 'answer', relative_path: 'src/index.ts', kind: 'Function' }], calls),
+    } })
+    try {
+      const context = await ci.dispatch('code_context', { workspace_id: ci.workspace_id, query: 'answer' })
+      const response = await ci.dispatch('code_symbol', { workspace_id: ci.workspace_id, snapshot_id: context.snapshot_id, query: 'answer' })
+      expect((response.data as any).symbols.map((symbol: any) => symbol.name)).toEqual(['answer'])
+    } finally { await ci.close() }
+  })
   it('runs structural context before optional architecture context and preserves provenance', async () => {
     const calls: string[] = []; const ci = new CodeIntelligenceCoordinator(root(), { adapters: { graft: adapter('graft', 'src/index.ts:1 answer', calls), graphify: adapter('graphify', 'Architecture: src/index.ts:1', calls) } })
     const response = await ci.dispatch('code_context', { workspace_id: ci.workspace_id, query: 'answer', include_docs: true })
