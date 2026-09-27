@@ -51,7 +51,7 @@ describe('SoL-Pi runtime config', () => {
 
   it('solpi-config-restored-after-process', () => withProject(async (root, workspace) => {
     const settingsPath = join(workspace, '.pi', 'agent', 'settings.json')
-    const original = Buffer.from('{}');                                             
+    const original = Buffer.from('{}');
     const success = piInvocation(workspace, 'process.exit(0)')
     mkdirSync(join(workspace, '.pi', 'agent'), { recursive: true })
     writeFileSync(settingsPath, original)
