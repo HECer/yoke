@@ -1,5 +1,17 @@
 # Parallel execution
 
+## Continuous discovery
+
+`yoke loop run . --explore --parallel=auto` applies the same scheduler and shared-pool limits to
+newly discovered stories after each accepted backlog drains. Exploration itself is a single
+read-only planning call. Accepted tasks need repository-file evidence, disjoint write scopes and
+criterion-specific executable checks; implementation then uses the normal isolated workers and
+integration lane. A no-op scan waits 30 minutes by default (`--explore-interval=1..1440`). Continuous
+exploration is unbounded by default; `--explore-limit=12h|3d|2w` pauses it at a safe boundary after
+the chosen duration and lets active workers finish their gates and integration.
+`yoke loop pause .` stops at a safe boundary. See the [continuous exploration guide](CONTINUOUS-EXPLORATION.md)
+for retries, stop detection, PRD history compaction and recovery.
+
 Yoke parallelizes independent PRD stories. The scheduler respects declared dependencies, collision
 areas and overlapping `writes` scopes. Each worker edits an isolated worktree; its result still has
 to pass the integrated-tree gates before Yoke commits it.

@@ -25,7 +25,7 @@ export function appendLog(dir: string, line: string, capBytes: number = LOG_CAP_
 }
 
 export type LoopState = 'running' | 'blocked' | 'complete' | 'cap-reached' | 'paused'
-export type LoopPhase = 'waiting-resource' | 'implementing' | 'verifying' | 'design' | 'perf' | 'audit' | 'quality-preflight' | 'comparing' | 'selecting-candidate' | 'reviewing' | 'repairing' | 'committing'
+export type LoopPhase = 'waiting-resource' | 'implementing' | 'verifying' | 'design' | 'perf' | 'audit' | 'quality-preflight' | 'comparing' | 'selecting-candidate' | 'reviewing' | 'repairing' | 'committing' | 'exploring' | 'waiting-exploration' | 'waiting-recovery'
 
 // Remaining-time estimate from observed story durations (current run first,
 // falling back to the persisted history of previous runs).
@@ -206,11 +206,11 @@ export interface LoopReporter {
   storyStart(story: StoryRef, iteration: number, progress: Progress): void
   /** A story landed (verified + committed): record its duration and refresh the estimate. */
   storyDone(story: StoryRef, progress: Progress): void
-  phase(phase: LoopPhase): void
+  phase(phase: LoopPhase, reason?: string, progress?: Progress): void
   blocked(reason: string): void
   complete(progress: Progress): void
   capReached(progress: Progress): void
-  paused(progress: Progress): void
+  paused(progress: Progress, reason?: string): void
   quality(status: QualityStatus): void
   /** Accumulate runner token usage; totals ride along on every subsequent status write. */
   addTokens(usage: TokenUsage): void
@@ -359,9 +359,12 @@ export function makeReporter(
         `✓ ${story.id} done${took} — ${progress.passed}/${progress.total} (${percentOf(progress)}%)${hint}`,
       )
     },
-    phase(phase) {
-      if (!current) return
-      persist({ ...current, phase, updatedAt: now().toISOString() }, phase, `  · ${phase}…`)
+    phase(phase, reason, progress) {
+      const status = current ?? emptyStatus(now().toISOString())
+      const base = phase === 'exploring' || phase === 'waiting-exploration' || phase === 'waiting-recovery'
+        ? (({ story: _story, storyTitle: _storyTitle, ...withoutStory }) => withoutStory)(status)
+        : status
+      persist({ ...base, state: 'running', phase, ...(progress ? { progress } : {}), ...(reason ? { reason } : { reason: undefined }), updatedAt: now().toISOString() }, phase, `  · ${phase}…`)
     },
     blocked(reason) {
       const base = current ?? emptyStatus(now().toISOString())
@@ -378,9 +381,9 @@ export function makeReporter(
         progress, updatedAt: now().toISOString() },
         'cap-reached', `◾ iteration cap reached — ${progress.passed}/${progress.total}`)
     },
-    paused(progress) {
+    paused(progress, reason) {
       persist({ ...withoutParallel(current ?? emptyStatus(now().toISOString())), state: 'paused', phase: undefined,
-        progress, updatedAt: now().toISOString() },
+        progress, ...(reason ? { reason } : {}), updatedAt: now().toISOString() },
         'paused', `⏸ loop paused — ${progress.passed}/${progress.total}`)
     },
     quality(status) {

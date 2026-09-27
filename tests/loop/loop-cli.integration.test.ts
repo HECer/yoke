@@ -11,7 +11,8 @@ import type { GitOps } from '../../src/loop/gates.js'
 import type { AgentRunner } from '../../src/loop/runner.js'
 import type { Verifier } from '../../src/loop/verify.js'
 import { readDecisionResume } from '../../src/loop/decision.js'
-import { main, parseQualityFlags } from '../../src/cli.js'
+import { noopReporter } from '../../src/loop/reporter.js'
+import { main, parseExploreLimit, parseQualityFlags } from '../../src/cli.js'
 import { projectAnalytics } from '../../src/dashboard/analytics.js'
 
 let dir: string
@@ -36,6 +37,41 @@ beforeEach(() => {
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('yoke loop CLI', () => {
+  it.each([
+    ['12h', 12 * 60 * 60_000],
+    ['3d', 3 * 24 * 60 * 60_000],
+    ['2w', 2 * 7 * 24 * 60 * 60_000],
+    ['2 days', 2 * 24 * 60 * 60_000],
+  ])('parses an exploration runtime of %s', (value, milliseconds) => {
+    expect(parseExploreLimit(value)).toEqual({ ok: true, milliseconds })
+  })
+
+  it.each(['0h', '-1d', '1.5h', '2m', '999999999999999999999w'])('rejects an invalid exploration runtime %s', value => {
+    expect(parseExploreLimit(value).ok).toBe(false)
+  })
+
+  it('requires --explore when an exploration runtime is provided', () => {
+    expect(main(['loop', 'run', dir, '--explore-limit=2d'])).toBe(1)
+  })
+
+  it('rejects a missing exploration runtime value', () => {
+    expect(main(['loop', 'run', dir, '--explore', '--explore-limit'])).toBe(1)
+  })
+
+  it('pauses a finite exploration run with a visible reason when its deadline is reached', async () => {
+    saveConfig(dir, { ...cfg(), loop: { enabled: true, isolate: true } })
+    let pauseReason: string | undefined
+    const reporter = { ...noopReporter, paused: (_progress: { passed: number; total: number }, reason?: string) => { pauseReason = reason } }
+    const clock = vi.spyOn(Date, 'now')
+      .mockReturnValueOnce(1_000) // validate the duration
+      .mockReturnValueOnce(1_000) // establish the deadline
+      .mockReturnValueOnce(1_001) // supervisor reaches its first safe boundary
+    try {
+      expect(await runLoopCommand(dir, { explore: true, exploreLimitMs: 1, isolate: true, reporter })).toBe(3)
+      expect(pauseReason).toContain('the configured exploration time limit elapsed')
+    } finally { clock.mockRestore() }
+  })
+
   it('includes review consumption in persistent project usage without double-counting implementation', () => {
     saveConfig(dir, cfg())
     const result = runLoopCommand(dir, {

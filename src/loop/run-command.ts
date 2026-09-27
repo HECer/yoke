@@ -1,9 +1,9 @@
 import { roleSelection } from "../routing/capability.js"
 import { join } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, unlinkSync } from 'node:fs'
 import { loadConfig, saveConfig, defaultConfig, resolveOutputPolicy, resolveVerifyCommand, type DecisionPolicy } from '../retrofit/config.js'
-import { loadPrd, progress } from './prd.js'
-import { runLoop } from './loop.js'
+import { allPass, loadPrd, progress, selectNextStory } from './prd.js'
+import { pauseFilePath, requestLoopPause, runLoop } from './loop.js'
 import { commitPaths, realGitOps } from './git.js'
 import { makeRunner, makeReviewRunner, isAgentAvailable, type AgentRunner, type AmbiguityPolicy } from './runner.js'
 import type { Agent } from '../retrofit/config.js'
@@ -33,6 +33,7 @@ import { prepareIsolatedWorktree } from './recovery.js'
 import { AGENT_LIST, SUPPORTED_AGENTS } from '../agents/catalog.js'
 import type { StoryWorkerProvider } from './worker.js'
 import { MAX_PROJECT_WORKERS, sharedPoolStatus, withSharedWorkerSync } from './resource-pool.js'
+import { runPrdExplore } from '../prd/explore.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
@@ -105,8 +106,13 @@ export function loopStatus(targetDir: string, now: () => Date = () => new Date()
     const candidate = worker.candidateId ? ` candidate ${worker.candidateId} · ${worker.worktree ?? 'worktree unknown'} · ${worker.lifecycle ?? 'working'}` : ''
     lines.push(`  worker ${worker.story} "${worker.storyTitle}" (${worker.provider}${worker.model ? `/${worker.model}` : ''})${candidate} · ${worker.phase ?? 'working'}${quality}`)
   }
-  const ageMs = now().getTime() - Date.parse(st.updatedAt)
-  if (st.state === 'running' && ageMs > STALE_MINUTES * 60_000) {
+  const nowMs = now().getTime()
+  const ageMs = nowMs - Date.parse(st.updatedAt)
+  const providerProgressMs = Math.max(0, ...((st.supervision ?? [])
+    .filter(process => process.liveness === 'alive' && process.lastProgressAt)
+    .map(process => Date.parse(process.lastProgressAt!))
+    .filter(Number.isFinite)))
+  if (st.state === 'running' && ageMs > STALE_MINUTES * 60_000 && nowMs - providerProgressMs > STALE_MINUTES * 60_000) {
     lines.push(`  ⚠ possibly stuck — no update in ${relativeTime(st.updatedAt, now())}`)
   }
   return lines.join('\n')
@@ -158,9 +164,349 @@ export interface RunLoopCommandOptions {
   qualityPolicy?: QualityPolicy
   qualityUnbounded?: true
   candidates?: number
+  /** Keep discovering and implementing verified work after the current PRD drains. */
+  explore?: boolean
+  /** Minutes between read-only exploration passes that find no suitable work. */
+  exploreIntervalMinutes?: number
+  /** Optional supervisor runtime. Omitted means the exploration loop is unbounded. */
+  exploreLimitMs?: number
+  /** Internal supervisor flags used to keep one concise output stream. */
+  quiet?: boolean
+  explorationSupervisor?: boolean
+}
+
+const DEFAULT_EXPLORE_INTERVAL_MINUTES = 30
+const EXPLORE_RETRY_BASE_MS = 30_000
+const EXPLORE_RETRY_MAX_MS = 15 * 60_000
+
+function consumeExplorePause(targetDir: string): boolean {
+  const path = pauseFilePath(targetDir)
+  if (!existsSync(path)) return false
+  try { unlinkSync(path) } catch { /* a pause request still wins if cleanup fails */ }
+  return true
+}
+
+function currentProgress(targetDir: string): ReturnType<typeof progress> {
+  try { return progress(loadPrd(prdPath(targetDir))) }
+  catch { return { passed: 0, total: 0 } }
+}
+
+function allCurrentStoriesPass(targetDir: string): boolean {
+  try { return allPass(loadPrd(prdPath(targetDir))) }
+  catch { return false }
+}
+
+async function waitForExplorePause(targetDir: string, durationMs: number, heartbeat?: () => void, limitDeadline?: number): Promise<boolean> {
+  const waitDeadline = Date.now() + durationMs
+  let nextHeartbeat = Date.now() + 5 * 60_000
+  while (Date.now() < waitDeadline && (limitDeadline === undefined || Date.now() < limitDeadline)) {
+    if (consumeExplorePause(targetDir)) return true
+    if (Date.now() >= nextHeartbeat) {
+      heartbeat?.()
+      nextHeartbeat = Date.now() + 5 * 60_000
+    }
+    const untilWaitEnds = waitDeadline - Date.now()
+    const untilLimit = limitDeadline === undefined ? untilWaitEnds : limitDeadline - Date.now()
+    await new Promise<void>(resolve => setTimeout(resolve, Math.max(1, Math.min(1_000, untilWaitEnds, untilLimit))))
+  }
+  return consumeExplorePause(targetDir)
+}
+
+function retryProviders(targetDir: string, preferred?: Agent, available: (agent: Agent) => boolean = isAgentAvailable): Agent[] {
+  let config: ReturnType<typeof loadConfig>
+  try { config = loadConfig(targetDir) } catch { config = null }
+  const primary = resolveRunnerAgent(config, preferred, detectHostAgent())
+  return [...new Set([primary, ...(config?.agents ?? [])])].filter(agent => available(agent))
+}
+
+function retryReviewers(preferred: Agent | undefined, implementer: Agent, available: (agent: Agent) => boolean): Agent[] {
+  return [...new Set([...(preferred ? [preferred] : []), ...SUPPORTED_AGENTS])].filter(agent => agent !== implementer && available(agent))
+}
+
+function nextProvider(providers: readonly Agent[], current?: Agent): Agent | undefined {
+  if (!providers.length) return current
+  const index = current ? providers.indexOf(current) : -1
+  return providers[(index + 1 + providers.length) % providers.length]
+}
+
+function retryDelay(failures: number): number {
+  return Math.min(EXPLORE_RETRY_MAX_MS, EXPLORE_RETRY_BASE_MS * 2 ** Math.min(10, Math.max(0, failures - 1)))
+}
+
+function scheduleExploreLimitPause(targetDir: string, deadline: number | undefined): () => void {
+  if (deadline === undefined) return () => {}
+  let timer: NodeJS.Timeout | undefined
+  const check = (): void => {
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) {
+      requestLoopPause(targetDir)
+      return
+    }
+    timer = setTimeout(check, Math.min(remaining, 2_147_483_647))
+    timer.unref?.()
+  }
+  check()
+  return () => { if (timer) clearTimeout(timer) }
+}
+
+function reportExploration(targetDir: string, summary: string, json: boolean, nextStep?: string): void {
+  const say = json ? (line: string) => console.error(line) : (line: string) => console.log(line)
+  let next = nextStep
+  try {
+    if (!next) {
+      const story = selectNextStory(loadPrd(prdPath(targetDir)))
+      if (story) next = `${story.id}: ${story.title}`
+    }
+  } catch { /* the persistent loop status keeps the parse failure visible */ }
+  say(`Exploration: ${summary}`)
+  say(`Next: ${next ?? 'scan the project again for evidenced improvements'}`)
+}
+
+async function runContinuousExploration(targetDir: string, options: RunLoopCommandOptions): Promise<number> {
+  if (options.isolate === false) {
+    console.error('--explore requires isolated story worktrees so failed work can be resumed safely.')
+    return 2
+  }
+  const intervalMinutes = options.exploreIntervalMinutes ?? DEFAULT_EXPLORE_INTERVAL_MINUTES
+  if (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 1_440) {
+    console.error('--explore-interval must be an integer from 1 to 1440 minutes')
+    return 2
+  }
+  if (options.exploreLimitMs !== undefined && (!Number.isSafeInteger(options.exploreLimitMs) || options.exploreLimitMs <= 0 || Date.now() + options.exploreLimitMs > 8_640_000_000_000_000)) {
+    console.error('--explore-limit must be a positive, supported duration')
+    return 2
+  }
+  const limitDeadline = options.exploreLimitMs === undefined ? undefined : Date.now() + options.exploreLimitMs
+  const reporter = options.reporter ?? makeReporter(targetDir, { json: options.json, quiet: true })
+  let config: ReturnType<typeof loadConfig>
+  try { config = loadConfig(targetDir) } catch { config = null }
+  const defaultImplementationAgent = options.agent ?? resolveRunnerAgent(config, undefined, detectHostAgent())
+  const defaultExplorer = options.agent ?? config?.planning?.agent ?? defaultImplementationAgent
+  const available = options.isAvailable ?? isAgentAvailable
+  const reviewRequested = !options.reviewRunner && Boolean(options.review || options.reviewer)
+  const innerOptions: RunLoopCommandOptions = { ...options, isolate: true, explore: true, explorationSupervisor: true, reporter, quiet: true }
+  let usedIterations = 0
+  let retryCount = 0
+  let explorationFailures = 0
+  let noActionScans = 0
+  let implementationAgent = defaultImplementationAgent
+  let reviewerAgent = options.reviewer ?? (reviewRequested ? SUPPORTED_AGENTS.find(agent => agent !== defaultImplementationAgent && available(agent)) : undefined)
+  let explorationAgent = defaultExplorer
+  let retryWorktree = false
+  const safeBatchSize = (): number => {
+    if (retryWorktree) return 1
+    const parallelSetting = options.parallelAuto ? 'auto' : options.parallel ?? config?.loop.parallel ?? 'auto'
+    if (parallelSetting !== 'auto') return Math.max(1, parallelSetting)
+    try {
+      const pending = loadPrd(prdPath(targetDir)).filter(story => !story.passes)
+      if (!config?.actions?.length && pending.length > 1 && pending.every(story => story.writes?.length)) {
+        return Math.min(sharedPoolStatus().limit, pending.length)
+      }
+    } catch { /* the inner command reports the underlying configuration or PRD error */ }
+    return 1
+  }
+  const say = options.json ? (line: string) => console.error(line) : (line: string) => console.log(line)
+  reporter.phase('exploring', 'continuous exploration supervisor started', currentProgress(targetDir))
+  const limitReached = (): boolean => limitDeadline !== undefined && Date.now() >= limitDeadline
+  const stopForTimeLimit = (): number => {
+    consumeExplorePause(targetDir)
+    const reason = 'the configured exploration time limit elapsed; stopped at a safe boundary'
+    reporter.paused(currentProgress(targetDir), reason)
+    say('Exploration time limit elapsed; the loop stopped at a safe boundary. Next: yoke loop run --explore .')
+    return 3
+  }
+
+  const scanForWork = async (focus?: string): Promise<'continue' | 'paused' | 'limit'> => {
+    if (limitReached()) return 'limit'
+    const explorer = retryProviders(targetDir, explorationAgent, available)
+    const result = runPrdExplore(targetDir, {
+      runner: explorationAgent,
+      timeoutMinutes: options.timeoutMinutes,
+      isAvailable: options.isAvailable ?? isAgentAvailable,
+      onUsage: usage => reporter.addTokens(usage),
+      pause: () => consumeExplorePause(targetDir) || limitReached(),
+      ...(focus ? { focus } : {}),
+    })
+    if (result.kind === 'paused') {
+      if (limitReached()) return 'limit'
+      reporter.paused(currentProgress(targetDir))
+      say('Exploration paused at a safe boundary.')
+      return 'paused'
+    }
+    if (result.kind === 'added') {
+      explorationFailures = 0
+      noActionScans = 0
+      explorationAgent = defaultExplorer
+      const titles = result.tasks.map(task => `${task.id}: ${task.title}`).join('; ')
+      reporter.phase('exploring', `accepted tasks are committed; implementation is next: ${titles}`, currentProgress(targetDir))
+      reportExploration(targetDir, `added ${titles}`, options.json ?? false)
+      return 'continue'
+    }
+    if (result.kind === 'none') {
+      explorationFailures = 0
+      noActionScans++
+      if (noActionScans % 3 === 0) explorationAgent = nextProvider(explorer, explorationAgent) ?? defaultExplorer
+      const wait = intervalMinutes * 60_000
+      const waitingReason = `${focus ? `${focus}; ` : ''}${result.summary}; scanning again in ${intervalMinutes} minute(s)`
+      reporter.phase('waiting-exploration', waitingReason, currentProgress(targetDir))
+      reportExploration(targetDir, 'no new task met the evidence and quality gates', options.json ?? false, `scan again in ${intervalMinutes} minute(s)`)
+      return await waitForExplorePause(targetDir, wait, () => reporter.phase('waiting-exploration', waitingReason, currentProgress(targetDir)), limitDeadline) ? 'paused' : 'continue'
+    }
+    explorationFailures++
+    explorationAgent = nextProvider(explorer, result.provider ?? explorationAgent) ?? defaultExplorer
+    const wait = retryDelay(explorationFailures)
+    const waitingReason = `${focus ? `${focus}; ` : ''}${result.summary}; retrying exploration in ${Math.ceil(wait / 1_000)} seconds`
+    reporter.phase('waiting-recovery', waitingReason, currentProgress(targetDir))
+    reportExploration(targetDir, 'the explorer could not produce an admissible task', options.json ?? false, `retry in ${Math.ceil(wait / 1_000)} seconds`)
+    return await waitForExplorePause(targetDir, wait, () => reporter.phase('waiting-recovery', waitingReason, currentProgress(targetDir)), limitDeadline) ? 'paused' : 'continue'
+  }
+
+  const advanceRecoveryProviders = (): void => {
+    implementationAgent = nextProvider(retryProviders(targetDir, implementationAgent, available), implementationAgent) ?? implementationAgent
+    if (reviewRequested) reviewerAgent = nextProvider(retryReviewers(reviewerAgent, implementationAgent, available), reviewerAgent) ?? reviewerAgent
+  }
+
+  for (;;) {
+    if (consumeExplorePause(targetDir)) {
+      reporter.paused(currentProgress(targetDir))
+      say(`Exploration paused. Next: yoke loop run --explore .`)
+      return 3
+    }
+    if (limitReached()) return stopForTimeLimit()
+
+    const beforeStatus = readStatus(targetDir)
+    const priorProgress = currentProgress(targetDir)
+    const remaining = options.maxIterations === undefined ? undefined : Math.max(0, options.maxIterations - usedIterations)
+    if (remaining === 0) {
+      reporter.capReached(currentProgress(targetDir))
+      say(`Exploration reached --max=${options.maxIterations}. Next: yoke loop run --explore .`)
+      return 1
+    }
+    let resultCode: number
+    let unexpectedFailure: string | undefined
+    const batchSize = limitDeadline === undefined ? undefined : safeBatchSize()
+    const batchLimit = batchSize === undefined ? remaining : Math.min(remaining ?? batchSize, batchSize)
+    const cancelTimePause = scheduleExploreLimitPause(targetDir, limitDeadline)
+    try {
+      resultCode = await Promise.resolve(runLoopCommand(targetDir, {
+        ...innerOptions,
+        agent: implementationAgent,
+        ...(reviewRequested && reviewerAgent ? { reviewer: reviewerAgent } : {}),
+        ...(batchLimit !== undefined ? { maxIterations: batchLimit } : {}),
+        ...(retryWorktree ? { resumeWorktree: true, parallel: 1, candidates: 1 } : {}),
+      }))
+    } catch (error) {
+      resultCode = 1
+      unexpectedFailure = error instanceof Error ? error.message : String(error)
+    } finally {
+      cancelTimePause()
+    }
+    const afterStatus = readStatus(targetDir)
+    const changedStatus = afterStatus?.updatedAt !== beforeStatus?.updatedAt
+    if (changedStatus && priorProgress.passed < priorProgress.total) usedIterations += Math.max(0, afterStatus?.iteration ?? 0)
+
+    if (unexpectedFailure) {
+      retryCount++
+      advanceRecoveryProviders()
+      const wait = retryDelay(retryCount)
+      const reason = `the loop stopped unexpectedly: ${unexpectedFailure}; retrying with ${implementationAgent} in ${Math.ceil(wait / 1_000)} seconds`
+      reporter.phase('waiting-recovery', reason, currentProgress(targetDir))
+      say(`The loop stopped unexpectedly. Next: retry with ${implementationAgent} in ${Math.ceil(wait / 1_000)} seconds or pause with yoke loop pause .`)
+      if (await waitForExplorePause(targetDir, wait, () => reporter.phase('waiting-recovery', reason, currentProgress(targetDir)), limitDeadline)) {
+        reporter.paused(currentProgress(targetDir))
+        return 3
+      }
+      continue
+    }
+
+    if (resultCode === 3) {
+      if (limitReached()) return stopForTimeLimit()
+      say('Exploration paused. Next: yoke loop run --explore .')
+      return 3
+    }
+    if (limitReached()) return stopForTimeLimit()
+    if (options.maxIterations !== undefined && usedIterations >= options.maxIterations) {
+      if (resultCode === 0) {
+        reporter.complete(currentProgress(targetDir))
+        say(`Current backlog complete; --max=${options.maxIterations} stopped further exploration. Next: yoke loop run --explore .`)
+        return 0
+      }
+      reporter.capReached(currentProgress(targetDir))
+      say(`Exploration reached --max=${options.maxIterations} with work remaining. Next: yoke loop run --explore .`)
+      return 1
+    }
+    if (resultCode === 0) {
+      retryCount = 0
+      retryWorktree = false
+      const availableProviders = retryProviders(targetDir, defaultImplementationAgent, options.isAvailable ?? isAgentAvailable)
+      implementationAgent = availableProviders.includes(defaultImplementationAgent) ? defaultImplementationAgent : availableProviders[0] ?? defaultImplementationAgent
+      reporter.phase('exploring', 'the current accepted backlog is complete; scanning for the next verified improvement', currentProgress(targetDir))
+      const scan = await scanForWork()
+      if (scan === 'paused') return 3
+      if (scan === 'limit') return stopForTimeLimit()
+      continue
+    }
+
+    if (afterStatus?.state === 'cap-reached') {
+      if (limitDeadline !== undefined) {
+        retryCount = 0
+        retryWorktree = false
+        reporter.phase('exploring', 'the current safe task batch is complete; continuing the accepted backlog', currentProgress(targetDir))
+        continue
+      }
+      say(`The current backlog is incomplete at the requested iteration cap. Next: yoke loop run --explore .`)
+      return 1
+    }
+    let pendingDecision = false
+    try { pendingDecision = Boolean(readPendingDecision(targetDir)) }
+    catch { pendingDecision = true }
+    if (pendingDecision || afterStatus?.reason?.includes('ambiguous acceptance criteria')) {
+      retryWorktree = false
+      const wait = Math.min(intervalMinutes * 60_000, 60_000)
+      reporter.phase('waiting-recovery', `story ${afterStatus?.story ?? 'unknown'} needs a human decision before it can continue`, currentProgress(targetDir))
+      say(`Story ${afterStatus?.story ?? 'unknown'} is waiting for a human decision. Next: answer it or run yoke loop pause .`)
+      if (await waitForExplorePause(targetDir, wait, undefined, limitDeadline)) {
+        reporter.paused(currentProgress(targetDir))
+        return 3
+      }
+      continue
+    }
+    if (afterStatus?.reason?.startsWith('integrated completion gate failed') && allCurrentStoriesPass(targetDir)) {
+      retryWorktree = false
+      reporter.phase('exploring', `all planned tasks pass, but ${afterStatus.reason}; looking for work that can resolve the completion gate`, currentProgress(targetDir))
+      const scan = await scanForWork(`The integrated completion gate is still failing: ${afterStatus.reason}`)
+      if (scan === 'paused') return 3
+      if (scan === 'limit') return stopForTimeLimit()
+      continue
+    }
+    if (resultCode === 2) {
+      retryCount++
+      advanceRecoveryProviders()
+      const wait = retryDelay(retryCount)
+      reporter.phase('waiting-recovery', `the loop could not start; retrying with ${implementationAgent}${reviewerAgent ? ` and reviewer ${reviewerAgent}` : ''} in ${Math.ceil(wait / 1_000)} seconds`, currentProgress(targetDir))
+      say(`The unfinished loop could not start. Next: retry with ${implementationAgent}${reviewerAgent ? ` and reviewer ${reviewerAgent}` : ''} in ${Math.ceil(wait / 1_000)} seconds or pause with yoke loop pause .`)
+      if (await waitForExplorePause(targetDir, wait, undefined, limitDeadline)) {
+        reporter.paused(currentProgress(targetDir))
+        return 3
+      }
+      continue
+    }
+
+    retryCount++
+    advanceRecoveryProviders()
+    retryWorktree = true
+    const wait = retryDelay(retryCount)
+    reporter.phase('waiting-recovery', `story ${afterStatus?.story ?? 'unknown'} remains incomplete: ${afterStatus?.reason ?? 'no passing completion status'}; retrying with ${implementationAgent ?? 'the configured runner'} in ${Math.ceil(wait / 1_000)} seconds`, currentProgress(targetDir))
+    say(`The current task remains unfinished; its isolated work is retained. Next: retry with ${implementationAgent ?? 'the configured runner'} in ${Math.ceil(wait / 1_000)} seconds.`)
+    if (await waitForExplorePause(targetDir, wait, undefined, limitDeadline)) {
+      reporter.paused(currentProgress(targetDir))
+      return 3
+    }
+  }
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number | Promise<number> {
+  if (opts.explore && !opts.explorationSupervisor) return runContinuousExploration(targetDir, opts)
   let parallel = opts.parallel ?? 1
   const candidates = opts.candidates ?? 1
   if (opts.resumeWorktree && (opts.isolate === false || parallel !== 1 || candidates !== 1)) {
@@ -296,7 +642,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   }
   if (commitIdentity) {
     const announce = opts.json ? console.error : console.log
-    announce(`Commits: ${commitIdentity.authorName} <${commitIdentity.authorEmail}> · co-authors: ${commitIdentity.allowCoAuthors ? 'allowed' : 'disabled'}`)
+    if (!opts.quiet) announce(`Commits: ${commitIdentity.authorName} <${commitIdentity.authorEmail}> · co-authors: ${commitIdentity.allowCoAuthors ? 'allowed' : 'disabled'}`)
   }
 
   const idleMs = resolveIdleMs(opts.timeoutMinutes, config.loop.timeoutMinutes)
@@ -308,7 +654,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     ...(opts.candidates !== undefined ? { candidates: opts.candidates } : {}),
   }
   if (qualityOverrides.qualityUnbounded) {
-    console.error('WARNING: Quality repair limits are unbounded for this invocation. Mechanical gates, watchdog, isolation, and commit safety remain active.')
+    if (!opts.quiet) console.error('WARNING: Quality repair limits are unbounded for this invocation. Mechanical gates, watchdog, isolation, and commit safety remain active.')
   }
   const configuredCriticAgent = config.quality?.critic?.agent ?? config.quality?.criticAgent ?? config.agents.find(agent => agent !== runnerAgent) ?? runnerAgent
   const configuredCriticModel = config.quality?.critic?.model ?? config.quality?.criticModel ?? (configuredCriticAgent === runnerAgent ? config.runner?.model : undefined)
@@ -332,7 +678,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     const repairAgent = config.quality?.repair?.agent ?? config.quality?.repairAgent ?? runnerAgent
     const limit = resolved.limits.unbounded ? 'unbounded' : `${resolved.limits.maxRounds ?? 3} rounds/${resolved.limits.maxMinutes ?? 60} minutes`
     const announce = opts.json ? console.error : console.log
-    announce(`Quality: ${resolved.policy} · critic: ${criticAgent}${configuredCriticModel ? `/${configuredCriticModel}` : '/provider-default'} · repair: ${repairAgent}${config.quality?.repair?.model ?? config.quality?.repairModel ? `/${config.quality?.repair?.model ?? config.quality?.repairModel}` : '/provider-default'} · permissions: read-only critic/safe repair · budget: ${limit}`)
+    if (!opts.quiet) announce(`Quality: ${resolved.policy} · critic: ${criticAgent}${configuredCriticModel ? `/${configuredCriticModel}` : '/provider-default'} · repair: ${repairAgent}${config.quality?.repair?.model ?? config.quality?.repairModel ? `/${config.quality?.repair?.model ?? config.quality?.repairModel}` : '/provider-default'} · permissions: read-only critic/safe repair · budget: ${limit}`)
   }
   const permissions = opts.permissions ?? config.runner?.permissions ?? 'safe'
   const routingRequested = opts.routing ?? config.routing?.enabled ?? true
@@ -457,7 +803,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
         })
       : makeRunner(runnerAgent, idleMs, runnerOpts)
     const announce = opts.json ? console.error : console.log
-    announce(`Runner: ${runnerAgent} · permissions: ${permissions} · routing: ${routingEnabled ? 'on' : routingRequested ? 'auto (parent; no worker profiles)' : 'off'} · workers: ${parallel} local / ${sharedLimit} shared maximum · isolation: ${isolate || parallel > 1 ? 'on' : 'off'} · cwd: ${targetDir}`)
+    if (!opts.quiet) announce(`Runner: ${runnerAgent} · permissions: ${permissions} · routing: ${routingEnabled ? 'on' : routingRequested ? 'auto (parent; no worker profiles)' : 'off'} · workers: ${parallel} local / ${sharedLimit} shared maximum · isolation: ${isolate || parallel > 1 ? 'on' : 'off'} · cwd: ${targetDir}`)
   }
 
   if (config.actions?.length) {
@@ -526,7 +872,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   if (lock.stalePid !== undefined) {
     console.warn(`Took over a stale loop lock (pid ${lock.stalePid} is gone).`)
   }
-  const reporter = opts.reporter ?? makeReporter(targetDir, { json: opts.json })
+  const reporter = opts.reporter ?? makeReporter(targetDir, { json: opts.json, quiet: opts.quiet })
   executionReporter = reporter
   const buildResume = (storyId: string, requestId: string) => buildTrustedDecisionResumeState({
     storyId,
@@ -624,10 +970,12 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     if (resumeCode !== undefined) return resumeCode
     // In json mode stdout belongs to the NDJSON stream — route the narrative summary to stderr.
     const say = opts.json ? (line: string) => console.error(line) : (line: string) => console.log(line)
-    say(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
-    if (result.reason) say(`Reason: ${result.reason}`)
-    if (result.reason && /api key|please run \/login|not logged in|auth/i.test(result.reason)) {
-      say('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY, GEMINI_API_KEY, or OPENAI_API_KEY, or log the agent in for headless use.')
+    if (!opts.quiet) {
+      say(`Loop ${result.status} after ${result.iterations} iteration(s): ${result.finalProgress.passed}/${result.finalProgress.total} stories pass`)
+      if (result.reason) say(`Reason: ${result.reason}`)
+      if (result.reason && /api key|please run \/login|not logged in|auth/i.test(result.reason)) {
+        say('Hint: the agent CLI has no credentials in this environment. Set ANTHROPIC_API_KEY, GEMINI_API_KEY, or OPENAI_API_KEY, or log the agent in for headless use.')
+      }
     }
     // Exit codes: 0 complete · 1 blocked/cap-reached · 2 config error (handled above) · 3 paused (loop.pause consumed at a story boundary)
     if (result.status === 'complete') return 0

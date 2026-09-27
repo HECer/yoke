@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.18.0 — 2026-09-27
+
+### Added
+- Add opt-in continuous exploration with evidence-filtered task discovery, validated PRD additions, isolated implementation, bounded history compaction, automatic provider recovery, stop detection, and `yoke loop pause`.
+- Add optional `--explore-limit=<Nh|Nd|Nw>` durations. Exploration remains unbounded when omitted; when the limit expires, Yoke stops launching work and pauses after active workers finish their normal gates and integration.
+
+### Changed
+- Keep exploration status and narrative focused on newly accepted work, the next planned action, provider recovery, and safe stop state.
+- Process finite-duration runs in bounded task batches so the supervisor can honor the deadline while retaining configured parallel workers.
+
+### Migration and validation limits
+- Exploration is opt-in and requires isolated story worktrees. Use `--explore-limit=12h`, `3d`, or `2w` to bound one invocation; expiry exits with code `3`, and a later resume starts a new duration. Without a limit or a user pause, it continues while the process and machine remain available.
+- Auto-discovered work is limited to repository-evidenced proposals that pass confidence, risk, write-scope, acceptance-criteria and criterion-test checks. This does not guarantee project maturity or model quality; provider credentials, configured gates and machine availability still determine progress.
+- A time limit does not interrupt an active story or integration. Active work finishes through the normal gates before the loop stops, so wall-clock completion can exceed the requested duration by the time needed for that safe boundary.
+
 ## 1.17.0 — 2026-09-27
 
 ### Added

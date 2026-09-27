@@ -4,7 +4,8 @@ The autonomous loop is optional and toggle-able:
 
 - `yoke loop on` / `yoke loop off` — enable or disable it in `.yoke/config.yaml`.
 - `yoke loop status` — show enabled state and backlog progress.
-- `yoke loop run [--max=N] [--parallel=N] [--isolate] [--decision-policy=auto|critical] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=blocking|advisory] [--quality-unbounded] [--candidates=N]` — run until the current backlog is green or a gate blocks.
+- `yoke loop run [--max=N] [--parallel=N] [--isolate] [--explore] [--explore-interval=N] [--decision-policy=auto|critical] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=blocking|advisory] [--quality-unbounded] [--candidates=N]` — run until the backlog is green or a gate blocks; `--explore` opts into persistent discovery and recovery after each backlog drains.
+- `yoke loop pause` — request a safe-boundary pause from a running loop or exploration supervisor.
 - `yoke change add --idea="..."` — queue a product change at any time, including while the loop is running.
 - `yoke loop decision` / `yoke loop answer --choice=<id>` — inspect and answer a structured critical stop.
 
@@ -12,6 +13,10 @@ Pass `--isolate` to implement each story in a fresh git worktree. Only a verifie
 story is fast-forwarded to the main tree. Pass `--review` or `--reviewer=<provider>` to require
 a separate, schema-validated review. Pass `--parallel=N` to dispatch ready, non-colliding stories
 concurrently. Pass `--json` for NDJSON status on stdout.
+
+With `--explore`, `--explore-limit=12h|3d|2w` optionally stops one invocation after the selected
+duration. The default is unbounded. Expiry stops new work and pauses after active stories complete
+their normal gates and integration; exit code `3` can be resumed with another `yoke loop run`.
 
 Stories may declare a reference, candidate artifact, rubric, and blocking/advisory quality policy.
 `--quality` runs a read-only blind critic plus bounded repair before review; every repair reruns the
@@ -48,12 +53,24 @@ For each story:
 7. Only after all gates pass, mark the story `passes: true`, log the decision, and commit
    atomically. A failed commit restores the PRD state.
 8. When all current stories pass, run optional `completion.command` against the integrated
-   system. Only a green result reports `complete`; otherwise the loop blocks. This readiness
-   result is ephemeral, not a release and not a freeze on future changes.
+   system. Only a green result reports `complete`; otherwise the loop blocks. In `--explore` mode
+   a green result starts a read-only exploration pass instead of ending the supervisor. A red
+   completion gate is supplied as evidence to the explorer so it can propose work to resolve the
+   blocker; the gate is never skipped.
+9. Exploration proposals require repository-file evidence, confidence of at least 0.8, low/medium
+   risk, disjoint declared write scopes, and two to five structured acceptance criteria with
+   criterion-targeted approved test commands. Yoke validates and commits accepted PRD changes
+   before isolated implementation. Passed exploration stories are compacted from the active PRD;
+   their full prior contracts remain in Git history and a bounded recent fingerprint ledger
+   prevents near-term duplication.
 
 A supervisor can pause the loop by creating `.yoke/loop.pause`. The running story finishes;
 the dispatcher latches the signal, stops launching new workers, lets active workers reach safe
 terminal proof/cleanup, and exits with code `3` before another story is integrated.
+`--explore` also checks this signal while waiting between scans and during retry backoff. Without
+an explicit `--max` cap, draining the current PRD does not stop exploration; the supervisor waits,
+retries recoverable failures with backoff, and reports the next action. It cannot survive forced
+process or machine termination.
 
 State lives outside model context: PRD, git, and the ignored `.yoke/changes/` inbox. All are
 re-read at story boundaries, so a request queued mid-run becomes additional stories without a
