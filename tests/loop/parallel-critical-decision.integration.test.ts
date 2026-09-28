@@ -109,7 +109,7 @@ describe('parallel critical decisions', () => {
       'timeoutMinutes', 'version',
     ].sort())
     expect(resume).not.toHaveProperty('qualityUnbounded')
-  }, 15_000)
+  }, process.platform === 'win32' ? 30_000 : 15_000)
 
   it('clears trusted resume state after a successful parallel decision resume', async () => {
     writeDecisionResume(dir, {

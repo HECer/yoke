@@ -118,7 +118,7 @@ export function buildProviderInvocation(
     else if (agent === 'codex') args.push('--config', `model_reasoning_effort=${parsedSelection.reasoningEffort}`)
     else if (agent === 'opencode' || agent === 'kilo') args.push('--variant', parsedSelection.reasoningEffort)
     else if (agent === 'pi') args.push('--thinking', parsedSelection.reasoningEffort)
-    else if (agent === 'hermes') args.push('--reasoning-effort', parsedSelection.reasoningEffort)
+    else if (agent === 'hermes') args.push('--reasoning', parsedSelection.reasoningEffort)
   }
   if (parsedSelection.variant) {
     if ((agent === 'opencode' || agent === 'kilo') && !parsedSelection.reasoningEffort) args.push('--variant', parsedSelection.variant)
@@ -128,7 +128,7 @@ export function buildProviderInvocation(
     }
     else if (agent === 'hermes') {
       if (parsedSelection.reasoningEffort && parsedSelection.reasoningEffort !== parsedSelection.variant) throw new Error('Hermes reasoningEffort and variant selections must match')
-      if (!parsedSelection.reasoningEffort) args.push('--reasoning-effort', parsedSelection.variant)
+      if (!parsedSelection.reasoningEffort) args.push('--reasoning', parsedSelection.variant)
     }
   }
   if (agent === 'codex' && parsedSelection.nativeMultiAgent === false) args.push('--disable', 'multi_agent')

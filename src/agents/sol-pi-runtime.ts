@@ -21,9 +21,9 @@ function lstatIfPresent(path: string): ReturnType<typeof lstatSync> | undefined 
   }
 }
 
-function assertNoSettingsSymlinks(paths: readonly string[]): void {
+function assertNoConfigSymlinks(paths: readonly string[]): void {
   for (const path of paths) {
-    if (lstatIfPresent(path)?.isSymbolicLink()) throw new Error('SoL-Pi refuses symbolic-link settings paths: ' + path)
+    if (lstatIfPresent(path)?.isSymbolicLink()) throw new Error('SoL-Pi refuses symbolic-link config paths: ' + path)
   }
 }
 
@@ -42,28 +42,27 @@ export function prepareSolPiTemporaryConfig(workspace: string): () => void {
   if (!config?.solpi?.enabled) return () => {}
 
   const piDirectory = resolve(workspace, '.pi')
-  const agentDirectory = join(piDirectory, 'agent')
-  const settingsPath = join(agentDirectory, 'settings.json')
-  const settingsPaths = [piDirectory, agentDirectory, settingsPath]
-  assertNoSettingsSymlinks(settingsPaths)
+  const solPiConfigPath = join(piDirectory, 'sol-pi.json')
+  const configPaths = [piDirectory, solPiConfigPath]
+  assertNoConfigSymlinks(configPaths)
 
-  const existingSettings = lstatIfPresent(settingsPath) ? readFileSync(settingsPath) : undefined
+  const existingConfig = lstatIfPresent(solPiConfigPath) ? readFileSync(solPiConfigPath) : undefined
   const createdDirectories: string[] = []
   const restore = (): void => {
-    assertNoSettingsSymlinks(settingsPaths)
-    if (existingSettings === undefined) rmSync(settingsPath, { force: true })
-    else writeFileSync(settingsPath, existingSettings)
+    assertNoConfigSymlinks(configPaths)
+    if (existingConfig === undefined) rmSync(solPiConfigPath, { force: true })
+    else writeFileSync(solPiConfigPath, existingConfig)
     removeCreatedDirectories(createdDirectories)
   }
 
   try {
-    for (const directory of [piDirectory, agentDirectory]) {
+    for (const directory of [piDirectory]) {
       if (!lstatIfPresent(directory)) {
         mkdirSync(directory)
         createdDirectories.push(directory)
       }
     }
-    writeFileSync(settingsPath, JSON.stringify(toSolPiNativeConfig(config)), { flag: existingSettings === undefined ? 'wx' : 'w' })
+    writeFileSync(solPiConfigPath, JSON.stringify(toSolPiNativeConfig(config)), { flag: existingConfig === undefined ? 'wx' : 'w' })
   } catch (error) {
     restore()
     throw error

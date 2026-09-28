@@ -176,13 +176,13 @@ describe('provider invocations', () => {
     expect(buildProviderInvocation('pi', 'P', '/w', 'unsafe').args).not.toContain('--tools')
   })
 
-  it('builds Hermes stream-json invocations with provider, model, reasoning-effort and toolsets', () => {
+  it('builds Hermes stream-json invocations with provider, model, reasoning and toolsets', () => {
     expect(buildProviderInvocation('hermes', 'P', '/w', 'safe', {
       provider: 'openrouter', model: 'anthropic/claude-sonnet', reasoningEffort: 'high',
     }).args).toEqual([
       'chat', '--format', 'stream-json', '--query-file', '-',
       '--toolsets', 'file,terminal',
-      '--provider', 'openrouter', '--model', 'anthropic/claude-sonnet', '--reasoning-effort', 'high',
+      '--provider', 'openrouter', '--model', 'anthropic/claude-sonnet', '--reasoning', 'high',
     ])
     expect(buildProviderInvocation('hermes', 'P', '/w', 'read-only').args).toContain('--toolsets')
     expect(buildProviderInvocation('hermes', 'P', '/w', 'read-only').args).toContain('file')

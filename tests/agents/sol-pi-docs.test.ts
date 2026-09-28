@@ -36,7 +36,7 @@ describe('SoL-Pi user documentation', () => {
     expect(guide).toContain('diagnostic-log content')
     expect(guide).toContain('configured reducer model')
     expect(guide).toContain('.yoke/config.yaml')
-    expect(guide).toContain('.pi/agent/settings.json')
+    expect(guide).toContain('.pi/sol-pi.json')
     expect(guide).toContain('Yoke restores the file')
     expect(guide).toContain('read,bash,edit,write')
     expect(guide).toContain('read,grep,find,ls')
