@@ -1,0 +1,33 @@
+{
+  "workerDurationMs": 120,
+  "integrationDurationMs": 60,
+  "scenarios": [
+    {
+      "id": "dependency-chain",
+      "stories": [
+        { "id": "chain-1", "writes": ["src/chain/one.ts"] },
+        { "id": "chain-2", "needs": ["chain-1"], "writes": ["src/chain/two.ts"] },
+        { "id": "chain-3", "needs": ["chain-2"], "writes": ["src/chain/three.ts"] },
+        { "id": "chain-4", "needs": ["chain-3"], "writes": ["src/chain/four.ts"] }
+      ]
+    },
+    {
+      "id": "independent-scopes",
+      "stories": [
+        { "id": "independent-1", "writes": ["src/independent/one.ts"] },
+        { "id": "independent-2", "writes": ["src/independent/two.ts"] },
+        { "id": "independent-3", "writes": ["src/independent/three.ts"] },
+        { "id": "independent-4", "writes": ["src/independent/four.ts"] }
+      ]
+    },
+    {
+      "id": "conflicting-scopes",
+      "stories": [
+        { "id": "conflict-1", "writes": ["src/shared/registry.ts"] },
+        { "id": "conflict-2", "writes": ["src/shared/registry.ts"] },
+        { "id": "conflict-3", "writes": ["src/shared/registry.ts"] },
+        { "id": "conflict-4", "writes": ["src/shared/registry.ts"] }
+      ]
+    }
+  ]
+}

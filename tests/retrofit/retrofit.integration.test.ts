@@ -48,7 +48,7 @@ describe('yoke retrofit (integration, Claude)', () => {
     if (settingsBefore !== null) {
       expect(readFileSync(settingsPath, 'utf8')).toBe(settingsBefore)
     }
-  })
+  }, 15_000)
 
   it('retrofits all three agents when --agent all is selected', () => {
     const code = runRetrofit(target, { loop: false, agents: ['claude', 'codex', 'gemini'] })

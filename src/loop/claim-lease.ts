@@ -141,8 +141,8 @@ export function withClaimOperations<TRecord, TResult>(
   if (!token) return null
 
   const acquired: Array<{ readonly file: string; readonly token: string }> = []
-  const orderedFiles = [...new Set(claimFiles(readRecords()).filter(candidate => candidate !== file))].sort((left, right) => left.localeCompare(right))
   try {
+    const orderedFiles = [...new Set(claimFiles(readRecords()).filter(candidate => candidate !== file))].sort((left, right) => left.localeCompare(right))
     for (const nextFile of orderedFiles) {
       const nextToken = acquireClaimOperation(nextFile, context)
       if (!nextToken) return null

@@ -1,9 +1,9 @@
 <div align="center">
 
-<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.16.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
+<h1><img src="https://raw.githubusercontent.com/HECer/yoke/v1.18.0/docs/assets/yoke-logo.png" alt="Yoke" width="100" height="63"></h1>
 
-<!-- yoke:version:start -->1.16.0<!-- yoke:version:end -->
-<!-- yoke:tests:start -->1287<!-- yoke:tests:end -->
+<!-- yoke:version:start -->1.18.0<!-- yoke:version:end -->
+<!-- yoke:tests:start -->1313<!-- yoke:tests:end -->
 <!-- yoke:skills:start -->34<!-- yoke:skills:end -->
 <!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi | Hermes<!-- yoke:agents:end -->
 
@@ -17,7 +17,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1287%20defined-blue.svg)
+![Tests](https://img.shields.io/badge/tests-1313%20defined-blue.svg)
 ![Agents](https://img.shields.io/badge/agents-Claude%20%7C%20Codex%20%7C%20Gemini%20%7C%20Qwen%20%7C%20OpenCode%20%7C%20Kilo%20%7C%20Pi%20%7C%20Hermes-8A2BE2)
 ![Built with TDD](https://img.shields.io/badge/built%20with-TDD%20%2B%20review-ff69b4.svg)
 
@@ -71,7 +71,7 @@ in private, content-addressed local artifacts. Existing projects keep their seri
 safe 2 KiB preview / 8 KiB artifact defaults unless configured otherwise.
 
 Yoke 1.4 introduced opt-in parallel workers and a bounded, reference-driven quality gauntlet.
-Yoke 1.8.0 uses automatic parallelism for tasks with declared write scopes. See [the 1.4 migration guide](docs/MIGRATING-TO-1.4.md)
+Automatic parallelism was introduced in Yoke 1.8.0. This unreleased branch adds a shared cross-project worker pool. See [the 1.4 migration guide](docs/MIGRATING-TO-1.4.md)
 for the new flags, configuration, cleanup behavior, and review-verdict contract.
 
 Yoke 1.1 is safe-by-default: provider CLIs use autonomous sandbox profiles unless `--unsafe`
@@ -200,6 +200,19 @@ Yoke is meant to be operated *by* your coding agent — after a retrofit, the ag
 
 > ⚠️ **Long runs from inside an agent session:** `yoke loop run` has no story cap by default; it continues until every planned story passes or a gate blocks. A multi-story run can therefore outlive most agents' shell-tool timeouts (Claude Code's Bash tool defaults to 2 minutes). If the outer tool call is killed mid-run, you get a stale lock and possibly half-finished state — which *looks* like a hang. Run the loop **in the background** (e.g. Claude Code's `run_in_background`), use `--max=3..5` only when you intentionally want a bounded batch, poll with `yoke loop status`, and after any interrupted run do `yoke loop cleanup` before the next one. A `running` status with no update for 20+ minutes on a claude runner is worth checking — since 0.5.0 the runner streams continuously, so prolonged true silence is no longer normal.
 
+### Optional continuous exploration
+
+`yoke loop run . --explore` keeps the supervisor alive after the PRD drains. It periodically scans
+for evidence-backed, testable improvements, adds only bounded tasks that pass strict contract checks,
+then implements them through the same isolated loop gates. `--explore-interval=10` changes the
+default 30-minute rescan interval. Exploration runs indefinitely by default; set `--explore-limit=12h`,
+`--explore-limit=3d`, or `--explore-limit=2w` to stop automatically after hours, days, or weeks. At
+expiry, Yoke pauses at a safe task boundary, lets active workers finish their gates and integration,
+and exits with code `3`; run it again to resume. `yoke loop pause .` also stops at a safe boundary.
+Failed providers or stories are retried with backoff, and live status heartbeats while the supervisor
+waits. Use `--max=N` for an intentional story-attempt cap. See the [continuous exploration guide](docs/CONTINUOUS-EXPLORATION.md)
+for task validation, history compaction, recovery and process-lifetime limits.
+
 > ⚠️ **Never kill agent processes by name or command-line pattern** (e.g. every process matching `dangerously-skip-permissions`): on a machine running several yoke projects, that takes down the *healthy* runners of the other projects mid-story — they stall and their loops block. `yoke loop cleanup` is the scoped alternative: each watchdog records its pids in the project's `.yoke/runner.pid`, and cleanup kills exactly those recorded trees — nothing else on the machine.
 
 ### Agent cheat sheet — every command is an exit-code contract
@@ -221,7 +234,7 @@ Yoke's CLI is deterministic and chainable by design: an agent (or a shell `&&`) 
 | `yoke prd check [dir]` | PRD lint gate (schema, dependencies, cycles, duplicate ids, acceptance) | `0` valid · `1` violations |
 | `yoke change add\|status [dir] [--idea=]` | Queue a change at any time; the loop turns it into append-only stories at the next safe boundary | `0` · `1` invalid inbox/request |
 | `yoke context init\|status [dir]` | Durable context layer (`PROJECT/DECISIONS/KNOWLEDGE/GLOSSARY.md`, optional `CONTEXT-MAP.md`) | `0` |
-| `yoke loop on\|off\|status\|decision\|answer\|resume\|run\|cleanup [dir]` | Autonomous loop; `run` supports `--parallel=N`, bounded reference-driven `--quality`, and blind `--candidates=N` selection; `--max=N` creates an intentional batch cap; `cleanup` retains worktrees unless `--remove-worktrees` is explicit | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
+| `yoke loop on\|off\|status\|pause\|decision\|answer\|resume\|run\|cleanup [dir]` | Autonomous loop; `run --explore` opts into continuous discovery, implementation and recovery after a backlog drains; `--parallel=N`, bounded reference-driven `--quality`, and blind `--candidates=N` selection remain available; `--max=N` is an intentional cap; `pause` requests a safe-boundary stop | run: `0` complete · `1` blocked/cap · `2` not runnable / already locked · `3` paused |
 | `yoke review [dir] [--reviewer=] [--base=] [--focus=] [--json] [--allow-self-review]` | An independent model writes a schema-valid verdict | `0` approved · `1` findings/invalid verdict · `2` no independent reviewer |
 | `yoke audit [dir] [--json]` | Dependency, high-confidence secret, and sensitive-change audit | `0` green · `1` blocking findings · `2` not runnable |
 | `yoke design-scan [dir] [--max=N] [--report]` | Static AI-slop design gate | `0` within budget · `1` over |
@@ -466,11 +479,15 @@ observability.
 
 ### Parallel workers and the quality gauntlet
 
-`--parallel=N` dispatches dependency-ready stories concurrently. Claims carry leases, workers use
-isolated worktrees, collision areas are serialized, and only a mechanically green candidate enters
-the FIFO integration queue. Integration repeats the project gates against the merged tree; a worker
-success can never bypass a red integrated result. `yoke loop status` reports the dispatcher,
-workers, providers, worktrees, lifecycle, queue, integrations, and reopened stories.
+`--parallel=N` dispatches dependency-ready stories concurrently. The default maximum is three
+shared worker units across Yoke projects; set `YOKE_MAX_PARALLEL_WORKERS=1..8` to change it.
+`--parallel` and `loop.parallel` accept 1–8. Candidate races consume one unit per simultaneous
+candidate. Claims carry leases, workers use isolated worktrees, collision areas and write scopes stay
+reserved through integration, and only a mechanically green candidate enters the FIFO integration
+queue. Integration has its own serialized lane, so it does not occupy an implementation slot while
+unrelated work proceeds. Integrated-tree gates remain mandatory. `yoke loop status` reports local
+workers, resource waits, shared capacity, integrations, and reopened stories. See
+[parallel execution and safe task decomposition](docs/parallel-execution.md).
 
 Quality is reference-driven and opt-in. Declare what one story should match:
 
@@ -657,8 +674,9 @@ cannot overwrite a shared registry file.
 
 Routing is not free: stories without a matching rule can add a controller call. Measure it
 on your own backlog rather than assuming a win. Routing now also runs within asynchronous
-parallel workers. Automatic parallelism starts at up to three workers when pending tasks declare
-write scopes; unknown scopes and configured tool actions keep execution serial. Isolation is
+parallel workers. Automatic parallelism uses up to the shared worker limit when pending tasks declare
+write scopes; the scheduler still serializes dependencies, collision areas, and overlapping scopes.
+Unknown scopes and configured tool actions keep automatic execution serial. Isolation is
 on by default. Explicit `--parallel=N`, `--no-routing` and `--no-isolate` remain available.
 See [execution defaults and dashboard measurement details](docs/VERIFIED-PROJECTS.md#execution-defaults-in-180).
 
@@ -936,7 +954,7 @@ release provenance.
 ## 🧪 Development
 
 ```bash
-npm test          # vitest (1287 tests)
+npm test          # vitest (1313 tests)
 npm run build     # tsc, no emit errors
 npm run yoke -- validate canon
 ```

@@ -10,12 +10,14 @@ import { validateCanon } from './canon/validate.js'
 import type { Agent, CodeIntelligenceMode, DecisionPolicy } from './retrofit/config.js'
 import { runRetrofit } from './retrofit/command.js'
 import { setLoopEnabled, loopStatus, runLoopCommand } from './loop/run-command.js'
+import { requestLoopPause } from './loop/loop.js'
 import { runContextInit, runContextStatus } from './context/command.js'
 import { runReview } from './review/command.js'
 import { scanDir } from './scan/design.js'
 import { runNew } from './new/command.js'
 import { runPrdDraft, runPrdCheck } from './prd/command.js'
 import { runPrdAssess } from './prd/assess.js'
+import { runPrdDecompose } from './prd/decompose.js'
 import { runLoopCleanup } from './loop/cleanup.js'
 import { runFlowSmoke } from './smoke/command.js'
 import { maybeNotifyUpdate, currentYokeVersion } from './update/check.js'
@@ -105,6 +107,30 @@ export function parseQualityFlags(args: readonly string[]): { readonly ok: true;
       ...(candidates !== undefined ? { candidates } : {}),
     },
   }
+}
+
+export function parseExploreLimit(value: string): { readonly ok: true; readonly milliseconds: number } | { readonly ok: false; readonly error: string } {
+  const match = /^(\d+)\s*(h|hours?|d|days?|w|weeks?)$/i.exec(value.trim())
+  if (!match) return { ok: false, error: `Invalid --explore-limit value: ${value} (expected a positive duration such as 12h, 3d, or 2w)` }
+  const amount = Number(match[1])
+  const unit = match[2].toLowerCase()
+  const unitMs = unit.startsWith('h') ? 60 * 60_000 : unit.startsWith('d') ? 24 * 60 * 60_000 : 7 * 24 * 60 * 60_000
+  const milliseconds = amount * unitMs
+  if (!Number.isSafeInteger(amount) || amount <= 0 || !Number.isSafeInteger(milliseconds) || Date.now() + milliseconds > 8_640_000_000_000_000) {
+    return { ok: false, error: `Invalid --explore-limit value: ${value} (duration must be positive and within the supported date range)` }
+  }
+  return { ok: true, milliseconds }
+}
+
+function parseExploreLimitFlag(args: readonly string[], explore: boolean): { readonly ok: true; readonly milliseconds?: number } | { readonly ok: false; readonly error: string } {
+  const values = args.filter(arg => arg.startsWith('--explore-limit='))
+  if (args.includes('--explore-limit')) return { ok: false, error: '--explore-limit requires a duration, for example --explore-limit=12h' }
+  if (values.length > 1) return { ok: false, error: 'Use --explore-limit only once per invocation' }
+  const raw = values[0]
+  if (!raw) return { ok: true }
+  if (!explore) return { ok: false, error: '--explore-limit requires --explore' }
+  const parsed = parseExploreLimit(raw.slice('--explore-limit='.length))
+  return parsed.ok ? { ok: true, milliseconds: parsed.milliseconds } : parsed
 }
 
 export function main(argv: string[]): number | Promise<number> {
@@ -277,6 +303,7 @@ export function main(argv: string[]): number | Promise<number> {
       if (sub === 'on') { setLoopEnabled(targetDir, true); console.log('Loop enabled.'); return 0 }
       if (sub === 'off') { setLoopEnabled(targetDir, false); console.log('Loop disabled.'); return 0 }
       if (sub === 'status') { console.log(loopStatus(targetDir)); return 0 }
+      if (sub === 'pause') { requestLoopPause(targetDir); console.log('Pause requested at the next safe story or exploration boundary.'); return 0 }
       if (sub === 'cleanup') return runLoopCleanup(targetDir, {
         removeWorktrees: rest.includes('--remove-worktrees'),
         discardStaleRecovery: rest.includes('--discard-stale-recovery'),
@@ -314,7 +341,17 @@ export function main(argv: string[]): number | Promise<number> {
         const { version: _version, storyId: _storyId, requestId: _requestId, answered: _answered, ...resumeOptions } = resume
         const qualityFlags = parseQualityFlags(rest)
         if (!qualityFlags.ok) { console.error(qualityFlags.error); return 1 }
-        return runLoopCommand(targetDir, { ...resumeOptions, ...qualityFlags.options })
+        const explore = rest.includes('--explore')
+        const exploreLimit = parseExploreLimitFlag(rest, explore)
+        if (!exploreLimit.ok) { console.error(exploreLimit.error); return 1 }
+        const exploreArg = rest.find(a => a.startsWith('--explore-interval='))
+        if (exploreArg && !explore) { console.error('--explore-interval requires --explore'); return 1 }
+        const exploreIntervalMinutes = exploreArg ? Number(exploreArg.slice('--explore-interval='.length)) : undefined
+        if (exploreIntervalMinutes !== undefined && (!Number.isInteger(exploreIntervalMinutes) || exploreIntervalMinutes < 1 || exploreIntervalMinutes > 1_440)) {
+          console.error(`Invalid --explore-interval value: ${exploreArg} (expected 1..1440 minutes)`)
+          return 1
+        }
+        return runLoopCommand(targetDir, { ...resumeOptions, ...qualityFlags.options, ...(explore ? { explore: true } : {}), ...(exploreIntervalMinutes !== undefined ? { exploreIntervalMinutes } : {}), ...(exploreLimit.milliseconds !== undefined ? { exploreLimitMs: exploreLimit.milliseconds } : {}) })
       }
       if (sub === 'answer') {
         const choice = rest.find(a => a.startsWith('--choice='))?.slice('--choice='.length)
@@ -400,7 +437,7 @@ export function main(argv: string[]): number | Promise<number> {
         const permissions = rest.includes('--unsafe') ? 'unsafe' as const : undefined
         const parallelArg = rest.find(a => a.startsWith('--parallel='))
         const parallel = parallelArg && parallelArg !== '--parallel=auto' ? Number(parallelArg.slice('--parallel='.length)) : undefined
-        if (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) { console.error(`Invalid --parallel value: ${parallelArg}`); return 1 }
+        if (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1 || parallel > 8)) { console.error(`Invalid --parallel value: ${parallelArg} (expected 1..8)`); return 1 }
         const json = rest.includes('--json')
         const routing = rest.includes('--routing') ? true : rest.includes('--no-routing') ? false : undefined
         const toArg = rest.find(a => a.startsWith('--timeout='))
@@ -422,9 +459,23 @@ export function main(argv: string[]): number | Promise<number> {
         }
         const qualityFlags = parseQualityFlags(rest)
         if (!qualityFlags.ok) { console.error(qualityFlags.error); return 1 }
-        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, resumeWorktree: rest.includes('--resume-worktree'), parallel, parallelAuto: parallelArg === '--parallel=auto', reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions, ...qualityFlags.options })
+        const explore = rest.includes('--explore')
+        const exploreLimit = parseExploreLimitFlag(rest, explore)
+        if (!exploreLimit.ok) { console.error(exploreLimit.error); return 1 }
+        const exploreArg = rest.find(a => a.startsWith('--explore-interval='))
+        if (exploreArg && !explore) { console.error('--explore-interval requires --explore'); return 1 }
+        const exploreIntervalMinutes = exploreArg ? Number(exploreArg.slice('--explore-interval='.length)) : undefined
+        if (exploreIntervalMinutes !== undefined && (!Number.isInteger(exploreIntervalMinutes) || exploreIntervalMinutes < 1 || exploreIntervalMinutes > 1_440)) {
+          console.error(`Invalid --explore-interval value: ${exploreArg} (expected 1..1440 minutes)`)
+          return 1
+        }
+        if (explore && rest.includes('--resume-worktree')) {
+          console.error('--explore starts its own safe resume cycle; remove --resume-worktree and re-run it after resolving the retained story.')
+          return 1
+        }
+        return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, resumeWorktree: rest.includes('--resume-worktree'), parallel, parallelAuto: parallelArg === '--parallel=auto', reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions, ...(explore ? { explore: true } : {}), ...(exploreIntervalMinutes !== undefined ? { exploreIntervalMinutes } : {}), ...(exploreLimit.milliseconds !== undefined ? { exploreLimitMs: exploreLimit.milliseconds } : {}), ...qualityFlags.options })
       }
-      console.log(`usage: yoke loop <on|off|status|decision|answer|resume [--discard] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--parallel=<auto|N>] [--runner=<${AGENT_LIST}>] [--reviewer=<${AGENT_LIST}>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate|--no-isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]`)
+      console.log(`usage: yoke loop <on|off|status|pause|decision|answer|resume [--discard] [--explore] [--explore-interval=<minutes>] [--explore-limit=<Nh|Nd|Nw>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--explore] [--explore-interval=<minutes>] [--explore-limit=<Nh|Nd|Nw>] [--parallel=<auto|N>] [--runner=<${AGENT_LIST}>] [--reviewer=<${AGENT_LIST}>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate|--no-isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]`)
       return 1
     }
     case 'new': {
@@ -458,6 +509,19 @@ export function main(argv: string[]): number | Promise<number> {
         if (runner && !SUPPORTED_AGENTS.includes(runner as Agent)) { console.error('Invalid planning runner'); return 1 }
         return runPrdAssess(targetDir, { runner: runner as Agent | undefined, story: rest.find(a => a.startsWith('--story='))?.slice('--story='.length), reassess: rest.includes('--reassess') })
       }
+      if (sub === 'decompose') {
+        const story = rest.find(a => a.startsWith('--story='))?.slice('--story='.length)
+        if (!story) {
+          console.error('usage: yoke prd decompose [dir] --story=<id> [--apply] [--runner=<agent>] [--timeout=<minutes>]')
+          return 1
+        }
+        const runner = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
+        if (runner && !SUPPORTED_AGENTS.includes(runner as Agent)) { console.error('Invalid planning runner'); return 1 }
+        const timeoutArg = rest.find(a => a.startsWith('--timeout='))
+        const timeoutMinutes = timeoutArg ? Number(timeoutArg.slice('--timeout='.length)) : undefined
+        if (timeoutMinutes !== undefined && (!Number.isFinite(timeoutMinutes) || timeoutMinutes < 0)) { console.error(`Invalid --timeout value: ${timeoutArg}`); return 1 }
+        return runPrdDecompose(targetDir, { story, apply: rest.includes('--apply'), runner: runner as Agent | undefined, timeoutMinutes })
+      }
       if (sub === 'draft') {
         const idea = rest.find(a => a.startsWith('--idea='))?.slice('--idea='.length)
         if (!idea) {
@@ -480,7 +544,7 @@ export function main(argv: string[]): number | Promise<number> {
         return runPrdDraft(targetDir, { idea, runner: runnerArg as Agent | undefined, force, timeoutMinutes })
       }
       if (sub === 'check') return runPrdCheck(targetDir)
-      console.log(`usage: yoke prd <draft|check|assess> [dir] [--idea="..."] [--runner=<${AGENT_LIST}>] [--story=<id>] [--reassess] [--force] [--timeout=<minutes>]`)
+      console.log(`usage: yoke prd <draft|check|assess|decompose> [dir] [--idea="..."] [--runner=<${AGENT_LIST}>] [--story=<id>] [--apply] [--reassess] [--force] [--timeout=<minutes>]`)
       return 1
     }
     case 'context': {
@@ -536,7 +600,7 @@ export function main(argv: string[]): number | Promise<number> {
       return runUpgrade()
     default:
       console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
-      console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--code-intelligence=off|shadow|active] [--loop] | change <add|status> [dir] | code-intelligence-server --workspace=<dir> --mode=<mode> | prd <draft|check|assess> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] | design-scan [dir] | flow-smoke [dir] | upgrade>`)
+      console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--code-intelligence=off|shadow|active] [--loop] | change <add|status> [dir] | code-intelligence-server --workspace=<dir> --mode=<mode> | prd <draft|check|assess|decompose> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] | design-scan [dir] | flow-smoke [dir] | upgrade>`)
       return cmd ? 1 : 0
   }
 }

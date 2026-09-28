@@ -15,6 +15,18 @@ export const AcceptanceCriterionSchema = z.object({
 
 export type AcceptanceCriterion = z.infer<typeof AcceptanceCriterionSchema>
 
+export const ExplorationOriginSchema = z.object({
+  version: z.literal(1),
+  rationale: z.string().min(1).max(2_000),
+  expectedBenefit: z.string().min(1).max(2_000),
+  confidence: z.number().min(0.8).max(1),
+  risk: z.enum(['low', 'medium']),
+  evidence: z.array(z.object({ path: z.string().min(1).max(500), observation: z.string().min(1).max(1_000) }).strict()).min(1).max(6),
+  discoveredAt: z.string().datetime(),
+}).strict()
+
+export type ExplorationOrigin = z.infer<typeof ExplorationOriginSchema>
+
 export function criterionCommandProblem(criterion: AcceptanceCriterion): string | null {
   const normalizedId = criterion.id.toLowerCase().replace(/[^a-z0-9]/g, '')
   for (const raw of criterion.verify) {
@@ -50,6 +62,8 @@ export const StorySchema = z.object({
   agent: AgentSchema.optional(),
   /** Inbox request that created this story. Used for idempotent append-only intake. */
   sourceChange: z.string().min(1).optional(),
+  /** Evidence retained for stories created by opt-in continuous exploration. */
+  exploration: ExplorationOriginSchema.optional(),
   quality: StoryQualityDeclarationSchema.optional(),
   assessment: AssessmentSchema.optional(),
   /** Binding to the task, upstream contracts and approved planning brief. */

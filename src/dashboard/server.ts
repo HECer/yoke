@@ -32,7 +32,8 @@ import {
 const text = z.string().max(16000)
 const number = z.number().finite().nonnegative()
 const Goal = z.object({ objective: text, status: z.enum(['active', 'running', 'paused', 'blocked', 'complete']), reason: text.optional(), pendingAttempt: z.object({ provider: text, model: text.optional(), startedAt: text }).optional(), attempts: z.array(z.object({ durationMs: number.optional(), provider: text.optional(), success: z.boolean().optional(), summary: text.optional(), inputTokens: number.optional(), outputTokens: number.optional() })).max(200).default([]) })
-const Status = z.object({ state: text, phase: text.optional(), reason: text.optional(), progress: z.object({ passed: number, total: number }).optional(), tokens: z.object({ inputTokens: number, outputTokens: number, totalCostUsd: number.optional(), measurementComplete: z.boolean().optional(), model: text.optional(), calls: z.array(z.object({ usageAvailable: z.boolean().optional() })).max(10000).optional() }).optional(), measurement: z.object({ costAvailable: z.enum(['unknown', 'partial', 'measured']), measuredCalls: number.optional(), unknownCalls: number.optional(), unmeasuredAttempts: number.optional() }).passthrough().optional(), parallel: z.object({ maxConcurrency: number }).passthrough().optional() }).passthrough()
+const PoolStatus = z.object({ limit: number, activeUnits: number, activeWorkers: number, waitingWorkers: number, activeByRole: z.object({ implementation: number, integration: number }), oldestWaitMs: number })
+const Status = z.object({ state: text, phase: text.optional(), reason: text.optional(), progress: z.object({ passed: number, total: number }).optional(), tokens: z.object({ inputTokens: number, outputTokens: number, totalCostUsd: number.optional(), measurementComplete: z.boolean().optional(), model: text.optional(), calls: z.array(z.object({ usageAvailable: z.boolean().optional() })).max(10000).optional() }).optional(), measurement: z.object({ costAvailable: z.enum(['unknown', 'partial', 'measured']), measuredCalls: number.optional(), unknownCalls: number.optional(), unmeasuredAttempts: number.optional() }).passthrough().optional(), parallel: z.object({ maxConcurrency: number, workerUnitsPerStory: number.optional(), globalPool: PoolStatus.optional() }).passthrough().optional() }).passthrough()
 const Stories = z.array(z.object({ id: text, title: text, passes: z.boolean(), priority: number.optional(), area: text.optional(), writes: z.array(text).optional(), needs: z.array(text).optional() })).max(2000)
 const Check = z.object({ id: text, status: z.enum(['passed', 'failed', 'unverified']), generatedAt: text, summary: text, criteria: z.array(z.object({ id: text, text, status: z.enum(['passed', 'failed', 'unverified']), summary: text })).max(500) })
 const Durations = z.array(z.object({ storyId: text, ms: number.positive() })).max(5000)
@@ -111,6 +112,7 @@ function snapshot(project: RegisteredProject, detail: boolean) {
   const status = read('.yoke/loop-status.json', Status)
   const stories = detail ? read('.yoke/prd.yaml', Stories, true) ?? [] : []
   const history = detail ? read('.yoke/story-durations.json', Durations) ?? [] : []
+  const events = detail && !project.error ? readEvents(project.root, DASHBOARD_LIMITS.events) : []
   let check = null
   if (detail && !project.error) {
     try {
@@ -122,7 +124,14 @@ function snapshot(project: RegisteredProject, detail: boolean) {
       if (latest) check = read(`.yoke/checks/${latest.name}`, Check)
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push((error as Error).message) }
   }
-  return { ...project, goal, status, errors, ...(detail ? { stories, check, events: project.error ? [] : readEvents(project.root, DASHBOARD_LIMITS.events), estimate: estimateSchedule(stories, Math.max(1, status?.parallel?.maxConcurrency ?? 1), history) } : {}) }
+  const localCapacity = Math.max(1, status?.parallel?.maxConcurrency ?? 1)
+  const estimate = estimateSchedule(stories, localCapacity, history, {
+    integrationMs: events.filter(event => event.type === 'phase-ended' && event.phase === 'integration').map(event => event.durationMs ?? 0),
+    integrationQueueWaitMs: events.filter(event => event.type === 'phase-ended' && event.phase === 'integration-queue').map(event => event.durationMs ?? 0),
+    globalLimit: Math.max(1, status?.parallel?.globalPool?.limit ?? localCapacity),
+    workerUnitsPerStory: Math.max(1, status?.parallel?.workerUnitsPerStory ?? 1),
+  })
+  return { ...project, goal, status, errors, ...(detail ? { stories, check, events, estimate } : {}) }
 }
 export async function startDashboard(options: { port?: number } = {}): Promise<{ url: string; close: () => Promise<void> }> {
   const token = randomBytes(32).toString('hex')

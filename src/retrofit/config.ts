@@ -82,7 +82,7 @@ export const YokeConfigSchema = z.object({
   agents: z.array(AgentSchema),
   loop: z.object({
     enabled: z.boolean(),
-    parallel: z.union([z.literal('auto'), z.number().int().positive()]).optional(),
+    parallel: z.union([z.literal('auto'), z.number().int().min(1).max(8)]).optional(),
     isolate: z.boolean().optional(),
     timeoutMinutes: z.number().optional(),
     maxCallMinutes: z.number().positive().max(1440).optional(),
