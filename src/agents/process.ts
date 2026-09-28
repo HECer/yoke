@@ -12,6 +12,7 @@ import { createBoundedOutput, createTelemetryAccumulator } from './process-strea
 import { processIncarnation } from './process-incarnation.js'
 import { prepareWindowsInvocation, resolveWindowsCommand } from './windows-launch.js'
 import { createSupervision, supervisionLimits, assertPreviousProvidersStopped } from './supervision.js'
+import { prepareSolPiTemporaryConfig } from './sol-pi-runtime.js'
 
 export type ProviderProcessOutput = {
   readonly stream: 'stdout' | 'stderr'
@@ -91,21 +92,36 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   let progress: () => void = () => {}
   const limits = supervisionLimits(invocation.cwd)
   const supervision = createSupervision(invocation.cwd, reason => failure(reason), () => progress(), options.attempt)
+  let restoreSolPiConfig = (): void => {}
   let prepared
-  try { assertPreviousProvidersStopped(invocation.cwd); prepared = process.platform === 'win32' ? prepareWindowsInvocation(invocation) : { command: invocation.command, args: invocation.args, env: process.env } }
+  try {
+    if (agent === 'pi') restoreSolPiConfig = prepareSolPiTemporaryConfig(invocation.cwd)
+    assertPreviousProvidersStopped(invocation.cwd)
+    prepared = process.platform === 'win32' ? prepareWindowsInvocation(invocation) : { command: invocation.command, args: invocation.args, env: process.env }
+  }
   catch (error) {
-    const message = (error as Error).message; supervision.stop(message)
+    let message = (error as Error).message
+    try { restoreSolPiConfig() } catch (cleanupError) { message = (cleanupError as Error).message }
+    supervision.stop(message)
     return { pid: undefined, invocation, recordPath: '', cancel: () => false, completion: Promise.resolve({ kind: 'spawn-failed', error: message, invocation, pid: undefined, stdout: '', stderr: '', stdoutTruncated: false, stderrTruncated: false, telemetry: { usageAvailable: false } }) }
   }
   const spawnOptions = { ...prepared, cwd: invocation.cwd, shell: false, detached: process.platform !== 'win32' }
-  const child = spawn(spawnOptions.command, [...spawnOptions.args], {
-    cwd: spawnOptions.cwd,
-    shell: spawnOptions.shell,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    detached: spawnOptions.detached,
-    env: prepared.env,
-    windowsHide: true,
-  })
+  let child
+  try {
+    child = spawn(spawnOptions.command, [...spawnOptions.args], {
+      cwd: spawnOptions.cwd,
+      shell: spawnOptions.shell,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: spawnOptions.detached,
+      env: prepared.env,
+      windowsHide: true,
+    })
+  } catch (error) {
+    let message = (error as Error).message
+    try { restoreSolPiConfig() } catch (cleanupError) { message = (cleanupError as Error).message }
+    supervision.stop(message)
+    return { pid: undefined, invocation, recordPath: '', cancel: () => false, completion: Promise.resolve({ kind: 'spawn-failed', error: message, invocation, pid: undefined, stdout: '', stderr: '', stdoutTruncated: false, stderrTruncated: false, telemetry: { usageAvailable: false } }) }
+  }
   const targetDir = resolve(invocation.cwd)
   const pid = child.pid
   const startedAt = pid === undefined ? `unverified:${new Date().toISOString()}` : processIncarnation(pid) ?? `unverified:${new Date().toISOString()}`
@@ -178,10 +194,13 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     if (settled) return
     settled = true
     clearTimers()
-    supervision.stop(termination?.reason ?? (result.kind === 'succeeded' ? 'provider-exited' : 'provider-failed'), !termination || terminationConfirmed)
+    let completedResult = result
+    try { restoreSolPiConfig() }
+    catch (error) { completedResult = { ...evidence(), kind: 'spawn-failed', error: (error as Error).message } }
+    supervision.stop(termination?.reason ?? (completedResult.kind === 'succeeded' ? 'provider-exited' : 'provider-failed'), !termination || terminationConfirmed)
     options.signal?.removeEventListener('abort', onAbort)
     if (!termination || terminationConfirmed) removeRecord()
-    resolveCompletion(result)
+    resolveCompletion(completedResult)
   }
   const evidence = (): ProcessEvidence => ({
     invocation,

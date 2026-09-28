@@ -60,6 +60,9 @@ export function defaultRoutingWorkers(agents: Agent[]): RoutingWorker[] {
     pi: [
       { id: 'pi-standard', agent: 'pi', tier: 'standard', costTier: 'medium', capabilities: ['implementation'] },
     ],
+    hermes: [
+      { id: 'hermes-standard', agent: 'hermes', tier: 'standard', costTier: 'medium', capabilities: ['implementation'] },
+    ],
   }
   return agents.flatMap(agent => workers[agent])
 }

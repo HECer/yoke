@@ -20,6 +20,7 @@ export function detectProject(targetDir: string): Detection {
   if (has('.opencode') || has('opencode.json') || has('opencode.jsonc')) agents.push('opencode')
   if (has('.kilo') || has('kilo.json') || has('kilo.jsonc')) agents.push('kilo')
   if (has('.pi') || has('PI.md')) agents.push('pi')
+  if (has('.hermes') || has('HERMES.md') || has('hermes.yaml') || has('hermes.json')) agents.push('hermes')
   return {
     agents,
     hasAgentsMd: has('AGENTS.md'),

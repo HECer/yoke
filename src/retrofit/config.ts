@@ -41,6 +41,21 @@ const OutputPolicySchema = z.object({
     })
   }
 })
+const SolPiOptionsSchema = z.object({
+  actionFusion: z.boolean().default(false),
+  observationPack: z.boolean().default(false),
+  evidencePreservingReducer: z.boolean().default(false),
+  onlineContextCompact: z.boolean().default(false),
+  cacheWriteReadRatio: z.number().finite().nonnegative().default(12.5),
+})
+export const SolPiSettingsSchema = SolPiOptionsSchema.extend({ enabled: z.boolean().default(false) }).strict()
+export const SolPiNativeConfigSchema = SolPiOptionsSchema.extend({
+  version: z.literal(1),
+  evidencePreservingReducerProvider: z.string().min(1).optional(),
+  evidencePreservingReducerModel: z.string().min(1).optional(),
+}).strict()
+export type SolPiSettings = z.infer<typeof SolPiSettingsSchema>
+
 const RoutingWorkerSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
   agent: AgentSchema,
@@ -142,6 +157,7 @@ export const YokeConfigSchema = z.object({
   smoke: SmokeSchema.optional(),
   quality: ProjectQualityDefaultsSchema.optional(),
   output: OutputPolicySchema.optional(),
+  solpi: SolPiSettingsSchema.optional(),
   // Opt-in: upgrade yoke at loop START when a newer version is cached (never mid-run).
   update: z.object({ auto: z.boolean() }).optional(),
 })
@@ -196,6 +212,7 @@ export interface YokeConfig {
   smoke?: SmokeConfig
   quality?: import('../quality/types.js').ProjectQualityDefaults
   output?: Partial<OutputPolicy>
+  solpi?: Partial<SolPiSettings>
   update?: { auto: boolean }
 }
 
@@ -208,6 +225,22 @@ export function resolveOutputPolicy(config: YokeConfig): OutputPolicy {
     previewBytes: config.output?.previewBytes ?? DEFAULT_OUTPUT_POLICY.previewBytes,
     artifactThresholdBytes: config.output?.artifactThresholdBytes ?? DEFAULT_OUTPUT_POLICY.artifactThresholdBytes,
   }
+}
+
+export function resolveSolPiSettings(config: YokeConfig): SolPiSettings {
+  return SolPiSettingsSchema.parse(config.solpi ?? {})
+}
+
+export function toSolPiNativeConfig(config: YokeConfig): z.infer<typeof SolPiNativeConfigSchema> {
+  const settings = resolveSolPiSettings(config)
+  return SolPiNativeConfigSchema.parse({
+    version: 1,
+    actionFusion: settings.enabled && settings.actionFusion,
+    observationPack: settings.enabled && settings.observationPack,
+    evidencePreservingReducer: settings.enabled && settings.evidencePreservingReducer,
+    onlineContextCompact: settings.enabled && settings.onlineContextCompact,
+    cacheWriteReadRatio: settings.cacheWriteReadRatio,
+  })
 }
 
 export function configPath(targetDir: string): string {

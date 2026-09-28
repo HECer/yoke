@@ -237,6 +237,41 @@ it('charts show time-bucketed tokens, calls, cost state, duration, and outcomes 
   expect(runInContext('safeMetricTotal([10, 20])', context)).toBe(30)
 })
 
+it('solpi-settings-project-navigation', () => {
+  const context = dashboardContext()
+  const state = runInContext("parseNavigationHash('#screen=project&project=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&view=settings')", context)
+  expect({ ...state }).toMatchObject({ screen: 'project', project: 'a'.repeat(32), view: 'settings' })
+  const roundTrip = runInContext('parseNavigationHash(serializeNavigationHash(' + JSON.stringify({ ...state }) + '))', context)
+  expect({ ...roundTrip }).toMatchObject({ screen: 'project', project: 'a'.repeat(32), view: 'settings' })
+  expect(dashboardPage('a'.repeat(64), 'validNonce')).toContain("['settings','Settings']")
+})
+
+it('solpi-settings-controls', () => {
+  const html = dashboardPage('a'.repeat(64), 'validNonce')
+  for (const label of ['Enable SoL-Pi (off by default)', 'Action fusion', 'Observation packing', 'Evidence-preserving reducer', 'Online context compaction', 'Cache write/read ratio', 'Save settings']) {
+    expect(html).toContain(label)
+  }
+
+  const context = dashboardContext()
+  expect(runInContext("solPiRatioError('12.5')", context)).toBeNull()
+  expect(runInContext("solPiRatioError('0')", context)).toBeNull()
+  expect(runInContext("solPiRatioError('')", context)).toContain('finite')
+  expect(runInContext("solPiRatioError('-1')", context)).toContain('0 or more')
+  expect(runInContext("solPiRatioError('Infinity')", context)).toContain('finite')
+  expect(html).toContain('Settings saved.')
+  expect(html).toContain('Saving settings')
+})
+
+it('solpi-settings-security-copy', () => {
+  const html = dashboardPage('a'.repeat(64), 'validNonce')
+  expect(html).toContain('pinned SoL-Pi extension')
+  expect(html).toContain('compatible Pi runtime installed and configured')
+  expect(html).toContain('explicit project trust')
+  expect(html).toContain('Yoke does not grant trust')
+  expect(html).toContain('diagnostic logs')
+  expect(html).toContain('may make a model call')
+})
+
 it('dimension tables rank all analytics dimensions and preserve missing identity labels', () => {
   const html = dashboardPage('a'.repeat(64), 'validNonce')
   for (const label of ['Agents', 'Providers', 'Models', 'Roles', 'Phases', 'Projects', 'Runs']) expect(html).toContain(label)

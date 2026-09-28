@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { request } from 'node:http'
@@ -9,6 +9,7 @@ import { createProjectGoal, readProjectGoal } from '../../src/goals/command.js'
 import { appendEvent } from '../../src/observability/events.js'
 import { DASHBOARD_LIMITS } from '../../src/dashboard/contracts.js'
 import { pendingChanges } from '../../src/change/inbox.js'
+import { defaultConfig, loadConfig, resolveSolPiSettings, saveConfig } from '../../src/retrofit/config.js'
 let root: string
 let oldState: string | undefined
 let server: Awaited<ReturnType<typeof startDashboard>> | undefined
@@ -216,4 +217,87 @@ it('security rejects absolute-form cross-origin reads', async () => {
   const url = new URL(server.url)
   const status = await new Promise<number>(resolve => { request({ hostname: url.hostname, port: Number(url.port), path: 'http://evil.example/api/projects' }, response => { response.resume(); resolve(response.statusCode!) }).end() })
   expect(status).toBe(403)
+})
+
+it('solpi-settings-api-defaults', async () => {
+  const project = registerProject(root)
+  server = await startDashboard({ port: 0 })
+  const response = await fetch(`${server.url}api/projects/${project.id}/settings`)
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({
+    enabled: false,
+    actionFusion: false,
+    observationPack: false,
+    evidencePreservingReducer: false,
+    onlineContextCompact: false,
+    cacheWriteReadRatio: 12.5,
+  })
+})
+
+it('solpi-settings-api-persists', async () => {
+  saveConfig(root, { ...defaultConfig('test'), agents: ['codex'], loop: { enabled: true } })
+  const project = registerProject(root)
+  server = await startDashboard({ port: 0 })
+  const html = await (await fetch(server.url)).text()
+  const token = /const sessionToken = "([a-f0-9]+)"/u.exec(html)![1]
+  const origin = server.url.slice(0, -1)
+  const settings = {
+    enabled: true,
+    actionFusion: true,
+    observationPack: false,
+    evidencePreservingReducer: true,
+    onlineContextCompact: true,
+    cacheWriteReadRatio: 8,
+  }
+  const updated = await fetch(`${server.url}api/projects/${project.id}/settings`, {
+    method: 'POST', headers: { Origin: origin, 'x-yoke-token': token, 'content-type': 'application/json' },
+    body: JSON.stringify(settings),
+  })
+  expect(updated.status).toBe(200)
+  expect(await updated.json()).toEqual(settings)
+  expect(await (await fetch(`${server.url}api/projects/${project.id}/settings`)).json()).toEqual(settings)
+  expect(loadConfig(root)?.solpi).toEqual(settings)
+  expect(loadConfig(root)?.agents).toEqual(['codex'])
+  expect(resolveSolPiSettings(loadConfig(root)!)).toEqual(settings)
+})
+
+it('solpi-settings-api-rejects-unsafe-writes', async () => {
+  const original = {
+    enabled: false,
+    actionFusion: false,
+    observationPack: false,
+    evidencePreservingReducer: false,
+    onlineContextCompact: false,
+    cacheWriteReadRatio: 12.5,
+  }
+  saveConfig(root, { ...defaultConfig('test'), solpi: original })
+  const project = registerProject(root)
+  server = await startDashboard({ port: 0 })
+  const html = await (await fetch(server.url)).text()
+  const token = /const sessionToken = "([a-f0-9]+)"/u.exec(html)![1]
+  const origin = server.url.slice(0, -1)
+  const url = `${server.url}api/projects/${project.id}/settings`
+  const changed = { ...original, enabled: true, actionFusion: true }
+
+  expect((await fetch(url, {
+    method: 'POST', headers: { Origin: origin, 'content-type': 'application/json' }, body: JSON.stringify(changed),
+  })).status).toBe(403)
+  expect(loadConfig(root)?.solpi).toEqual(original)
+
+  expect((await fetch(url, {
+    method: 'POST', headers: { Origin: origin, 'x-yoke-token': token, 'content-type': 'application/json' },
+    body: JSON.stringify({ ...changed, unknown: true }),
+  })).status).toBe(400)
+  expect(loadConfig(root)?.solpi).toEqual(original)
+
+  rmSync(join(root, '.yoke'), { recursive: true })
+  const external = join(root, 'external')
+  mkdirSync(external)
+  saveConfig(external, { ...defaultConfig('external'), solpi: original })
+  symlinkSync(join(external, '.yoke'), join(root, '.yoke'), 'junction')
+  expect((await fetch(url, {
+    method: 'POST', headers: { Origin: origin, 'x-yoke-token': token, 'content-type': 'application/json' },
+    body: JSON.stringify(changed),
+  })).status).toBe(409)
+  expect(loadConfig(external)?.solpi).toEqual(original)
 })

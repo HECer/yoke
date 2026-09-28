@@ -274,7 +274,7 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
     if ((!worker && (options.fallback === 'block' || options.maxTier)) || (options.maxTier && (!worker?.tier || tiers.indexOf(worker.tier) > tiers.indexOf(options.maxTier)))) return blocked('Selected routing profile exceeds configured limits; execution blocked')
     const provider = worker?.agent ?? options.parent
     const selection: ModelSelection = worker
-      ? { provider: worker.provider, model: worker.model, reasoningEffort: worker.reasoningEffort, variant: worker.variant, nativeMultiAgent: false, ...(provider !== 'gemini' && provider !== 'qwen' && provider !== 'pi' ? { bare: options.parentSelection?.bare } : {}) }
+      ? { provider: worker.provider, model: worker.model, reasoningEffort: worker.reasoningEffort, variant: worker.variant, nativeMultiAgent: false, ...(provider !== 'gemini' && provider !== 'qwen' && provider !== 'pi' && provider !== 'hermes' ? { bare: options.parentSelection?.bare } : {}) }
       : { ...(options.parentSelection ?? {}), nativeMultiAgent: false }
 
     const workerStarted = now()

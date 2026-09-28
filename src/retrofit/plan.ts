@@ -5,6 +5,7 @@ import { planQwen } from './planners/qwen.js'
 import { planOpenCode } from './planners/opencode.js'
 import { planKilo } from './planners/kilo.js'
 import { planPi } from './planners/pi.js'
+import { planHermes } from './planners/hermes.js'
 import { baseContextActions } from './context-actions.js'
 import type { Agent, CodeGraph, CodeIntelligenceMode } from './config.js'
 
@@ -32,6 +33,7 @@ export const PLANNERS: Record<Agent, AgentPlanner> = {
   opencode: planOpenCode,
   kilo: planKilo,
   pi: planPi,
+  hermes: planHermes,
 }
 
 export function planRetrofit(canonDir: string, targetDir: string, agents: Agent[], codeGraph: CodeGraph = 'graphify', codeIntelligence: CodeIntelligenceMode = 'off'): Action[] {

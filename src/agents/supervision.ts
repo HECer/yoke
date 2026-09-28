@@ -39,7 +39,7 @@ export function inspectProviderEvent(line: string): { failure?: string; progress
   return { progress: (event.type === 'item.completed' && ((item?.type === 'command_execution' && item.exit_code === 0) || (item?.type === 'file_change' && item.status === 'completed')))
     || (event.type === 'tool_execution_end' && event.isError === false)
     || (event.type === 'tool_use' && event.part?.type === 'tool' && event.part.state?.status === 'completed')
-    || (event.type === 'tool_result' && event.status === 'success')
+    || (event.type === 'tool_result' && (event.status === 'success' || event.is_error === false))
     || (event.type === 'user' && Array.isArray(event.message?.content) && event.message.content.some((part: any) => part.type === 'tool_result' && part.is_error === false)) }
 }
 

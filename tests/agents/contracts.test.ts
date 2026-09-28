@@ -9,7 +9,7 @@ import {
 describe('agent machine contracts', () => {
   it('accepts the expanded harness set and provider/variant model routing', async () => {
     const { AgentSchema } = await import('../../src/agents/contracts.js')
-    expect(AgentSchema.options).toEqual(['claude', 'codex', 'gemini', 'qwen', 'opencode', 'kilo', 'pi'])
+    expect(AgentSchema.options).toEqual(['claude', 'codex', 'gemini', 'qwen', 'opencode', 'kilo', 'pi', 'hermes'])
     expect(ModelSelectionSchema.parse({ provider: 'openrouter', model: 'openai/gpt-5.6', variant: 'high' }))
       .toEqual({ provider: 'openrouter', model: 'openai/gpt-5.6', variant: 'high' })
   })

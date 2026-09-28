@@ -1,6 +1,6 @@
-# OpenCode, Kilo and Pi
+# OpenCode, Kilo, Pi and Hermes
 
-Yoke 1.13.0 adds first-class adapters for OpenCode, Kilo and Pi coding agent. The adapters share Yoke's invocation, routing, review, quality, telemetry and retrofit contracts, while preserving the controls each harness actually provides.
+Yoke adds first-class adapters for OpenCode, Kilo, Pi coding agent, and Hermes Agent. The adapters share Yoke's invocation, routing, review, quality, telemetry and retrofit contracts, while preserving the controls each harness actually provides.
 
 This is a CLI integration, not an authentication bundle. Install the selected harness, log in or configure its API provider, and verify it independently before starting a Yoke loop.
 
@@ -10,12 +10,13 @@ Pi project trust is separate from Yoke's permission profile. Current Pi ignores 
 
 ## Setup and retrofit
 
-Select one of the new harnesses explicitly:
+Select one of the harnesses explicitly:
 
 ```sh
 yoke setup . --yes --agent=opencode --runner=opencode
 yoke setup . --yes --agent=kilo --runner=kilo
 yoke setup . --yes --agent=pi --runner=pi
+yoke setup . --yes --agent=hermes --runner=hermes
 ```
 
 To add one to an existing project without changing the other generated artifacts:
@@ -24,9 +25,10 @@ To add one to an existing project without changing the other generated artifacts
 yoke retrofit . --agent=opencode
 yoke retrofit . --agent=kilo
 yoke retrofit . --agent=pi
+yoke retrofit . --agent=hermes
 ```
 
-`--agent=all` now includes all seven supported harnesses. Retrofit is merge-aware for the native config files and backs up Yoke-managed overwrites under `.yoke/backup/`.
+`--agent=all` includes all eight supported harnesses. Retrofit is merge-aware for the native config files and backs up Yoke-managed overwrites under `.yoke/backup/`.
 
 ## Native artifacts
 
@@ -35,8 +37,9 @@ yoke retrofit . --agent=pi
 | OpenCode | `AGENTS.md`, `.opencode/skills/`, `opencode.json`, `.opencode/agents/yoke-reviewer.md` | `run --format json`, provider/model selection, variants, plan agent, local MCP servers |
 | Kilo | `AGENTS.md`, `.kilo/skills/`, `kilo.jsonc`, `.kilo/agents/yoke-reviewer.md` | OpenCode-compatible `run --format json`, provider/model selection, variants, plan agent, local MCP servers |
 | Pi | `AGENTS.md`, `.pi/skills/`, `.pi/settings.json` | JSONL mode, provider/model selection, thinking level, explicit tool allowlists |
+| Hermes | `AGENTS.md`, `.hermes/skills/`, `.hermes/agents/yoke-reviewer.md` | `chat --format stream-json`, `--query-file -`, provider/model selection, reasoning effort, toolsets |
 
-All three consume the shared `AGENTS.md` and `.yoke/context/*.md` context. OpenCode and Kilo also receive the configured local MCP servers from the Yoke code-graph choice. Pi has no native MCP or sub-agent layer, so its integration intentionally uses the portable skills and Yoke's own loop rather than pretending those features exist.
+All consume the shared `AGENTS.md` and `.yoke/context/*.md` context. OpenCode and Kilo also receive the configured local MCP servers from the Yoke code-graph choice. Pi and Hermes integrations use portable skills and Yoke's loop boundaries.
 
 ## Provider, model and variant selection
 
@@ -64,24 +67,36 @@ This becomes `--provider openai --model gpt-5.6 --thinking high`. Pi calls `vari
 
 OpenCode and Kilo likewise map these two fields to a single `--variant`: matching values are emitted once and conflicting values are rejected before spawning a process.
 
+For Hermes the equivalent is:
+
+```yaml
+runner:
+  agent: hermes
+  provider: openrouter
+  model: anthropic/claude-sonnet-4
+  reasoningEffort: high
+```
+
+This becomes `--provider openrouter --model anthropic/claude-sonnet-4 --reasoning-effort high`. Hermes accepts `--reasoning-effort`; configuring conflicting `variant` and `reasoningEffort` values is rejected.
+
 The same fields are available on routing workers and quality critic/repair roles. Routing evidence is keyed by harness, provider, model, reasoning effort and variant, so a model profile does not inherit another profile's success history.
 
 ## Permission profiles and honest limits
 
-| Yoke profile | OpenCode / Kilo | Pi |
-|---|---|---|
-| `safe` | Headless `--auto` run; Yoke still verifies the resulting tree and gates the commit | `read,bash,edit,write` tool allowlist so the implementer can test and modify the project |
-| `read-only` | `--agent plan` plus JSON output | `read,grep,find,ls` only |
-| `unsafe` | Explicit `--dangerously-skip-permissions` | Harness default tool set; no Yoke-added allowlist |
+| Yoke profile | OpenCode / Kilo | Pi | Hermes |
+|---|---|---|---|
+| `safe` | Headless `--auto` run; Yoke still verifies the resulting tree and gates the commit | `read,bash,edit,write` tool allowlist so the implementer can test and modify the project | `--toolsets file,terminal` restricts tools to local filesystem and shell execution |
+| `read-only` | `--agent plan` plus JSON output | `read,grep,find,ls` only | `--toolsets file` allows inspection without terminal or write execution |
+| `unsafe` | Explicit `--dangerously-skip-permissions` | Harness default tool set; no Yoke-added allowlist | `--yolo` skips dangerous command approvals |
 
-OpenCode, Kilo and Pi do not provide the same OS-level sandbox boundary as Codex or Gemini. The Yoke `safe` label therefore describes the selected harness controls and Yoke's mechanical gates, not a universal filesystem sandbox. Use `read-only` for review and do not use `unsafe` unless the project owner accepts the boundary.
+OpenCode, Kilo, Pi and Hermes do not provide the same OS-level sandbox boundary as Codex or Gemini. The Yoke `safe` label therefore describes the selected harness controls and Yoke's mechanical gates, not a universal filesystem sandbox. Use `read-only` for review and do not use `unsafe` unless the project owner accepts the boundary.
 
-The Yoke loop disables native delegation where the harness exposes it, so Yoke's worker budget remains the authority. OpenCode and Kilo native agents are installed as a read-only reviewer artifact; Yoke's review runner still validates the structured verdict itself. Pi has no native sub-agent or plan mode by design.
+The Yoke loop disables native delegation where the harness exposes it, so Yoke's worker budget remains the authority. OpenCode and Kilo native agents are installed as a read-only reviewer artifact; Hermes uses a read-only agent configuration with `toolsets: [file]`; Yoke's review runner still validates the structured verdict itself. Pi has no native sub-agent or plan mode by design.
 
 ## Telemetry and validation limits
 
-Yoke parses OpenCode/Kilo JSON text events and `step_finish` token/cost events, and Pi `message_end` plus `message_update.usage` events. Missing provider events produce partial or unknown measurements; they are never reported as zero-cost success. Provider-reported model and usage remain provider claims.
+Yoke parses OpenCode/Kilo JSON text events and `step_finish` token/cost events, Pi `message_end` plus `message_update.usage` events, and Hermes `result` (tokens, cost, model) and `text` streaming events. Missing provider events produce partial or unknown measurements; they are never reported as zero-cost success. Provider-reported model and usage remain provider claims.
 
 The release test suite covers argument construction, provider/variant propagation, routing and quality configuration, retrofit plans, host detection, JSON result parsing, and representative telemetry fixtures. It does not authenticate against every provider or claim equal model quality. Run a small project-specific smoke task after installing a harness and configuring credentials.
 
-Official CLI references: [OpenCode CLI](https://dev.opencode.ai/docs/cli), [OpenCode configuration](https://opencode.ai/docs/config), [OpenCode skills](https://opencode.ai/docs/skills), [Kilo CLI reference](https://github.com/Kilo-Org/kilocode/blob/main/packages/kilo-docs/pages/code-with-ai/platforms/cli-reference.md), and [Pi coding agent](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/README.md).
+Official CLI references: [OpenCode CLI](https://dev.opencode.ai/docs/cli), [OpenCode configuration](https://opencode.ai/docs/config), [OpenCode skills](https://opencode.ai/docs/skills), [Kilo CLI reference](https://github.com/Kilo-Org/kilocode/blob/main/packages/kilo-docs/pages/code-with-ai/platforms/cli-reference.md), [Pi coding agent](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/README.md), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).

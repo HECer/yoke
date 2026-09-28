@@ -11,10 +11,12 @@ export function detectHostAgent(env: Environment = process.env): Agent | undefin
   if (env.QWEN_CODE || env.QWEN_CODE_SESSION_ID || env.QWEN_CLI) return 'qwen'
   if (env.OPENCODE_CLIENT || env.OPENCODE_CONFIG || env.OPENCODE_CONFIG_DIR) return 'opencode'
   if (env.KILO_CLIENT || env.KILO_CONFIG || env.KILO_CONFIG_DIR) return 'kilo'
+  if (env.HERMES_SESSION_ID || env.HERMES_CONFIG) return 'hermes'
   if (env.CODEX_HOME) return 'codex'
   if (env.CLAUDE_CONFIG_DIR) return 'claude'
   if (env.GEMINI_CLI_HOME) return 'gemini'
   if (env.QWEN_CLI_HOME) return 'qwen'
+  if (env.HERMES_HOME) return 'hermes'
   return undefined
 }
 

@@ -7,7 +7,7 @@ description: Use when asked to "retrofit", "yoke this project", or set up the Yo
 
 Set up or update Yoke through the shared `yoke setup` contract.
 
-1. Inspect the project and identify the current host (`claude`, `codex`, `gemini`, `qwen`, `opencode`, `kilo`, or `pi`).
+1. Inspect the project and identify the current host (`claude`, `codex`, `gemini`, `qwen`, `opencode`, `kilo`, `pi`, or `hermes`).
 2. Ask these setup questions one at a time and give a direct recommendation:
    - target agents (recommend the current host; use `all` for deliberately cross-agent projects),
    - code-graph tool,

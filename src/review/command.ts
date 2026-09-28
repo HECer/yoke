@@ -29,7 +29,7 @@ export interface RunReviewOptions {
 
 // Resolve to the first available agent, preferring a *second* model so the review
 // is genuinely cross-model. claude last => a Claude-only box degrades to self-review.
-const RESOLUTION_ORDER: Agent[] = ['codex', 'gemini', 'qwen', 'claude', 'opencode', 'kilo', 'pi']
+const RESOLUTION_ORDER: Agent[] = ['codex', 'gemini', 'qwen', 'claude', 'opencode', 'kilo', 'pi', 'hermes']
 
 export function runReview(targetDir: string, opts: RunReviewOptions = {}): number {
   const available = opts.isAvailable ?? isAgentAvailable
