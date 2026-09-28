@@ -6,10 +6,23 @@ export interface McpBackendOptions { name: BackendName; version: string; command
 
 function valueFromResult(value: any): unknown {
   if (!value || typeof value !== 'object') return value
-  if (value.structuredContent !== undefined) return value.structuredContent
+  if (value.isError === true) throw new Error('MCP backend tool returned an error')
+  if (value.structuredContent !== undefined) {
+    const structured = value.structuredContent
+    if (structured && typeof structured === 'object' && Object.keys(structured).length === 1 && typeof structured.result === 'string') {
+      try { return JSON.parse(structured.result) } catch { return structured.result }
+    }
+    return structured
+  }
   const text = Array.isArray(value.content) ? value.content.find((item: any) => item?.type === 'text')?.text : undefined
   if (typeof text !== 'string') return value
-  try { return JSON.parse(text) } catch { return { text } }
+  try {
+    const parsed = JSON.parse(text)
+    if (parsed && typeof parsed === 'object' && Object.keys(parsed).length === 1 && typeof parsed.result === 'string') {
+      try { return JSON.parse(parsed.result) } catch { return parsed.result }
+    }
+    return parsed
+  } catch { return text }
 }
 
 export class McpBackendAdapter implements BackendAdapter {

@@ -138,7 +138,9 @@ export class CodeIntelligenceCoordinator {
     const name = input.symbol_id ?? input.query!
     const reference = symbolArgs(name, input.path ?? '')
     const graft = await this.call('graft', 'context', { query: name, limit: 10, ...(input.path ? { in: input.path } : {}) }, input.timeout_ms, state)
-    if (graft !== null) { const normalized = normalizeItems(graft, this.evidenceOptions(snapshot, 'graft'), 'symbol', 20); symbols.push(...normalized.items.map(item => ({ symbol_id: `graft:${item.item_id}`, name: item.excerpt.split(/\s|\(|\{/u)[0] ?? name, path: item.path, kind: 'unknown', signature: item.excerpt.slice(0, 500), evidence_ids: item.evidence_ids }))); provenance.push(...normalized.provenance) }
+    // Graft returns search prose, not structured symbol definitions. Preserve
+    // its provenance without inventing a symbol from the response heading.
+    if (graft !== null) { const normalized = normalizeItems(graft, this.evidenceOptions(snapshot, 'graft'), 'symbol', 20); provenance.push(...normalized.provenance) }
     const symbol = await this.call('serena-lsp', 'symbol', { name_path_pattern: reference.name_path, depth: 0, relative_path: reference.relative_path, include_body: false, max_matches: 20 }, input.timeout_ms, state)
     if (symbol !== null) { const normalized = normalizeSymbols(symbol, this.evidenceOptions(snapshot, 'serena-lsp')); symbols.push(...normalized.symbols); provenance.push(...normalized.provenance) }
     if (input.include.includes('references')) {

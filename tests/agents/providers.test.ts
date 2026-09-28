@@ -1,7 +1,78 @@
 import { describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { buildProviderInvocation } from '../../src/agents/providers.js'
+import { defaultConfig, saveConfig } from '../../src/retrofit/config.js'
+
+function withTemporaryProject(run: (root: string) => void): void {
+  const root = mkdtempSync(join(tmpdir(), 'yoke-solpi-provider-'))
+  try { run(root) } finally { rmSync(root, { recursive: true, force: true }) }
+}
 
 describe('provider invocations', () => {
+  it('solpi-extension-only-when-enabled', () => withTemporaryProject(root => {
+    const version = vi.spyOn(process, 'version', 'get').mockReturnValue('v22.19.0')
+    try {
+      const nonPiAgents = ['claude', 'codex', 'gemini', 'qwen', 'opencode', 'kilo', 'hermes'] as const
+      const nonPiArgs = new Map(nonPiAgents.map(agent => [agent, JSON.stringify(buildProviderInvocation(agent, 'P', root).args)]))
+      saveConfig(root, { ...defaultConfig('test'), solpi: { enabled: false } })
+      expect(buildProviderInvocation('pi', 'P', root, 'safe').args).toEqual([
+        '--mode', 'json', '--no-session', '--tools', 'read,bash,edit,write',
+      ])
+
+      saveConfig(root, { ...defaultConfig('test'), solpi: { enabled: true } })
+      expect(buildProviderInvocation('pi', 'P', root, 'safe').args).toEqual([
+        '--mode', 'json', '--no-session', '--tools', 'read,bash,edit,write',
+        '--extension', 'git:github.com/NVlabs/SoL-Pi@d7ecfc089944f0d04b80122a0a9a6ca0d786f3d0',
+      ])
+      for (const agent of nonPiAgents) {
+        expect(JSON.stringify(buildProviderInvocation(agent, 'P', root).args)).toBe(nonPiArgs.get(agent))
+      }
+    } finally { version.mockRestore() }
+  }))
+
+  it('solpi-node-runtime-guard', () => withTemporaryProject(root => {
+    const version = vi.spyOn(process, 'version', 'get').mockReturnValue('v22.18.9')
+    try {
+      saveConfig(root, { ...defaultConfig('test'), solpi: { enabled: true } })
+      expect(() => buildProviderInvocation('pi', 'P', root, 'safe')).toThrow(/SoL-Pi requires Node\.js 22\.19 or newer/)
+
+      saveConfig(root, { ...defaultConfig('test'), solpi: { enabled: false } })
+      expect(buildProviderInvocation('pi', 'P', root, 'safe').args).toEqual([
+        '--mode', 'json', '--no-session', '--tools', 'read,bash,edit,write',
+      ])
+    } finally { version.mockRestore() }
+  }))
+
+  it('solpi-never-auto-approves-pi-trust', () => withTemporaryProject(root => {
+    vi.stubEnv('HOME', root)
+    vi.stubEnv('USERPROFILE', root)
+    const version = vi.spyOn(process, 'version', 'get').mockReturnValue('v22.19.0')
+    try {
+      saveConfig(root, { ...defaultConfig('test'), solpi: { enabled: true } })
+      const trustDir = join(root, '.pi', 'agent')
+      mkdirSync(trustDir, { recursive: true })
+      const trustFile = join(trustDir, 'trust.json')
+      writeFileSync(trustFile, '{"project-trust":"unchanged"}\n')
+      const trustBefore = readFileSync(trustFile, 'utf8')
+      const configFile = join(root, '.yoke', 'config.yaml')
+      const configBefore = readFileSync(configFile, 'utf8')
+
+      const invocation = buildProviderInvocation('pi', 'P', root, 'safe')
+      expect(invocation.args.slice(-2)).toEqual([
+        '--extension', 'git:github.com/NVlabs/SoL-Pi@d7ecfc089944f0d04b80122a0a9a6ca0d786f3d0',
+      ])
+      expect(invocation.args).not.toContain('--approve')
+      expect(invocation.args).not.toContain('-a')
+      expect(readFileSync(trustFile, 'utf8')).toBe(trustBefore)
+      expect(readFileSync(configFile, 'utf8')).toBe(configBefore)
+    } finally {
+      version.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  }))
+
   it.each(['opencode', 'kilo'] as const)('rejects conflicting %s effort aliases and emits matching aliases once', agent => {
     expect(() => buildProviderInvocation(agent, 'P', '/w', 'safe', { reasoningEffort: 'low', variant: 'high' })).toThrow(/must match/)
     const args = buildProviderInvocation(agent, 'P', '/w', 'safe', { reasoningEffort: 'high', variant: 'high' }).args
@@ -105,13 +176,13 @@ describe('provider invocations', () => {
     expect(buildProviderInvocation('pi', 'P', '/w', 'unsafe').args).not.toContain('--tools')
   })
 
-  it('builds Hermes stream-json invocations with provider, model, reasoning-effort and toolsets', () => {
+  it('builds Hermes stream-json invocations with provider, model, reasoning and toolsets', () => {
     expect(buildProviderInvocation('hermes', 'P', '/w', 'safe', {
       provider: 'openrouter', model: 'anthropic/claude-sonnet', reasoningEffort: 'high',
     }).args).toEqual([
       'chat', '--format', 'stream-json', '--query-file', '-',
       '--toolsets', 'file,terminal',
-      '--provider', 'openrouter', '--model', 'anthropic/claude-sonnet', '--reasoning-effort', 'high',
+      '--provider', 'openrouter', '--model', 'anthropic/claude-sonnet', '--reasoning', 'high',
     ])
     expect(buildProviderInvocation('hermes', 'P', '/w', 'read-only').args).toContain('--toolsets')
     expect(buildProviderInvocation('hermes', 'P', '/w', 'read-only').args).toContain('file')

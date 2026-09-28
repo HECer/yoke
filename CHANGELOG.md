@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.19.0 — 2026-09-28
+
+### Added
+- Add optional, per-project SoL-Pi controls for Pi, including dashboard settings and temporary configuration for each opted-in invocation. SoL-Pi remains disabled by default and is pinned to a reviewed upstream commit.
+
+### Fixed
+- Write SoL-Pi options to its project-local `.pi/sol-pi.json` configuration path and restore the prior file after each invocation, so enabled mechanisms are read by the extension.
+- Map Hermes reasoning selection to the CLI's `--reasoning` option.
+- Normalize federated Code Intelligence stdio evidence across adapters and the coordinator.
+
+### Changed
+- Replace the long README with a concise feature overview, a workflow diagram, a quick start and links to detailed guides.
+- Raise test-only child-process and Windows integration timeouts to reduce false failures under host load; production timeout defaults are unchanged.
+
+### Migration and validation limits
+- SoL-Pi's pinned upstream lists Node.js 22.19+ and `@earendil-works/pi-coding-agent@0.84.2` as its tested baseline. Yoke checks Node.js but does not enforce the Pi version; other releases are unverified. Pi project trust may be required. Yoke does not install Pi, grant trust, or configure provider credentials. SoL-Pi remains opt-in, and the upstream paper results are not a savings guarantee for a Yoke project.
+- Continuous exploration and parallel workers remain independently opt-in/configurable; see the [continuous exploration](docs/CONTINUOUS-EXPLORATION.md) and [parallel execution](docs/parallel-execution.md) guides for safe-boundary and resource limits.
+- Local release checks on Windows with Node.js 24.13.0 passed: lint, build, canon, README metadata, npm audit (0 vulnerabilities), package dry-run, and 1,337 tests (2 skipped). The GitHub Node 20/24 Linux/Windows CI matrix remains the cross-platform release gate.
+
 ## 1.18.0 — 2026-09-27
 
 ### Added

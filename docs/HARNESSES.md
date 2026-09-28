@@ -77,7 +77,7 @@ runner:
   reasoningEffort: high
 ```
 
-This becomes `--provider openrouter --model anthropic/claude-sonnet-4 --reasoning-effort high`. Hermes accepts `--reasoning-effort`; configuring conflicting `variant` and `reasoningEffort` values is rejected.
+This becomes `--provider openrouter --model anthropic/claude-sonnet-4 --reasoning high`. Hermes accepts `--reasoning`; configuring conflicting `variant` and `reasoningEffort` values is rejected.
 
 The same fields are available on routing workers and quality critic/repair roles. Routing evidence is keyed by harness, provider, model, reasoning effort and variant, so a model profile does not inherit another profile's success history.
 

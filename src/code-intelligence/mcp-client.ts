@@ -5,8 +5,8 @@ export interface McpCallResult { content?: Array<{ type: string; text?: string }
 
 interface Pending { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 
-/** Small, bounded stdio MCP client. It supports Graft's newline JSON-RPC and the
- * Content-Length framing used by the Python MCP SDK (Graphify and Serena). */
+/** Small, bounded stdio MCP client. Supports newline JSON-RPC used by the
+ * backend SDKs and optional Content-Length framing for legacy peers. */
 export class McpStdioClient {
   private child: ChildProcessWithoutNullStreams | undefined
   private buffer = Buffer.alloc(0)

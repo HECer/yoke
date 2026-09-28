@@ -402,7 +402,7 @@ describe('yoke loop run --parallel', () => {
     expect(existsSync(join(dir, 'implemented-A.txt'))).toBe(true)
   })
 
-  it('lands a worker-authored commit as one dispatcher-authored story commit', { timeout: 15_000 }, async () => {
+  it('lands a worker-authored commit as one dispatcher-authored story commit', { timeout: process.platform === 'win32' ? 30_000 : 15_000 }, async () => {
     const baseCommit = initializeGitRepository('- { id: A, title: API, priority: 1, acceptance: ["a"], passes: false }')
 
     const code = await Promise.resolve(runLoopCommand(dir, {

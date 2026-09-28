@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { loadConfig, saveConfig, defaultConfig, resolveOutputPolicy, resolveVerifyCommand, YokeConfigSchema } from '../../src/retrofit/config.js'
+import { loadConfig, saveConfig, defaultConfig, resolveOutputPolicy, resolveVerifyCommand, resolveSolPiSettings, toSolPiNativeConfig, SolPiNativeConfigSchema, YokeConfigSchema } from '../../src/retrofit/config.js'
 import { DEFAULT_OUTPUT_POLICY } from '../../src/output/types.js'
 import { writeFileSync } from 'node:fs'
 
@@ -11,6 +11,59 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-cfg-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('yoke config', () => {
+  it('solpi-default-off', () => {
+    saveConfig(dir, { canonVersion: '1', agents: [], loop: { enabled: false } })
+    expect(resolveSolPiSettings(loadConfig(dir)!)).toEqual({
+      enabled: false, actionFusion: false, observationPack: false,
+      evidencePreservingReducer: false, onlineContextCompact: false,
+      cacheWriteReadRatio: 12.5,
+    })
+    expect(toSolPiNativeConfig({ ...defaultConfig('1'), solpi: {
+      enabled: false, actionFusion: true, observationPack: true,
+      evidencePreservingReducer: true, onlineContextCompact: true,
+    } })).toEqual({
+      version: 1, actionFusion: false, observationPack: false,
+      evidencePreservingReducer: false, onlineContextCompact: false,
+      cacheWriteReadRatio: 12.5,
+    })
+  })
+
+  it('solpi-settings-roundtrip', () => {
+    const solpi = {
+      enabled: true, actionFusion: true, observationPack: false,
+      evidencePreservingReducer: true, onlineContextCompact: false,
+      cacheWriteReadRatio: 8,
+    }
+    saveConfig(dir, { ...defaultConfig('1'), solpi })
+    expect(loadConfig(dir)?.solpi).toEqual(solpi)
+    expect(toSolPiNativeConfig(loadConfig(dir)!)).toEqual({
+      version: 1, actionFusion: true, observationPack: false,
+      evidencePreservingReducer: true, onlineContextCompact: false,
+      cacheWriteReadRatio: 8,
+    })
+  })
+
+  it('solpi-native-config-validation', () => {
+    const native = toSolPiNativeConfig(defaultConfig('1'))
+    expect(SolPiNativeConfigSchema.parse(native)).toEqual({
+      version: 1, actionFusion: false, observationPack: false,
+      evidencePreservingReducer: false, onlineContextCompact: false,
+      cacheWriteReadRatio: 12.5,
+    })
+    expect(() => SolPiNativeConfigSchema.parse({ ...native, unknown: true })).toThrow()
+    expect(SolPiNativeConfigSchema.parse({
+      ...native, evidencePreservingReducerProvider: 'openai', evidencePreservingReducerModel: 'small-model',
+    })).toMatchObject({ evidencePreservingReducerProvider: 'openai', evidencePreservingReducerModel: 'small-model' })
+    expect(() => SolPiNativeConfigSchema.parse({ ...native, evidencePreservingReducerProvider: '' })).toThrow()
+    expect(() => SolPiNativeConfigSchema.parse({ ...native, evidencePreservingReducerModel: 5 })).toThrow()
+    expect(() => SolPiNativeConfigSchema.parse({ ...native, actionFusion: 'true' })).toThrow()
+    for (const ratio of [-1, Number.NaN, Number.POSITIVE_INFINITY, '12.5']) {
+      expect(() => SolPiNativeConfigSchema.parse({ ...native, cacheWriteReadRatio: ratio })).toThrow()
+    }
+    expect(() => SolPiNativeConfigSchema.parse({ ...native, version: 2 })).toThrow()
+    expect(SolPiNativeConfigSchema.parse({ version: 1, cacheWriteReadRatio: 0 }).cacheWriteReadRatio).toBe(0)
+  })
+
   it('round-trips provider and variant selection for runners and routing workers', () => {
     const config = YokeConfigSchema.parse({
       canonVersion: 'test', agents: ['opencode'], loop: { enabled: true },

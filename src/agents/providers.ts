@@ -1,7 +1,10 @@
-import type { Agent } from '../retrofit/config.js'
+import { type Agent } from '../retrofit/config.js'
 import type { AgentInvocation, ModelSelection, PermissionProfile } from './types.js'
 import { ModelSelectionSchema } from './contracts.js'
 import { fileURLToPath } from 'node:url'
+import { loadSolPiProjectConfig } from './sol-pi-runtime.js'
+
+const SOL_PI_EXTENSION = 'git:github.com/NVlabs/SoL-Pi@d7ecfc089944f0d04b80122a0a9a6ca0d786f3d0'
 
 export {
   providerSpawnOptions,
@@ -77,6 +80,13 @@ export function buildProviderInvocation(
   if (parsedSelection.provider && !['opencode', 'kilo', 'pi', 'hermes'].includes(agent)) throw new Error(`${agent} does not support an explicit provider selection`)
   if (parsedSelection.variant && !['opencode', 'kilo', 'pi', 'hermes'].includes(agent)) throw new Error(`${agent} does not support a model variant selection`)
   const args = argsFor(agent, permissions)
+  if (agent === 'pi' && loadSolPiProjectConfig(cwd)?.solpi?.enabled) {
+    const [major, minor] = process.version.slice(1).split('.').map(Number)
+    if (major < 22 || (major === 22 && minor < 19)) {
+      throw new Error(`SoL-Pi requires Node.js 22.19 or newer; current version is ${process.version}`)
+    }
+    args.push('--extension', SOL_PI_EXTENSION)
+  }
   if (output.schemaFile !== undefined || output.jsonSchema !== undefined) {
     if (agent === 'codex' && output.schemaFile && output.jsonSchema === undefined) {
       if (/[\0\r\n]/u.test(output.schemaFile) || (process.platform === 'win32' && !/^[A-Za-z0-9_./:\\-]+$/u.test(output.schemaFile))) throw new Error('Invalid output schema file path')
@@ -108,7 +118,7 @@ export function buildProviderInvocation(
     else if (agent === 'codex') args.push('--config', `model_reasoning_effort=${parsedSelection.reasoningEffort}`)
     else if (agent === 'opencode' || agent === 'kilo') args.push('--variant', parsedSelection.reasoningEffort)
     else if (agent === 'pi') args.push('--thinking', parsedSelection.reasoningEffort)
-    else if (agent === 'hermes') args.push('--reasoning-effort', parsedSelection.reasoningEffort)
+    else if (agent === 'hermes') args.push('--reasoning', parsedSelection.reasoningEffort)
   }
   if (parsedSelection.variant) {
     if ((agent === 'opencode' || agent === 'kilo') && !parsedSelection.reasoningEffort) args.push('--variant', parsedSelection.variant)
@@ -118,7 +128,7 @@ export function buildProviderInvocation(
     }
     else if (agent === 'hermes') {
       if (parsedSelection.reasoningEffort && parsedSelection.reasoningEffort !== parsedSelection.variant) throw new Error('Hermes reasoningEffort and variant selections must match')
-      if (!parsedSelection.reasoningEffort) args.push('--reasoning-effort', parsedSelection.variant)
+      if (!parsedSelection.reasoningEffort) args.push('--reasoning', parsedSelection.variant)
     }
   }
   if (agent === 'codex' && parsedSelection.nativeMultiAgent === false) args.push('--disable', 'multi_agent')
