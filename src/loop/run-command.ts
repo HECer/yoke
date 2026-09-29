@@ -2,7 +2,7 @@ import { roleSelection } from "../routing/capability.js"
 import { join } from 'node:path'
 import { existsSync, unlinkSync } from 'node:fs'
 import { loadConfig, saveConfig, defaultConfig, resolveOutputPolicy, resolveVerifyCommand, type DecisionPolicy } from '../retrofit/config.js'
-import { allPass, loadPrd, progress, selectNextStory } from './prd.js'
+import { allPass, loadPrd, progress, selectNextStory, storyPathSegment } from './prd.js'
 import { pauseFilePath, requestLoopPause, runLoop } from './loop.js'
 import { commitPaths, realGitOps } from './git.js'
 import { makeRunner, makeReviewRunner, isAgentAvailable, type AgentRunner, type AmbiguityPolicy } from './runner.js'
@@ -10,7 +10,9 @@ import type { Agent } from '../retrofit/config.js'
 import type { GitOps } from './gates.js'
 import { commandVerifier, commandsVerifier, retryingVerifier, type Verifier } from './verify.js'
 import { readStatus, makeReporter, fmtDuration, type LoopReporter } from './reporter.js'
-import { acquireLock, releaseLock } from './lock.js'
+import { acquireLock, releaseLock, readLock } from './lock.js'
+import { statePath } from '../workspace/state.js'
+import { accountRunIterations, createLoopRun, readRunState, writeRunState, type SavedRunState } from './run-state.js'
 import { maybeAutoUpgrade } from '../update/upgrade.js'
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
 import { resolveCommitIdentity, type CommitIdentity } from './identity.js'
@@ -124,6 +126,11 @@ export function resolveIdleMs(flagMinutes: number | undefined, configMinutes: nu
 }
 
 export interface RunLoopCommandOptions {
+  /** Internal runtime ownership; never serialized. */
+  ownedLockToken?: string
+  savedRun?: SavedRunState
+  selection?: ModelSelection
+  explorationPlanner?: { agent: Agent; selection: ModelSelection }
   /** Optional story batch limit. Omitted means run until every story passes or a gate blocks. */
   maxIterations?: number
   runner?: AgentRunner
@@ -276,16 +283,16 @@ async function runContinuousExploration(targetDir: string, options: RunLoopComma
     console.error('--explore-limit must be a positive, supported duration')
     return 2
   }
-  const limitDeadline = options.exploreLimitMs === undefined ? undefined : Date.now() + options.exploreLimitMs
+  const limitDeadline = options.savedRun?.exploreDeadline ?? (options.exploreLimitMs === undefined ? undefined : Date.now() + options.exploreLimitMs)
   const reporter = options.reporter ?? makeReporter(targetDir, { json: options.json, quiet: true })
   let config: ReturnType<typeof loadConfig>
   try { config = loadConfig(targetDir) } catch { config = null }
   const defaultImplementationAgent = options.agent ?? resolveRunnerAgent(config, undefined, detectHostAgent())
-  const defaultExplorer = options.agent ?? config?.planning?.agent ?? defaultImplementationAgent
+  const defaultExplorer = options.explorationPlanner?.agent ?? options.agent ?? config?.planning?.agent ?? defaultImplementationAgent
   const available = options.isAvailable ?? isAgentAvailable
   const reviewRequested = !options.reviewRunner && Boolean(options.review || options.reviewer)
   const innerOptions: RunLoopCommandOptions = { ...options, isolate: true, explore: true, explorationSupervisor: true, reporter, quiet: true }
-  let usedIterations = 0
+  let usedIterations = options.savedRun?.consumedIterations ?? 0
   let retryCount = 0
   let explorationFailures = 0
   let noActionScans = 0
@@ -320,6 +327,8 @@ async function runContinuousExploration(targetDir: string, options: RunLoopComma
     if (limitReached()) return 'limit'
     const explorer = retryProviders(targetDir, explorationAgent, available)
     const result = runPrdExplore(targetDir, {
+      ownedLockToken: options.ownedLockToken,
+      ...(explorationAgent === options.explorationPlanner?.agent ? { selection: options.explorationPlanner.selection } : {}),
       runner: explorationAgent,
       timeoutMinutes: options.timeoutMinutes,
       isAvailable: options.isAvailable ?? isAgentAvailable,
@@ -403,7 +412,8 @@ async function runContinuousExploration(targetDir: string, options: RunLoopComma
     }
     const afterStatus = readStatus(targetDir)
     const changedStatus = afterStatus?.updatedAt !== beforeStatus?.updatedAt
-    if (changedStatus && priorProgress.passed < priorProgress.total) usedIterations += Math.max(0, afterStatus?.iteration ?? 0)
+    if (options.savedRun) usedIterations = options.savedRun.consumedIterations ?? usedIterations
+    else if (changedStatus && priorProgress.passed < priorProgress.total) usedIterations += Math.max(0, afterStatus?.iteration ?? 0)
 
     if (unexpectedFailure) {
       retryCount++
@@ -494,7 +504,7 @@ async function runContinuousExploration(targetDir: string, options: RunLoopComma
 
     retryCount++
     advanceRecoveryProviders()
-    retryWorktree = true
+    retryWorktree = (afterStatus?.parallel?.reopened ?? 0) === 0
     const wait = retryDelay(retryCount)
     reporter.phase('waiting-recovery', `story ${afterStatus?.story ?? 'unknown'} remains incomplete: ${afterStatus?.reason ?? 'no passing completion status'}; retrying with ${implementationAgent ?? 'the configured runner'} in ${Math.ceil(wait / 1_000)} seconds`, currentProgress(targetDir))
     say(`The current task remains unfinished; its isolated work is retained. Next: retry with ${implementationAgent ?? 'the configured runner'} in ${Math.ceil(wait / 1_000)} seconds.`)
@@ -506,7 +516,7 @@ async function runContinuousExploration(targetDir: string, options: RunLoopComma
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number | Promise<number> {
-  if (opts.explore && !opts.explorationSupervisor) return runContinuousExploration(targetDir, opts)
+  if (opts.explore && !opts.explorationSupervisor) return startContinuousExploration(targetDir, opts)
   let parallel = opts.parallel ?? 1
   const candidates = opts.candidates ?? 1
   if (opts.resumeWorktree && (opts.isolate === false || parallel !== 1 || candidates !== 1)) {
@@ -573,7 +583,8 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     return 2
   }
   const isolate = opts.isolate ?? config.loop.isolate ?? true
-  const useParallelDispatcher = parallel > 1 || candidates > 1
+  const retainedParallel = opts.explorationSupervisor && loadPrd(path).some(story => !story.passes && existsSync(statePath(targetDir, 'integration-recovery', `${storyPathSegment(story.id)}.json`)))
+  const useParallelDispatcher = parallel > 1 || candidates > 1 || retainedParallel === true
   if (opts.resumeWorktree && (!isolate || parallel !== 1)) {
     console.error('--resume-worktree requires isolation and one worker')
     return 2
@@ -684,11 +695,13 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   const routingRequested = opts.routing ?? config.routing?.enabled ?? true
   const routingEnabled = routingRequested && Boolean(config.routing && (config.routing.workers.length || config.routing.fallback === 'block' || config.routing.maxTier || config.routing.assessmentPolicy === 'prepared'))
   const runnerSelection: ModelSelection = {
-    provider: config.runner?.provider,
-    model: config.runner?.model,
-    reasoningEffort: config.runner?.reasoningEffort,
-    variant: config.runner?.variant,
-    bare: config.runner?.bare,
+    ...(opts.selection ?? {
+      provider: config.runner?.provider,
+      model: config.runner?.model,
+      reasoningEffort: config.runner?.reasoningEffort,
+      variant: config.runner?.variant,
+      bare: config.runner?.bare,
+    }),
     nativeMultiAgent: false,
   }
   const parallelProviders: readonly Omit<StoryWorkerProvider, 'role'>[] = [{
@@ -750,13 +763,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     timeoutMs: idleMs,
     isAvailable: available,
     permissions,
-    selection: {
-      provider: config.runner?.provider,
-      model: config.runner?.model,
-      reasoningEffort: config.runner?.reasoningEffort,
-      variant: config.runner?.variant,
-      bare: config.runner?.bare,
-    },
+    selection: runnerSelection,
     commit: (_path, request) => commitPaths(targetDir, ['.yoke/prd.yaml'], `yoke: plan change ${request.id}`, commitIdentity),
   }))
 
@@ -861,7 +868,13 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }
   }
   let lock: ReturnType<typeof acquireLock>
-  try { lock = acquireLock(targetDir) } catch (error) {
+  try {
+    statePath(targetDir, 'loop.lock')
+    if (opts.ownedLockToken) {
+      if (readLock(targetDir)?.ownerToken !== opts.ownedLockToken) throw new Error('Invalid borrowed loop lock')
+      lock = { acquired: true, ownerToken: opts.ownedLockToken }
+    } else lock = acquireLock(targetDir)
+  } catch (error) {
     console.error(`Cannot acquire the Yoke loop lock: ${(error as Error).message}`)
     return 2
   }
@@ -872,8 +885,19 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   if (lock.stalePid !== undefined) {
     console.warn(`Took over a stale loop lock (pid ${lock.stalePid} is gone).`)
   }
-  const reporter = opts.reporter ?? makeReporter(targetDir, { json: opts.json, quiet: opts.quiet })
+  let reporter = opts.reporter ?? makeReporter(targetDir, { json: opts.json, quiet: opts.quiet })
   executionReporter = reporter
+  try {
+    const saved = opts.savedRun ?? createLoopRun({ ...opts, agent: runnerAgent, selection: runnerSelection, parallel, isolate, routing: routingEnabled, timeoutMinutes: opts.timeoutMinutes ?? config.loop.timeoutMinutes })
+    if (opts.savedRun && readRunState(targetDir)?.runId !== opts.savedRun.runId) throw new Error('Saved run changed before resume')
+    writeRunState(targetDir, saved, lock.ownerToken)
+    reporter = accountRunIterations(targetDir, saved, lock.ownerToken, reporter)
+    executionReporter = reporter
+  } catch (error) {
+    if (!opts.ownedLockToken) releaseLock(targetDir, lock.ownerToken)
+    reporter.blocked(`could not persist loop run: ${(error as Error).message}`)
+    return 1
+  }
   const buildResume = (storyId: string, requestId: string) => buildTrustedDecisionResumeState({
     storyId,
     requestId,
@@ -941,7 +965,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       completion,
       quality,
       onCriticalDecision: decision => writeDecisionResume(targetDir, buildResume(decision.storyId, decisionRequestId(decision))),
-    }).then(code => reconcileDecisionResume() ?? code).finally(() => releaseLock(targetDir, lock.ownerToken))
+    }).then(code => reconcileDecisionResume() ?? code).finally(() => { if (!opts.ownedLockToken) releaseLock(targetDir, lock.ownerToken) })
   }
   try {
     const maxIterations = opts.maxIterations ?? Number.POSITIVE_INFINITY
@@ -982,6 +1006,34 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     if (result.status === 'paused') return 3
     return 1
   } finally {
-    releaseLock(targetDir, lock.ownerToken)
+    if (!opts.ownedLockToken) releaseLock(targetDir, lock.ownerToken)
   }
+}
+
+async function startContinuousExploration(targetDir: string, options: RunLoopCommandOptions): Promise<number> {
+  let lock: ReturnType<typeof acquireLock> | undefined
+  try {
+    if (options.isolate === false) throw new Error('--explore requires isolated story worktrees')
+    if (options.exploreLimitMs !== undefined && (!Number.isSafeInteger(options.exploreLimitMs) || options.exploreLimitMs <= 0 || Date.now() + options.exploreLimitMs > 8_640_000_000_000_000)) throw new Error('--explore-limit must be a positive, supported duration')
+    statePath(targetDir, 'loop.lock')
+    lock = acquireLock(targetDir)
+    if (!lock.acquired) { console.error('Another loop is already running here'); return 2 }
+    const config = loadConfig(targetDir)
+    const implementationAgent = options.agent ?? resolveRunnerAgent(config, undefined, detectHostAgent())
+    const implementationSelection = options.selection ?? config?.runner ?? {}
+    const explorationPlanner = options.explorationPlanner ?? resolvePlanner(config, implementationAgent, implementationSelection, options.agent)
+    const run = options.savedRun ?? createLoopRun({ ...options, agent: implementationAgent, selection: implementationSelection, explorationPlanner, timeoutMinutes: options.timeoutMinutes ?? config?.loop.timeoutMinutes, ...(options.parallel === undefined && !options.parallelAuto ? typeof config?.loop.parallel === 'number' ? { parallel: config.loop.parallel } : { parallelAuto: true } : {}) })
+    if (options.savedRun && readRunState(targetDir)?.runId !== run.runId) throw new Error('Saved run changed before resume')
+    writeRunState(targetDir, run, lock.ownerToken)
+    return await runContinuousExploration(targetDir, { ...options, selection: run.options.selection, explorationPlanner: run.options.explorationPlanner ?? explorationPlanner, savedRun: run, ownedLockToken: lock.ownerToken })
+  } catch (error) { console.error(`Cannot start exploration: ${(error as Error).message}`); return 2 }
+  finally { if (lock?.acquired) releaseLock(targetDir, lock.ownerToken) }
+}
+
+/** Resume the saved execution identity without extending its exploration deadline. */
+export function resumeLoopCommand(targetDir: string): number | Promise<number> {
+  const run = readRunState(targetDir)
+  if (!run || run.mode === 'goal') throw new Error('No saved loop run to resume')
+  const { native: _native, ...options } = run.options
+  return runLoopCommand(targetDir, { ...options, ...(run.mode === 'loop' && options.maxIterations !== undefined ? { maxIterations: Math.max(0, options.maxIterations - (run.consumedIterations ?? 0)) } : {}), explore: run.mode === 'explore', savedRun: run, permissions: 'safe' })
 }

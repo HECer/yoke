@@ -36,6 +36,7 @@ type PoolRecord = z.infer<typeof PoolRecordSchema>
 export type PoolRole = PoolRecord['role']
 
 export interface PoolRequest {
+  readonly resource?: 'check'
   readonly targetDir: string
   readonly storyId: string
   readonly provider: PoolRecord['provider']
@@ -79,13 +80,13 @@ export function globalWorkerLimit(environment: NodeJS.ProcessEnv = process.env):
   return value
 }
 
-function poolDir(): string {
+function poolDir(resource?: 'check'): string {
   const base = process.env.LOCALAPPDATA || process.env.XDG_STATE_HOME || join(homedir(), '.yoke')
-  return join(resolve(base), 'Yoke', 'parallel-pool')
+  return join(resolve(base), 'Yoke', resource === 'check' ? 'check-pool' : 'parallel-pool')
 }
 
-function ensurePoolDir(): string {
-  const dir = poolDir()
+function ensurePoolDir(resource?: 'check'): string {
+  const dir = poolDir(resource)
   mkdirSync(dir, { recursive: true })
   const stat = lstatSync(dir)
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Yoke shared worker-pool directory must be a real directory')
@@ -140,8 +141,8 @@ function staleDead(record: PoolRecord, now: number): boolean {
   return !Number.isFinite(created) || now - created > STALE_OWNER_MS
 }
 
-function withPoolLock<T>(operation: (records: PoolRecord[], dir: string) => T | null): T | null {
-  const dir = ensurePoolDir()
+function withPoolLock<T>(operation: (records: PoolRecord[], dir: string) => T | null, resource?: 'check'): T | null {
+  const dir = ensurePoolDir(resource)
   const lockFile = join(dir, 'pool')
   return withClaimOperations(
     lockFile,
@@ -215,7 +216,7 @@ function writeRecord(dir: string, record: PoolRecord): void {
 
 export async function acquireSharedWorker(request: PoolRequest): Promise<PoolLease> {
   const units = request.units ?? 1
-  const limit = globalWorkerLimit()
+  const limit = request.resource === 'check' ? globalCheckLimit() : globalWorkerLimit()
   if (!Number.isInteger(units) || units < 1 || units > MAX_PROJECT_WORKERS) throw new Error(`Worker reservation units must be an integer from 1 to ${MAX_PROJECT_WORKERS}`)
   if (units > limit) throw new Error(`This task needs ${units} parallel worker units but the shared Yoke limit is ${limit}; raise YOKE_MAX_PARALLEL_WORKERS (maximum ${MAX_PROJECT_WORKERS}) or lower --candidates`)
   if (request.signal?.aborted) throw new Error(abortReason(request.signal))
@@ -241,7 +242,7 @@ export async function acquireSharedWorker(request: PoolRequest): Promise<PoolLea
   let published = false
   while (!published) {
     if (request.signal?.aborted) throw new Error(abortReason(request.signal))
-    const result = withPoolLock((_records, dir) => { writeRecord(dir, waiting); return true })
+    const result = withPoolLock((_records, dir) => { writeRecord(dir, waiting); return true }, request.resource)
     if (result === true) published = true
     else await waitForCapacity(request.signal)
   }
@@ -259,7 +260,7 @@ export async function acquireSharedWorker(request: PoolRequest): Promise<PoolLea
         if (head && head.id !== id) replaceRecord(dir, { ...head, overtakes: head.overtakes + 1 })
         replaceRecord(dir, { ...own, state: 'active' })
         return true
-      })
+      }, request.resource)
       if (granted === true) {
         const acquiredAt = new Date().toISOString()
         let released = false
@@ -274,7 +275,7 @@ export async function acquireSharedWorker(request: PoolRequest): Promise<PoolLea
                 if (!own) return false
                 rmSync(recordPath(dir, id), { force: true })
                 return true
-              })
+              }, request.resource)
               if (result !== null) {
                 released = true
                 return result
@@ -292,7 +293,7 @@ export async function acquireSharedWorker(request: PoolRequest): Promise<PoolLea
         const own = records.find(record => record.id === id && record.token === token)
         if (own) rmSync(recordPath(dir, id), { force: true })
         return true
-      })
+      }, request.resource)
       if (removed !== null) break
       await waitForCapacity()
     }
@@ -301,7 +302,7 @@ export async function acquireSharedWorker(request: PoolRequest): Promise<PoolLea
 }
 
 /** Synchronous companion for the legacy serial loop, whose runner contract is synchronous. */
-export function withSharedWorkerSync<T>(request: Omit<PoolRequest, 'signal' | 'units'> & { readonly onWait?: (waitMs: number) => void }, operation: () => T): T {
+export function withSharedWorkerSync<T>(request: Omit<PoolRequest, 'signal' | 'units' | 'resource'> & { readonly onWait?: (waitMs: number) => void }, operation: () => T): T {
   const units = 1
   const limit = globalWorkerLimit()
   const requestedAt = Date.now()
@@ -359,10 +360,10 @@ export function withSharedWorkerSync<T>(request: Omit<PoolRequest, 'signal' | 'u
   }
 }
 
-export function sharedPoolStatus(): SharedPoolStatus {
-  const limit = globalWorkerLimit()
-  const snapshot = withPoolLock(records => records.map(record => ({ ...record })))
-  const records = snapshot ?? readRecords(ensurePoolDir()).filter(record => !staleDead(record, Date.now()))
+export function sharedPoolStatus(resource?: 'check'): SharedPoolStatus {
+  const limit = resource === 'check' ? globalCheckLimit() : globalWorkerLimit()
+  const snapshot = withPoolLock(records => records.map(record => ({ ...record })), resource)
+  const records = snapshot ?? readRecords(ensurePoolDir(resource)).filter(record => !staleDead(record, Date.now()))
   const sharedLimit = effectiveLimit(records, limit)
   const active = records.filter(record => record.state === 'active')
   const waiting = records.filter(record => record.state === 'waiting')
@@ -377,4 +378,9 @@ export function sharedPoolStatus(): SharedPoolStatus {
     activeByRole,
     oldestWaitMs: Number.isFinite(oldest) ? Math.max(0, Date.now() - oldest) : 0,
   }
+}
+export function globalCheckLimit(environment: NodeJS.ProcessEnv = process.env): number {
+  const raw = environment.YOKE_MAX_PARALLEL_CHECKS ?? '1'
+  if (!/^[1-8]$/u.test(raw)) throw new Error('YOKE_MAX_PARALLEL_CHECKS must be an integer from 1 to 8')
+  return Number(raw)
 }

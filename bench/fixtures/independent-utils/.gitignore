@@ -1,0 +1,13 @@
+.yoke/loop-status.json
+.yoke/loop.log
+.yoke/story-durations.json
+.yoke/loop.lock*
+.yoke/loop.pause
+.yoke/events/
+.yoke/history/
+.yoke/worktrees/
+.yoke/routing/
+.yoke/checks/
+.yoke/provider-processes/
+.yoke/supervision/
+.yoke/context/DECISIONS.md

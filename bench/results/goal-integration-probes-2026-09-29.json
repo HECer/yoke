@@ -1,0 +1,107 @@
+{
+  "date": "2026-09-29",
+  "auditedVersion": "1.19.0",
+  "codexVersion": "0.161.0-alpha.2",
+  "poolProbe": {
+    "fakeExecutor": true,
+    "limit": 1,
+    "executedWhilePoolFull": true,
+    "goalStatus": "complete"
+  },
+  "budgetProbe": {
+    "fakeExecutor": true,
+    "tokenBudget": 1,
+    "measuredTokens": 100,
+    "timeBudgetMs": 60,
+    "totalWallMs": 652,
+    "recordedAgentMs": 3,
+    "status": "complete"
+  },
+  "objectiveProbe": {
+    "requestedArtifact": "new-feature.txt",
+    "requestedArtifactExists": false,
+    "acceptance": "only checks old-feature.txt",
+    "executorCalled": false,
+    "attempts": 0,
+    "status": "complete"
+  },
+  "nativeProtocolProbe": {
+    "modelDevelopmentTurnRequested": false,
+    "archived": true,
+    "calls": [
+      {
+        "method": "thread/goal/set",
+        "requestedStatus": null,
+        "returnedStatus": "active",
+        "tokenBudget": 1000,
+        "tokensUsed": 0
+      },
+      {
+        "method": "thread/goal/get",
+        "requestedStatus": null,
+        "returnedStatus": "active",
+        "tokenBudget": 1000,
+        "tokensUsed": 0
+      },
+      {
+        "method": "thread/goal/set",
+        "requestedStatus": "paused",
+        "returnedStatus": "paused",
+        "tokenBudget": 1000,
+        "tokensUsed": 0
+      },
+      {
+        "method": "thread/goal/get",
+        "requestedStatus": null,
+        "returnedStatus": "paused",
+        "tokenBudget": 1000,
+        "tokensUsed": 0
+      },
+      {
+        "method": "thread/goal/clear",
+        "requestedStatus": null,
+        "returnedStatus": null,
+        "tokenBudget": null,
+        "tokensUsed": null,
+        "cleared": true
+      },
+      {
+        "method": "thread/goal/get",
+        "requestedStatus": null,
+        "returnedStatus": null,
+        "tokenBudget": null,
+        "tokensUsed": null
+      }
+    ]
+  },
+  "parallelGateProbe": [
+    {
+      "fakeAgentsAndGit": true,
+      "requiresStoryContext": false,
+      "exitCode": 0,
+      "observedContexts": [
+        "A",
+        "B",
+        "C",
+        null,
+        null,
+        null
+      ],
+      "acceptedStories": 3
+    },
+    {
+      "fakeAgentsAndGit": true,
+      "requiresStoryContext": true,
+      "exitCode": 1,
+      "observedContexts": [
+        "A",
+        "B",
+        "C",
+        null,
+        null,
+        null
+      ],
+      "acceptedStories": 0
+    }
+  ]
+}

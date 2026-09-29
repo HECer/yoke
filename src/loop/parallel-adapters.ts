@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join, resolve } from 'node:path'
 import type { CandidateLifecycle, CandidateOwnership, CandidateWorktreeRequest } from './candidate-contracts.js'
 import type { CommitIdentity } from './identity.js'
 import { isProviderTreeAlive, reapProviderProcesses } from './cleanup.js'
@@ -10,6 +11,8 @@ import type { DispatcherGit, DispatcherRebase, DispatcherWorktree, DispatcherWor
 import { isPidAlive } from './lock.js'
 import { storyPathSegment } from './prd.js'
 import { killProcessTreeForCleanup } from './watchdog.js'
+import { parallelAcceptanceDigest, recoverParallelWorktree, retainParallelWorktree } from './recovery.js'
+import { statePath } from '../workspace/state.js'
 
 export type ParallelAdapters = {
   readonly worktrees: DispatcherWorktrees
@@ -50,18 +53,35 @@ function injectedAdapters(targetDir: string, identity: CommitIdentity | undefine
 function productionAdapters(targetDir: string, identity: CommitIdentity | undefined): ParallelAdapters {
   const owned = new Set<string>()
   const removed = new Set<string>()
+  const acceptanceDigests = new Map<string, string>()
+  const ownershipTokens = new Map<string, string>()
   return {
     worktrees: {
       create: input => {
+        acceptanceDigests.set(input.story.id, parallelAcceptanceDigest(targetDir))
         const path = worktreePath(targetDir, input)
+        const recovered = recoverParallelWorktree(targetDir, recoveryPath(targetDir, input.story.id), input.story.id)
+        if (recovered) { owned.add(recovered.path); ownershipTokens.set(recovered.path, recovered.ownerToken); return recovered }
         const baseCommit = gitText(targetDir, ['rev-parse', 'HEAD'])
+        preflightWorktreePath(targetDir, path)
         mkdirSync(dirname(path), { recursive: true })
         realGitOps.addWorktree(targetDir, path)
         owned.add(path)
+        ownershipTokens.set(path, input.ownerToken)
         return { path, baseCommit }
       },
       cleanupProcess: cleanupProviderProcesses,
-      remove: input => removeOwnedWorktree(targetDir, input, owned, removed, realGitOps),
+      retain: (input, reason) => {
+        const file = recoveryPath(targetDir, input.story.id)
+        // Preserve the path's original ownership identity when a retry is rejected again.
+        const ownerToken = ownershipTokens.get(input.worktree.path) ?? input.ownerToken
+        retainParallelWorktree(targetDir, file, { storyId: input.story.id, worktree: input.worktree.path, baseCommit: input.worktree.baseCommit, prdHash: acceptanceDigests.get(input.story.id)!, ownerToken, reason })
+      },
+      remove: input => {
+        removeOwnedWorktree(targetDir, input, owned, removed, realGitOps)
+        const file = recoveryPath(targetDir, input.story.id)
+        if (input.worktree.recovered && existsSync(file)) unlinkSync(file)
+      },
     },
     git: {
       isClean: dir => realGitOps.isClean(dir),
@@ -69,7 +89,7 @@ function productionAdapters(targetDir: string, identity: CommitIdentity | undefi
       commit: input => realGitOps.commitAll(input.worktree.path, `yoke: complete ${input.story.id} ${input.story.title}`, identity),
       integrate: (input, expectedHead) => integrateCandidate(targetDir, input, expectedHead),
     },
-    candidates: primary => makeCandidateLifecycle(targetDir, primary, owned, removed, realGitOps),
+    candidates: primary => makeCandidateLifecycle(targetDir, primary, owned, removed, realGitOps, ownershipTokens),
   }
 }
 
@@ -83,17 +103,20 @@ function makeCandidateLifecycle(
   owned: Set<string>,
   removed: Set<string>,
   git: Pick<GitOps, 'addWorktree' | 'removeWorktree'>,
+  ownershipTokens?: Map<string, string>,
 ): CandidateLifecycle {
   return {
     reserve: input => {
       const worktree = input.candidateId === 'candidate-1'
         ? primary.worktree
         : { path: candidateWorktreePath(targetDir, input), baseCommit: primary.worktree.baseCommit }
+      if (input.candidateId !== 'candidate-1') ownershipTokens?.set(worktree.path, input.ownerToken)
       writeCandidateStatus(targetDir, input, worktree.path, 'reserved')
       return worktree
     },
     materialize: ownership => {
       if (ownership.worktree.path !== primary.worktree.path) {
+        if (git === realGitOps) preflightWorktreePath(targetDir, ownership.worktree.path)
         mkdirSync(dirname(ownership.worktree.path), { recursive: true })
         git.addWorktree(targetDir, ownership.worktree.path)
         owned.add(ownership.worktree.path)
@@ -114,7 +137,7 @@ function makeCandidateLifecycle(
 }
 
 function worktreePath(targetDir: string, input: Pick<DispatcherWorkerInput, 'story' | 'ownerToken'>): string {
-  return join(targetDir, '.yoke', 'worktrees', `${storyPathSegment(input.story.id)}-${input.ownerToken}`)
+  return shortWorktreePath(targetDir, input.story.id, input.ownerToken)
 }
 
 function removeOwnedWorktree(targetDir: string, input: { readonly worktree: DispatcherWorktree }, owned: Set<string>, removed: Set<string>, git: Pick<GitOps, 'removeWorktree'>): void {
@@ -128,7 +151,26 @@ function removeOwnedWorktree(targetDir: string, input: { readonly worktree: Disp
 }
 
 function candidateWorktreePath(targetDir: string, input: CandidateWorktreeRequest): string {
-  return join(targetDir, '.yoke', 'worktrees', `${storyPathSegment(input.storyId)}-${input.ownerToken}`)
+  return shortWorktreePath(targetDir, input.storyId, input.ownerToken)
+}
+
+function shortWorktreePath(targetDir: string, storyId: string, ownerToken: string): string {
+  // 96 bits derived from the complete ownership identity; Git refuses an existing path.
+  const name = createHash('sha256').update(JSON.stringify([storyId, ownerToken])).digest('hex').slice(0, 24)
+  return join(targetDir, '.yoke', 'worktrees', name)
+}
+
+function recoveryPath(targetDir: string, storyId: string): string {
+  return statePath(targetDir, 'integration-recovery', `${storyPathSegment(storyId)}.json`)
+}
+
+function preflightWorktreePath(targetDir: string, path: string): void {
+  if (process.platform !== 'win32') return
+  const common = resolve(targetDir, gitText(targetDir, ['rev-parse', '--git-common-dir']))
+  const administrativePath = join(common, 'worktrees', basename(path))
+  if ([resolve(path, '.git'), administrativePath].some(value => value.length >= 240)) {
+    throw new Error(`Parallel worktree path exceeds the Windows Git path budget: ${path}. Move the project to a shorter root and retry; implementation has not started.`)
+  }
 }
 
 function writeCandidateStatus(

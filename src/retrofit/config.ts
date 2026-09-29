@@ -101,6 +101,7 @@ export const YokeConfigSchema = z.object({
     bare: z.boolean().optional(),
     permissions: PermissionProfileSchema.optional(),
   }).optional(),
+  goals: z.object({ nativeCodex: z.boolean().optional() }).optional(),
   planning: z.object({
     agent: AgentSchema.optional(),
     provider: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).optional(),
@@ -183,6 +184,7 @@ export interface YokeConfig {
   agents: Agent[]
   loop: { enabled: boolean; parallel?: 'auto' | number; isolate?: boolean; timeoutMinutes?: number; maxCallMinutes?: number; progressTimeoutMinutes?: number; decisionPolicy?: DecisionPolicy; onAmbiguity?: 'resolve' | 'abort' }
   runner?: { agent?: Agent; provider?: string; model?: string; reasoningEffort?: string; variant?: string; bare?: boolean; permissions?: PermissionProfile }
+  goals?: { nativeCodex?: boolean }
   planning?: { agent?: Agent; provider?: string; model?: string; reasoningEffort?: string; variant?: string; maxTasks?: number }
   routing?: {
     enabled: boolean

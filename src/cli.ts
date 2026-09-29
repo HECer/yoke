@@ -5,7 +5,7 @@ import { realpathSync } from 'node:fs'
 import { checkProject, checkExitCode, protectAcceptance } from './check/command.js'
 import { registerProject, listProjects, unregisterProject } from './dashboard/registry.js'
 import { startDashboard } from './dashboard/server.js'
-import { createProjectGoal, readProjectGoal, runProjectGoal, pauseProjectGoal, goalHandoff, budgetProjectGoal } from './goals/command.js'
+import { createProjectGoal, readProjectGoal, runProjectGoal, pauseProjectGoal, goalHandoff, budgetProjectGoal, bindProjectGoal } from './goals/command.js'
 import { validateCanon } from './canon/validate.js'
 import type { Agent, CodeIntelligenceMode, DecisionPolicy } from './retrofit/config.js'
 import { runRetrofit } from './retrofit/command.js'
@@ -207,23 +207,24 @@ export function main(argv: string[]): number | Promise<number> {
         if (sub === 'set') {
           const objective = value('objective')
           if (!objective) throw new Error('Use goal set [dir] --objective="..." with executable .yoke/acceptance.yaml criteria')
-          const goal = createProjectGoal(targetDir, objective, { maxAttempts: value('attempts') ? Number(value('attempts')) : undefined, maxMinutes: value('minutes') ? Number(value('minutes')) : undefined, tokenBudget: value('tokens') ? Number(value('tokens')) : undefined })
+          const goal = createProjectGoal(targetDir, objective, { maxAttempts: value('attempts') ? Number(value('attempts')) : undefined, maxMinutes: value('minutes') ? Number(value('minutes')) : undefined, maxWallMinutes: value('wall-minutes') ? Number(value('wall-minutes')) : undefined, tokenBudget: value('tokens') ? Number(value('tokens')) : undefined, acceptanceIds: value('criteria')?.split(',') })
           console.log(JSON.stringify(goal)); return 0
         }
         if (sub === 'status') { console.log(JSON.stringify(readProjectGoal(targetDir))); return 0 }
+        if (sub === 'bind') { console.log(JSON.stringify(bindProjectGoal(targetDir, value('criteria')?.split(',') ?? []))); return 0 }
         if (sub === 'budget') {
-          console.log(JSON.stringify(budgetProjectGoal(targetDir, { maxAttempts: value('attempts') ? Number(value('attempts')) : undefined, maxMinutes: value('minutes') ? Number(value('minutes')) : undefined, tokenBudget: value('tokens') ? Number(value('tokens')) : undefined, clearTokenBudget: rest.includes('--clear-token-budget') }))); return 0
+          console.log(JSON.stringify(budgetProjectGoal(targetDir, { maxAttempts: value('attempts') ? Number(value('attempts')) : undefined, maxMinutes: value('minutes') ? Number(value('minutes')) : undefined, maxWallMinutes: value('wall-minutes') ? Number(value('wall-minutes')) : undefined, tokenBudget: value('tokens') ? Number(value('tokens')) : undefined, clearTokenBudget: rest.includes('--clear-token-budget') }))); return 0
         }
         if (sub === 'handoff') { console.log(goalHandoff(targetDir)); return 0 }
         if (sub === 'pause') { pauseProjectGoal(targetDir); console.log('Pause requested at next safe boundary'); return 0 }
         if (sub === 'run' || sub === 'resume') {
-          const provider = value('runner') ?? 'codex'
-          if (!SUPPORTED_AGENTS.includes(provider as Agent)) throw new Error('Unknown runner')
-          return runProjectGoal(targetDir, { provider: provider as Agent, selection: { model: value('model') } }).then(goal => {
+          const provider = value('runner')
+          if (provider && !SUPPORTED_AGENTS.includes(provider as Agent)) throw new Error('Unknown runner')
+          return runProjectGoal(targetDir, { provider: provider as Agent | undefined, selection: { model: value('model'), reasoningEffort: value('effort'), bare: rest.includes('--bare') ? true : undefined }, native: rest.includes('--native-goal') ? true : rest.includes('--no-native-goal') ? false : undefined }).then(goal => {
             console.log(JSON.stringify(goal)); return goal.status === 'complete' ? 0 : 1
           }).catch(error => { console.error(`Goal: ${(error as Error).message}`); return 2 })
         }
-        throw new Error('Use goal set|status|run|resume|pause|handoff')
+        throw new Error('Use goal set|bind|status|run|resume|pause|handoff|budget')
       } catch (error) { console.error(`Goal: ${(error as Error).message}`); return 2 }
     }
     case 'check': {

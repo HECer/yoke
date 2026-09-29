@@ -10,6 +10,8 @@ import { appendEvent } from '../../src/observability/events.js'
 import { DASHBOARD_LIMITS } from '../../src/dashboard/contracts.js'
 import { pendingChanges } from '../../src/change/inbox.js'
 import { defaultConfig, loadConfig, resolveSolPiSettings, saveConfig } from '../../src/retrofit/config.js'
+import { createLoopRun, writeRunState, readRunState, recordGoalRun } from '../../src/loop/run-state.js'
+import { acquireLock, releaseLock } from '../../src/loop/lock.js'
 let root: string
 let oldState: string | undefined
 let server: Awaited<ReturnType<typeof startDashboard>> | undefined
@@ -106,7 +108,7 @@ it('resume delegates to the existing goal runner and reports a completed safe st
   mkdirSync(join(root, '.yoke'))
   writeFileSync(join(root, '.yoke/acceptance.yaml'), 'version: 1\nprotected: [test.mjs]\ncriteria:\n- id: outcome\n  text: Expected outcome\n  commands: [node test.mjs]\n')
   writeFileSync(join(root, 'test.mjs'), 'process.exit(0)')
-  createProjectGoal(root, 'Test goal')
+  createProjectGoal(root, 'Expected outcome', { acceptanceIds: ['outcome'] })
   const project = registerProject(root)
   server = await startDashboard({ port: 0 })
   const html = await (await fetch(server.url)).text()
@@ -117,8 +119,7 @@ it('resume delegates to the existing goal runner and reports a completed safe st
   })
   expect(response.status).toBe(202)
   expect(await response.json()).toEqual({ status: 'resume-requested' })
-  await new Promise(resolve => setTimeout(resolve, 20))
-  expect(readProjectGoal(root)?.status).toBe('complete')
+  await expect.poll(() => readProjectGoal(root)?.status, { timeout: 10_000 }).toBe('complete')
 })
 
 it('resume refuses a duplicate start while the project lock is held', async () => {
@@ -134,6 +135,37 @@ it('resume refuses a duplicate start while the project lock is held', async () =
   })
   expect(response.status).toBe(409)
   expect(await response.json()).toMatchObject({ status: 'already-running' })
+})
+
+it('resumes the saved exploration instead of an unrelated unfinished goal and preserves its expired deadline', async () => {
+  createProjectGoal(root, 'Unrelated old goal')
+  const lock = acquireLock(root)
+  const run = createLoopRun({ explore: true, exploreLimitMs: 1, agent: 'codex', selection: { model: 'gpt-5', bare: true }, parallel: 2 }, 100)
+  writeRunState(root, run, lock.ownerToken); releaseLock(root, lock.ownerToken)
+  const project = registerProject(root)
+  server = await startDashboard()
+  const html = await (await fetch(server.url)).text()
+  const token = /const sessionToken = "([a-f0-9]+)"/u.exec(html)![1]
+  const response = await fetch(`${server.url}api/projects/${project.id}/resume`, { method: 'POST', headers: { Origin: server.url.slice(0, -1), 'x-yoke-token': token } })
+  expect(response.status).toBe(202)
+  await new Promise(resolve => setTimeout(resolve, 20))
+  expect(readProjectGoal(root)?.status).toBe('active')
+  expect(readRunState(root)).toEqual(run)
+})
+it('refuses malformed saved execution and a replaced goal identity', async () => {
+  createProjectGoal(root, 'Current goal')
+  const project = registerProject(root)
+  server = await startDashboard()
+  const html = await (await fetch(server.url)).text()
+  const token = /const sessionToken = "([a-f0-9]+)"/u.exec(html)![1]
+  const resume = () => fetch(`${server!.url}api/projects/${project.id}/resume`, { method: 'POST', headers: { Origin: server!.url.slice(0, -1), 'x-yoke-token': token } })
+  writeFileSync(join(root, '.yoke/run-state.json'), '{broken')
+  expect((await resume()).status).toBe(409)
+  const lock = acquireLock(root)
+  recordGoalRun(root, '00000000-0000-4000-8000-000000000001', lock.ownerToken)
+  releaseLock(root, lock.ownerToken)
+  expect((await resume()).status).toBe(409)
+  expect(readProjectGoal(root)?.status).toBe('active')
 })
 
 it('notes are bounded append-only timeline events and changes remain pending inbox data', async () => {

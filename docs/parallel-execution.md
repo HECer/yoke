@@ -80,6 +80,21 @@ one serial integration lane when integration measurements exist. Older runs with
 remain visible as missing integration history; forecasts are empirical ranges, not deadlines, and do
 not predict future contention from other projects.
 
+### Rejected integration recovery
+
+Worker and integrated-tree gates receive the same `YOKE_STORY` context. A rejected
+candidate is retained with its reason and an `integration-recovery.json` proof record;
+it is not silently discarded and regenerated. The next parallel run can reuse it
+without a new implementation model call when canonical project/worktree ownership,
+Git registration, target base and PRD digest still match. Integration gates run again.
+Changed target or PRD state blocks recovery and requires explicit reconciliation.
+Generated worktree names are shorter and Windows path limits are checked before setup.
+
+Goals also use the worker pool. Their asynchronous checks use a separate default-one
+check pool; see [goal resources](GOALS.md). These are concurrency permits, not hard CPU
+or RAM quotas. Current controlled comparisons do not establish general efficiency gains
+over direct Codex; see the [measured comparison](CODEX-COMPARISON-2026-09-29.md).
+
 ## Safe task decomposition
 
 Make a preview with:

@@ -10,7 +10,8 @@ import { readPlanningFile } from '../routing/contracts.js'
 import { loadConfig, type Agent } from '../retrofit/config.js'
 import { commitPaths, realGitOps } from '../loop/git.js'
 import { resolveCommitIdentity } from '../loop/identity.js'
-import { acquireLock, releaseLock } from '../loop/lock.js'
+import { acquireLock, releaseLock, readLock } from '../loop/lock.js'
+import { statePath } from '../workspace/state.js'
 import { allPass, AcceptanceCriterionSchema, criterionCommandProblem, isAcceptanceCriterion, loadPrd, StorySchema, validateDependencies, type Story } from '../loop/prd.js'
 import { writeScopesOverlap, validWriteScope } from '../loop/scheduler.js'
 import { withSharedWorkerSync } from '../loop/resource-pool.js'
@@ -60,6 +61,9 @@ export type ExplorationResult =
   | { readonly kind: 'paused' }
 
 export interface PrdExploreOptions {
+  /** Internal supervisor ownership; never accepted from persisted options. */
+  ownedLockToken?: string
+  readonly selection?: import('../agents/types.js').ModelSelection
   readonly runner?: Agent
   readonly timeoutMinutes?: number
   readonly focus?: string
@@ -359,7 +363,11 @@ export function runPrdExplore(root: string, options: PrdExploreOptions = {}): Ex
     const prompt = promptFor(brief, context, recentCompleted, options.focus)
     if (prompt.length > MAX_PROMPT_CHARS) throw Error(`exploration input exceeds ${MAX_PROMPT_CHARS} characters; condense the project brief and context`)
 
-    lock = acquireLock(root)
+    statePath(root, 'loop.lock')
+    if (options.ownedLockToken) {
+      if (readLock(root)?.ownerToken !== options.ownedLockToken) throw Error('Invalid borrowed exploration lock')
+      lock = { acquired: true, ownerToken: options.ownedLockToken }
+    } else lock = acquireLock(root)
     if (!lock.acquired) return { kind: 'retry', provider: planner.agent, summary: 'another Yoke operation owns the project lock' }
     if (options.pause?.()) return { kind: 'paused' }
     if (readPlanningFile(root, '.yoke/prd.yaml', MAX_PRD_BYTES) !== beforePrd
@@ -368,7 +376,7 @@ export function runPrdExplore(root: string, options: PrdExploreOptions = {}): Ex
       || !realGitOps.isClean(root)) throw Error('project changed while exploration was being prepared')
 
     const invocation = buildWatchdogInvocation(
-      runnerInvocation(planner.agent, prompt, root, true, 'read-only', planner.selection),
+      runnerInvocation(planner.agent, prompt, root, true, 'read-only', options.selection ?? planner.selection),
       options.timeoutMinutes === undefined ? 20 * 60_000 : options.timeoutMinutes > 0 ? options.timeoutMinutes * 60_000 : 0,
     )
     const started = Date.now()
@@ -434,7 +442,7 @@ export function runPrdExplore(root: string, options: PrdExploreOptions = {}): Ex
   } catch (error) {
     return { kind: 'retry', ...(plannerAgent ? { provider: plannerAgent } : {}), summary: error instanceof Error ? error.message : String(error) }
   } finally {
-    if (lock?.acquired) releaseLock(root, lock.ownerToken)
+    if (lock?.acquired && !options.ownedLockToken) releaseLock(root, lock.ownerToken)
   }
 }
 
