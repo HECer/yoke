@@ -6,9 +6,10 @@ import type { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import * as windowsLaunch from '../../src/agents/windows-launch.js'
 let isolatedState: string
 beforeEach(() => { isolatedState = mkdtempSync(join(tmpdir(), 'yoke-native-state-')); vi.stubEnv('LOCALAPPDATA', isolatedState); vi.stubEnv('YOKE_STATE_DIR', join(isolatedState, 'state')); vi.stubEnv('YOKE_REGISTRY_DIR', join(isolatedState, 'registry')) })
-afterEach(() => { rmSync(isolatedState, { recursive: true, force: true }); vi.unstubAllEnvs() })
+afterEach(() => { rmSync(isolatedState, { recursive: true, force: true }); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 
 function fixture(error?: { code: number; message: string }) {
   const calls: { method: string; params: any }[] = []
@@ -84,6 +85,8 @@ describe('native Codex goals', () => {
     await expect(executeCodexGoal({ ...input, transport: f.transport })).rejects.toMatchObject({ cleanupUnconfirmed: true })
   })
   it('rejects malformed JSON without exposing payload, disables multiagent and kills child', async () => {
+    vi.stubEnv('PATH', '')
+    vi.spyOn(windowsLaunch, 'resolveWindowsCommand').mockImplementation((command, args) => ({ command, args: [...args] }))
     const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), exitCode: null, kill() { return true } })
     let args: readonly string[] = []
     const transport = createNativeGoalTransport(process.cwd(), 50, ((_command: string, argv: readonly string[]) => { args = argv; return child }) as unknown as typeof spawn)

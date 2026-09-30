@@ -16,7 +16,7 @@ it('preserves the independent configured planner and its model across supervisor
   const root = mkdtempSync(join(tmpdir(), 'yoke-explore-selection-')); roots.push(root)
   mkdirSync(join(root, '.yoke'))
   writeFileSync(join(root, '.yoke', 'prd.yaml'), '- { id: done, title: Done, priority: 1, acceptance: [complete], passes: true }')
-  saveConfig(root, { canonVersion: 'test', agents: ['codex', 'gemini'], runner: { agent: 'codex', model: 'implementation-model', bare: true }, planning: { agent: 'gemini', model: 'planning-model' }, loop: { enabled: true }, verify: { command: 'node -e "process.exit(0)"' } })
+  saveConfig(root, { canonVersion: 'test', agents: ['codex', 'gemini'], runner: { agent: 'codex', model: 'implementation-model', bare: true }, planning: { agent: 'gemini', model: 'planning-model' }, loop: { enabled: true }, commit: { authorName: 'Yoke Test', authorEmail: 'yoke-test@example.invalid' }, verify: { command: 'node -e "process.exit(0)"' } })
   vi.spyOn(realGitOps, 'isClean').mockReturnValue(true)
   expect(await runLoopCommand(root, { explore: true, quiet: true })).toBe(3)
   const original = readRunState(root)
