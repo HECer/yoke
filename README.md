@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node.js 20+](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 
-<!-- yoke:version:start -->1.19.0<!-- yoke:version:end --> · <!-- yoke:tests:start -->1339<!-- yoke:tests:end --> test cases · <!-- yoke:skills:start -->34<!-- yoke:skills:end --> skills
+<!-- yoke:version:start -->1.20.0<!-- yoke:version:end --> · <!-- yoke:tests:start -->1420<!-- yoke:tests:end --> test cases · <!-- yoke:skills:start -->34<!-- yoke:skills:end --> skills
 
 <!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi | Hermes<!-- yoke:agents:end -->
 
@@ -40,6 +40,7 @@ Each story carries observable acceptance criteria and targeted test commands. Pa
 | --- | --- |
 | **Verified completion** | Checks acceptance criteria, the project verify command, and any configured completion, review, quality, or browser gates before accepting work. |
 | **Parallel execution** | Schedules independent stories in isolated worktrees, respects dependencies and write scopes, and coordinates a shared worker limit across projects. |
+| **Durable goals** | Binds objectives to executable acceptance, shares worker capacity, records budgets, and optionally resumes native Codex goal threads. |
 | **Long-running autonomy** | Recovers from provider failures and blocked work. Optional exploration discovers new, repository-evidenced tasks after the planned backlog drains. |
 | **A choice of agents** | Uses the native CLI for Claude, Codex, Gemini, Qwen, OpenCode, Kilo, Pi, or Hermes. Install and authenticate the CLI you choose; Yoke does not bundle model runtimes or credentials. |
 | **Project visibility** | A local dashboard shows project status, **Workspace analytics**, **History**, and controls such as **Queue a change**, safe-boundary pause/resume, and operator notes. It runs with the local Yoke process. Dark and light themes are available. |
@@ -117,8 +118,10 @@ The dashboard is a local control room. It does not discover every process or run
 | [Parallel execution](docs/parallel-execution.md) | Worker scheduling, shared capacity, integration, and recovery |
 | [Continuous exploration](docs/CONTINUOUS-EXPLORATION.md) | Autonomous discovery, runtime limits, pause/resume, and stop detection |
 | [Project workflows](docs/VERIFIED-PROJECTS.md) | Setup, verification, goals, and execution defaults |
+| [Verified goals](docs/GOALS.md) | Acceptance binding, native Codex goals, budgets, and resource admission |
 | [Code Intelligence](docs/CODE-INTELLIGENCE.md) | Optional Graphify, Serena, and Graft evidence providers |
 | [Dashboard](docs/DASHBOARD-EVOLUTION.md) | Project views, history, controls, and reporting boundaries |
+| [Benchmarks](bench/RESULTS.md) | Direct Codex comparison, routing studies, sample limits, and integration findings |
 | [Changelog](CHANGELOG.md) | Release features, behavior changes, and migration notes |
 
 ## Safety and limits

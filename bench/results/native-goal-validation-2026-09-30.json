@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "validationDate": "2026-09-30",
+  "generatedBy": "Codex-assisted validation",
+  "codexVersion": "0.161.0-alpha.2",
+  "model": "gpt-6.1-sol",
+  "reasoningEffort": "low",
+  "evidence": "Protected executable acceptance commands, saved provider counters, and shared capacity snapshots.",
+  "cases": {
+    "nativeBareStartup": {
+      "status": "blocked",
+      "limitation": "Codex app-server does not support ignoring user config. Native bare mode is now rejected before spawn."
+    },
+    "nativeBeforeWindowsShellFix": {
+      "status": "blocked",
+      "artifactCorrect": true,
+      "limitation": "Windows Store PowerShell repeatedly failed sandbox command launch; the two-minute agent deadline interrupted the turn and its usage remained unknown."
+    },
+    "retainedThreadResume": {
+      "status": "complete",
+      "sameGoalId": true,
+      "sameNativeThread": true,
+      "attemptsBefore": 1,
+      "attemptsAfter": 1,
+      "independentCheckStatus": "passed",
+      "explicitDisposableBudgetOverride": {
+        "clearTokenBudget": true,
+        "reason": "Historical interrupted turn had unknown usage; retained as unknown, previous report preserved"
+      }
+    },
+    "nativeAfterShellFixBeforeAccountingFix": {
+      "status": "complete",
+      "independentCheckStatus": "passed",
+      "reportedLastIncrement": {
+        "inputTokens": 23419,
+        "outputTokens": 60
+      },
+      "savedProviderCumulativeTotals": {
+        "inputTokens": 133408,
+        "outputTokens": 780,
+        "cachedInputTokens": 111232,
+        "reasoningOutputTokens": 56
+      },
+      "limitation": "This historical run initially counted only the last model request. The saved provider totals exposed the error; this report preserves both measurements."
+    },
+    "nativeAfterAccountingFix": {
+      "status": "complete",
+      "attempts": 1,
+      "attemptSuccess": true,
+      "nativeThreadBound": true,
+      "artifactCorrect": true,
+      "independentCheckStatus": "passed",
+      "agentDurationMs": 82634,
+      "wallDurationMs": 89855,
+      "limits": {
+        "maxAttempts": 1,
+        "agentMinutes": 5,
+        "wallMinutes": 7,
+        "tokenBudget": 300000
+      },
+      "measuredTurnUsage": {
+        "inputTokens": 153736,
+        "outputTokens": 606,
+        "cachedInputTokens": 134528,
+        "cacheWriteInputTokens": 0,
+        "reasoningOutputTokens": 53
+      },
+      "durableUsageBaselineMatchesTurnUsage": true,
+      "nativeGoalCounter": {
+        "tokensUsed": 0,
+        "interpretation": "The paused native goal counter remains separate from measured model usage."
+      },
+      "resume": {
+        "status": "complete",
+        "attempts": 1,
+        "sameGoalId": true,
+        "sameNativeThread": true
+      },
+      "cleanup": {
+        "remainingProviderRecords": 0,
+        "activeModelUnits": 0,
+        "activeCheckUnits": 0
+      }
+    },
+    "sharedCapacity": {
+      "fakeExecutor": true,
+      "limit": 1,
+      "queuedWhilePoolFull": true,
+      "executedWhilePoolFull": false,
+      "goalStatus": "complete"
+    },
+    "budgetOverrun": {
+      "fakeExecutor": true,
+      "tokenBudget": 1,
+      "measuredTokens": 100,
+      "timeBudgetMs": 60,
+      "totalWallMs": 1208,
+      "recordedAgentMs": 30,
+      "status": "blocked"
+    },
+    "unboundObjective": {
+      "requestedArtifact": "new-feature.txt",
+      "requestedArtifactExists": false,
+      "acceptance": "only checks old-feature.txt; intentionally unbound objective",
+      "executorCalled": false,
+      "attempts": 0,
+      "status": "blocked"
+    }
+  },
+  "accounting": {
+    "source": "thread/tokenUsage/updated.tokenUsage.total",
+    "method": "Subtract the durable same-thread cumulative baseline; new threads begin at zero. Repeated absolute snapshots are not added again.",
+    "unknownUsage": "Missing or malformed snapshots remain unknown. Decreasing counters mark the reused binding untrusted until a fresh thread is explicitly selected.",
+    "reference": "https://github.com/openai/symphony/blob/main/elixir/docs/token_accounting.md"
+  },
+  "limits": [
+    "These are bounded disposable smoke cases, not a long-running recovery or provider parity benchmark.",
+    "Native Codex goals remain experimental and opt-in; method-unavailable fallback does not hide authentication, network, or provider errors.",
+    "Native goals stay paused during explicit Yoke turns; independent executable checks determine Yoke completion.",
+    "Privacy exports omit thread identifiers, local root paths, and raw transcripts."
+  ]
+}

@@ -20,6 +20,104 @@ const candidate = (input: DispatcherWorkerInput): StoryWorkerResult => ({ kind: 
 const rebased = { kind: 'rebased', expectedHead: 'target-head' } as const
 
 describe('dispatcher lifecycle', () => {
+  it('preserves rejected candidate work when routing outcome reporting throws', async () => {
+    const events: string[] = []
+    const dispatcher = createDispatcher({
+      targetDir: '/repo', stories: [story('A')], maxConcurrency: 1, maxIterations: 1,
+      worker: async input => ({ ...candidate(input), routing: { outcome: 'pending-integration' as const, recordOutcome: () => { throw new Error('routing log unavailable') } } }),
+      claims: { acquire: () => true, heartbeat: () => undefined, release: () => { events.push('release') } },
+      worktrees: { create: worktree, remove: () => { events.push('remove') }, cleanupProcess: () => { events.push('process') }, retain: () => { events.push('retain') } },
+      git: { isClean: () => true, rebase: () => rebased, commit: () => undefined, integrate: () => undefined },
+      gates: { verify: () => ({ passed: false, summary: 'independent rejection' }) },
+    })
+    await expect(dispatcher.run()).rejects.toThrow('routing log unavailable')
+    expect(events).toEqual(['retain', 'process', 'release'])
+  })
+  it('does not schedule worker execution when durable admission reporting fails', async () => {
+    let calls = 0
+    let failedOnce = false
+    const dispatcher = createDispatcher({
+      targetDir: '/repo', stories: [story('A')], maxConcurrency: 1, maxIterations: 1,
+      worker: async input => { calls++; return candidate(input) },
+      claims: { acquire: () => true, heartbeat: () => undefined, release: () => undefined },
+      worktrees: { create: worktree, remove: () => undefined },
+      git: { isClean: () => true, rebase: () => rebased, commit: () => undefined, integrate: () => undefined },
+      gates: { verify: () => ({ passed: true, summary: 'green' }) },
+      onProgress: status => { if (status.iteration > 0 && !failedOnce) { failedOnce = true; throw new Error('durable counter unavailable') } },
+    })
+    await expect(dispatcher.run()).rejects.toThrow('durable counter unavailable')
+    await Promise.resolve()
+    expect(calls).toBe(0)
+  })
+  it('reaps recovered candidate processes before running independent integration gates', async () => {
+    const events: string[] = []
+    const result = await createDispatcher({
+      targetDir: '/repo', stories: [story('A')], maxConcurrency: 1, maxIterations: 1,
+      worker: async input => { events.push('model'); return candidate(input) },
+      claims: { acquire: () => true, heartbeat: () => undefined, release: () => { events.push('release') } },
+      worktrees: { create: () => ({ path: '/repo/retained', baseCommit: 'base', recovered: true }), cleanupProcess: () => { events.push('process') }, remove: () => { events.push('remove') } },
+      git: { isClean: () => true, rebase: () => rebased, commit: () => undefined, integrate: () => undefined },
+      gates: { verify: () => { events.push('verify'); return { passed: true, summary: 'green' } } },
+    }).run()
+    expect(result.status).toBe('complete')
+    expect(events).toEqual(['process', 'verify', 'process', 'remove', 'release'])
+  })
+  it('does not remove a recovered candidate when another dispatcher owns its claim', async () => {
+    const events: string[] = []
+    const result = await createDispatcher({
+      targetDir: '/repo', stories: [story('A')], maxConcurrency: 1, maxIterations: 1,
+      worker: async input => { events.push('model'); return candidate(input) },
+      claims: { acquire: () => false, heartbeat: () => undefined, release: () => undefined },
+      worktrees: { create: () => ({ path: '/repo/retained', baseCommit: 'base', recovered: true }), remove: () => { events.push('remove') } },
+      git: { isClean: () => true, rebase: () => rebased, commit: () => undefined, integrate: () => undefined },
+      gates: { verify: () => ({ passed: true, summary: 'green' }) },
+    }).run()
+    expect(result.status).toBe('blocked')
+    expect(events).toEqual([])
+  })
+  it('restores ambient story context after an integrated verifier throws', async () => {
+    const previous = process.env.YOKE_STORY
+    delete process.env.YOKE_STORY
+    try {
+      await createDispatcher({
+        targetDir: '/repo', stories: [story('A')], maxConcurrency: 1, maxIterations: 1,
+        worker: async input => candidate(input),
+        claims: { acquire: () => true, heartbeat: () => undefined, release: () => undefined },
+        worktrees: { create: worktree, remove: () => undefined },
+        git: { isClean: () => true, rebase: () => rebased, commit: () => undefined, integrate: () => undefined },
+        gates: { verify: () => { expect(process.env.YOKE_STORY).toBe('A'); throw new Error('verifier unavailable') } },
+      }).run()
+      expect(process.env.YOKE_STORY).toBeUndefined()
+    } finally {
+      if (previous !== undefined) process.env.YOKE_STORY = previous
+    }
+  })
+  it('uses short collision resistant worktree names while preserving ownership checks', () => {
+    const git: GitOps = { isClean: () => true, addWorktree: () => undefined, removeWorktree: () => undefined, commitAll: () => undefined, integrate: () => undefined }
+    const adapters = makeParallelAdapters('/repo', undefined, git)
+    const create = (ownerToken: string) => adapters.worktrees.create({ story: story('very-long-story-title'), ownerToken, dispatcherId: 'dispatcher', provider: { provider: 'codex', role: 'implementation' } })
+    const first = create('a'.repeat(36))
+    const second = create('b'.repeat(36))
+    expect(first.path.split(/[\\/]/u).at(-1)!.length).toBeLessThanOrEqual(26)
+    expect(first.path).not.toBe(second.path)
+  })
+  it('retains rejected integration evidence and releases resources without recomputing the story', async () => {
+    const events: string[] = []
+    let starts = 0
+    const result = await createDispatcher({
+      targetDir: '/repo', stories: [story('A')], maxConcurrency: 1, maxIterations: 3,
+      worker: async input => { starts++; return candidate(input) },
+      claims: { acquire: () => true, heartbeat: () => undefined, release: () => { events.push('release') } },
+      worktrees: { create: worktree, remove: () => { events.push('remove') }, cleanupProcess: () => { events.push('process') }, retain: (_input, reason) => { events.push(`retain:${reason}`) } },
+      git: { isClean: () => true, rebase: () => rebased, commit: () => undefined, integrate: () => undefined },
+      gates: { verify: () => ({ passed: false, summary: 'scoped test rejected' }) },
+      onReopened: (_story, evidence) => { events.push(`reopen:${evidence.reason}`) },
+    }).run()
+    expect(starts).toBe(1)
+    expect(result.status).toBe('blocked')
+    expect(result.reason).toContain('scoped test rejected; candidate retained at /repo/A')
+    expect(events).toEqual(['retain:scoped test rejected', 'reopen:scoped test rejected', 'process', 'release'])
+  })
   it('holds an area through queued integration cleanup before starting its sibling', async () => {
     const rebase = deferred<{ readonly kind: 'rebased'; readonly expectedHead: string }>()
     const starts: string[] = []

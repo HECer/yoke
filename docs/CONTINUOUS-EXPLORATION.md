@@ -53,8 +53,12 @@ when quoted, for example `--explore-limit="2 days"`. When it expires, Yoke pause
 code `3`. It stops launching new workers, lets already active workers finish their acceptance,
 verification and integration gates, and preserves resumable work. Finite runs process bounded task
 batches so an unfinished large backlog does not run past the deadline by draining the whole PRD.
-Omitting `--explore-limit` keeps the supervisor unbounded; a later resume starts a new duration if
-one is supplied.
+Omitting `--explore-limit` on a fresh run keeps the supervisor unbounded. Dashboard
+resume restores the saved absolute deadline and consumed iteration budget, so pausing
+does not grant another duration. An already expired saved run remains paused. Starting
+an explicit new CLI invocation with a new duration creates a new run and deadline.
+The supervisor retains the project lock during idle waits, preventing a second runner
+from changing the same project between exploration batches.
 
 The supervisor can retry failures while its process remains alive. Run it in a background process
 for long sessions. An operating-system shutdown, forced process termination, exhausted credentials

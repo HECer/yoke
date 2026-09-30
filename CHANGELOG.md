@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.20.0 — 2026-09-30
+
+### Added
+- Add explicit goal-to-acceptance binding with `goal set --criteria=...` and `goal bind --criteria=...`; preserve the objective and manifest digest across continuation.
+- Add opt-in native Codex goal threads through `goal run --native-goal` or `goals.nativeCodex`. Yoke pauses native automatic continuation, runs explicit bounded turns, and synchronizes completion only after independent acceptance.
+- Add cumulative `goal set|budget --wall-minutes=N` and a separate shared asynchronous goal-check pool, controlled by `YOKE_MAX_PARALLEL_CHECKS` (1–8, default 1).
+- Add reproducible direct-Codex comparison tooling, deterministic resource/goal probes and dated evidence reports.
+
+### Fixed
+- Preserve story context through integrated verification, design, performance, audit and quality gates, and restore it after exceptions.
+- Retain rejected parallel candidates and exact rejection reasons; validate recovery before rerunning integration gates without another implementation model call.
+- Shorten generated worktree names and reject unsupported Windows paths before setup.
+- Exclude active claims and nested worker worktrees from cleanliness checks and implementation staging even in manually configured projects without generated ignore rules.
+- Admit goal implementation and routing calls through the shared worker pool, disable unmanaged native delegation, inherit runner defaults, and report measured token overruns even when acceptance passes.
+- Account for all model requests in a native turn using durable cumulative usage baselines; react to valid streamed usage with budget cancellation without double-counting progress frames.
+- Persist safe run identity, execution mode, selection and consumed iteration budget; dashboard resume selects that run rather than an unrelated unfinished goal.
+- Preserve absolute exploration deadlines on dashboard resume and retain exclusive supervisor ownership between batches and during idle waits.
+
+### Migration and validation limits
+- Existing unbound goals now stop before execution. Review the acceptance contract, then run `yoke goal bind . --criteria=<ids>`. Binding retains previous attempts and does not refresh protected infrastructure.
+- Goal `--minutes` remains cumulative admitted provider time; `--wall-minutes` also includes admission and verification. Providers with end-of-call telemetry can exceed token ceilings within a call; Yoke records the overrun and blocks further budgeted work. Unknown interrupted usage remains conservative.
+- Native goals remain disabled by default and depend on installed Codex app-server capabilities. Unsupported goal methods fall back to ordinary Codex; other protocol/authentication failures remain visible. Native goal accounting and Yoke token totals can use different units.
+- Native Codex app-server lacks exec's bare startup control. Native plus bare stops before dispatch; use `--no-native-goal` to keep bare execution or explicitly disable bare when opting into native goals.
+- The new check pool covers asynchronous goal checks. Synchronous `yoke check` and story gates keep their existing execution contracts. Concurrency permits do not enforce CPU/RAM quotas or demonstrate general savings over direct Codex.
+- Resume through the dashboard retains the original exploration deadline. An explicit fresh CLI invocation can establish a new duration. Parallel recovery requires a validated unchanged contract; stale candidates need reconciliation. Serial `--resume-worktree` does not adopt parallel candidates.
+- Local Windows validation on Node.js 24.13.0 passed: lint, build, Canon validation, README metadata, package dry-run, dependency audit (0 vulnerabilities), and 1,418 tests across 155 files (2 skipped). Authenticated parallel validation accepted 3/3 stories with 15/15 immutable tests; a native goal completed and resumed with cumulative usage accounting. These small fixtures do not establish general efficiency superiority; live small-budget native cancellation and the cross-platform CI matrix remain unverified. See [release preparation](docs/RELEASE-VALIDATION-1.20.0.md). No publication is implied by this entry.
+
 ## 1.19.0 — 2026-09-28
 
 ### Added

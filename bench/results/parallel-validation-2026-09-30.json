@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-30",
+  "purpose": "Single-arm parallel acceptance smoke validation; no baseline or efficiency comparison",
+  "aiDisclosure": "AI assisted report; authenticated AI providers implemented work inside disposable benchmark fixtures.",
+  "source": {
+    "version": "1.20.0",
+    "commit": "05fac3db1a51412563005e07f80e6e5a9aab8e06",
+    "state": "Uncommitted validation worktree; built before execution"
+  },
+  "fixture": "independent-utils",
+  "model": "gpt-6.1-sol",
+  "reasoningEffort": "low",
+  "arm": "yoke-parallel",
+  "parallelWorkers": 3,
+  "maxIterations": 3,
+  "routing": false,
+  "nativeMultiAgent": false,
+  "acceptanceDigest": "3e9734e6d286b7c9d19e6ce473eea17e1adf9e30a6ee8927c7240170602f14f7",
+  "samples": [
+    {
+      "sample": "initial-runtime-claims-failure",
+      "root": "<disposable-initial-smoke>",
+      "buildContext": "Before production runtime claim exclusions were added",
+      "version": "1.20.0",
+      "exitCode": 1,
+      "status": "blocked",
+      "accepted": false,
+      "durationMs": 148237,
+      "immutableAcceptanceDurationMs": 245,
+      "stories": { "total": 3, "accepted": 0, "rejectedIntegration": 3 },
+      "immutableTests": { "total": 15, "passed": 0, "failed": 15, "cancelled": 0, "skipped": 0 },
+      "usage": {
+        "inputTokens": 646600,
+        "cachedInputTokens": 571264,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 3796,
+        "reasoningOutputTokens": 91,
+        "costUsd": null
+      },
+      "measurement": { "measuredCalls": 3, "unknownCalls": 0, "unmeasuredAttempts": 3, "costAvailable": "unknown" },
+      "failure": {
+        "classification": "Runtime claim files missing from Git cleanliness exclusions",
+        "integrationReason": "target working tree is not clean",
+        "immutableReplayReason": "No implementations integrated; original source stubs remained unimplemented",
+        "diagnostic": "Built realGitOps.isClean returned true without a claim file and false with a temporary diagnostic claim file in the completed disposable fixture.",
+        "retainedCandidates": 3,
+        "modelCandidateQuality": "Not independently established by the final root replay"
+      }
+    },
+    {
+      "sample": "corrected-runtime-claims-smoke",
+      "root": "<disposable-corrected-smoke>",
+      "buildContext": "Production claim and worktree runtime exclusions added; rebuilt before execution",
+      "version": "1.20.0",
+      "exitCode": 0,
+      "status": "complete",
+      "accepted": true,
+      "durationMs": 112949,
+      "immutableAcceptanceDurationMs": 257,
+      "stories": { "total": 3, "accepted": 3, "rejectedIntegration": 0 },
+      "immutableTests": { "total": 15, "passed": 15, "failed": 0, "cancelled": 0, "skipped": 0, "nodeTestDurationMs": 159.3043 },
+      "immutableProtectedFiles": { "total": 4, "byteIdenticalToSeedAfterReplay": true },
+      "usage": {
+        "inputTokens": 456659,
+        "cachedInputTokens": 372096,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 3217,
+        "reasoningOutputTokens": 64,
+        "costUsd": null
+      },
+      "measurement": { "measuredCalls": 3, "unknownCalls": 0, "unmeasuredAttempts": 3, "costAvailable": "unknown" }
+    }
+  ],
+  "sampleLimits": [
+    "One initial failed parallel sample and one corrected parallel sample; each executed once",
+    "No baseline or serial arm; no general efficiency conclusion",
+    "Small fixture with three independent stories and fifteen visible tests",
+    "Immutable original verification files restored and replayed after provider execution",
+    "CPU and RAM not measured; machine load not controlled",
+    "Fixed model and low effort; routing and native multi-agent delegation disabled",
+    "User config disabled; installed plugins and host skill discovery not exhaustively audited",
+    "Reported token counters retained as observed; unknown cost is not zero cost",
+    "Private prompts, transcripts, identifiers and local root paths excluded; raw logs retained outside Git"
+  ]
+}

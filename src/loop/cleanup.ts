@@ -10,6 +10,7 @@ import {
 import { killProcessForCleanup, killProcessTreeForCleanup } from './watchdog.js'
 import { cleanupClaims } from './claims.js'
 import { clearStatus } from './reporter.js'
+import { discardParallelRecoveryRecords } from './recovery.js'
 
 export interface CleanupOptions {
   git?: (args: string[], cwd: string) => void
@@ -204,7 +205,11 @@ export function runLoopCleanup(targetDir: string, opts: CleanupOptions = {}): nu
       if (opts.removeWorktrees) { try { git(['worktree', 'prune'], targetDir) } catch { /* best-effort */ } }
     }
     if (killed > 0) console.log(`Killed ${killed} orphaned process tree(s) from project-scoped Yoke records.`)
-    if (opts.removeWorktrees && failed === 0) cleanupClaims(targetDir)
+    if (opts.removeWorktrees && failed === 0) {
+      cleanupClaims(targetDir)
+      try { discardParallelRecoveryRecords(targetDir) }
+      catch (error) { console.error(`Failed to discard parallel recovery records: ${(error as Error).message}`); failed++ }
+    }
 
     const lockFile = lockPath(targetDir)
     if (existsSync(lockFile)) {

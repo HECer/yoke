@@ -1,8 +1,11 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, realpathSync as filesystemRealpathSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve, isAbsolute } from 'node:path'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync as filesystemRealpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join, relative, resolve, isAbsolute } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { statePath } from '../workspace/state.js'
+import { loadPrd } from './prd.js'
 
 const Recovery = z.object({ version: z.literal(1), root: z.string(), worktree: z.string(), base: z.string(), prdHash: z.string() }).strict()
 const digest = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex')
@@ -43,4 +46,71 @@ export function prepareIsolatedWorktree(directory: string, worktree: string, res
   git(['worktree', 'add', '--detach', wt, base])
   // Record is outside the worker checkout and binds reuse to its source state.
   writeFileSync(record, JSON.stringify({ version: 1, root, worktree: wt, base, prdHash }), { mode: 0o600 })
+}
+
+const ParallelRecovery = z.object({
+  version: z.literal(1), root: z.string().max(4096), storyId: z.string().max(1024), worktree: z.string().max(4096), baseCommit: z.string().max(128),
+  prdHash: z.string().length(64), ownerToken: z.string().min(1).max(256), reason: z.string().max(16384), state: z.literal('retained'), recordedAt: z.string().datetime(),
+}).strict()
+
+export function parallelAcceptanceDigest(directory: string): string {
+  // Accepted sibling stories change only passes. Their acceptance contracts remain protected.
+  const contract = loadPrd(join(directory, '.yoke', 'prd.yaml')).map(({ passes: _passes, ...story }) => story)
+  return createHash('sha256').update(JSON.stringify(contract)).digest('hex')
+}
+
+function parallelRecordPath(directory: string, file: string): string {
+  const safe = statePath(directory, 'integration-recovery', basename(file))
+  if (pathIdentity(resolve(file)) !== pathIdentity(resolve(safe))) throw new Error('Invalid parallel recovery record path')
+  return safe
+}
+
+export function discardParallelRecoveryRecords(directory: string): void {
+  const parent = statePath(directory, 'integration-recovery')
+  if (!existsSync(parent)) return
+  for (const name of readdirSync(parent)) {
+    if (!name.endsWith('.json') && !name.endsWith('.tmp')) continue
+    const file = statePath(directory, 'integration-recovery', name)
+    if (!lstatSync(file).isFile()) throw new Error('Parallel recovery record is not a file')
+    rmSync(file)
+  }
+}
+
+/** Records are outside the candidate and bind reuse to unchanged target acceptance. */
+export function retainParallelWorktree(directory: string, file: string, input: { storyId: string; worktree: string; ownerToken: string; reason: string; baseCommit: string; prdHash: string }): void {
+  const root = realpathSync(directory)
+  const worktree = realpathSync(input.worktree)
+  const record = ParallelRecovery.parse({ version: 1, root, ...input, reason: input.reason.slice(0, 16384), worktree, state: 'retained', recordedAt: new Date().toISOString() })
+  const safe = parallelRecordPath(directory, file)
+  mkdirSync(dirname(safe), { recursive: true })
+  const temp = statePath(directory, 'integration-recovery', `${randomUUID()}.tmp`)
+  try {
+    writeFileSync(temp, JSON.stringify(record), { flag: 'wx', mode: 0o600 })
+    parallelRecordPath(directory, file)
+    renameSync(temp, safe)
+  } finally { rmSync(temp, { force: true }) }
+}
+
+export function recoverParallelWorktree(directory: string, file: string, storyId: string): { path: string; baseCommit: string; recovered: true; ownerToken: string } | undefined {
+  const safe = parallelRecordPath(directory, file)
+  if (!existsSync(safe)) return undefined
+  const stat = lstatSync(safe)
+  if (!stat.isFile()) throw new Error('Parallel recovery record is not a file')
+  if (stat.size > 65536) throw new Error('Parallel recovery record is too large')
+  const saved = ParallelRecovery.parse(JSON.parse(readFileSync(safe, 'utf8')))
+  if (!existsSync(saved.worktree)) throw new Error(`Retained candidate is missing: ${saved.worktree}; resolve its recovery record before retrying`)
+  const root = realpathSync(directory)
+  const actual = realpathSync(saved.worktree)
+  const parent = realpathSync(join(root, '.yoke', 'worktrees'))
+  const rel = relative(parent, actual)
+  const expectedName = createHash('sha256').update(JSON.stringify([storyId, saved.ownerToken])).digest('hex').slice(0, 24)
+  if (saved.storyId !== storyId || pathIdentity(saved.root) !== pathIdentity(root) || pathIdentity(actual) !== pathIdentity(saved.worktree) || isAbsolute(rel) || rel !== expectedName) throw new Error('Retained candidate ownership or path binding is invalid')
+  const git = (args: string[], cwd = root) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim()
+  if (saved.baseCommit !== git(['rev-parse', 'HEAD']) || saved.prdHash !== parallelAcceptanceDigest(root)) throw new Error(`Retained candidate is stale against target or PRD: ${actual}; reconcile it before retrying`)
+  const common = realpathSync(resolve(root, git(['rev-parse', '--git-common-dir'])))
+  if (pathIdentity(realpathSync(resolve(actual, git(['rev-parse', '--git-common-dir'], actual)))) !== pathIdentity(common)) throw new Error('Retained candidate belongs to another repository')
+  const registered = git(['worktree', 'list', '--porcelain']).split(/\r?\n/u).filter(line => line.startsWith('worktree ')).map(line => realpathSync(resolve(line.slice(9))))
+  if (!registered.some(path => pathIdentity(path) === pathIdentity(actual))) throw new Error('Retained candidate is not a registered worktree')
+  git(['merge-base', '--is-ancestor', saved.baseCommit, 'HEAD'], actual)
+  return { path: actual, baseCommit: saved.baseCommit, recovered: true, ownerToken: saved.ownerToken }
 }

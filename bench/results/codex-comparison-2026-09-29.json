@@ -1,0 +1,305 @@
+{
+  "auditedVersion": "1.19.0",
+  "auditedCommit": "05fac3db1a51412563005e07f80e6e5a9aab8e06",
+  "models": [
+    "gpt-6.1-sol"
+  ],
+  "effort": "low",
+  "groups": [
+    {
+      "fixture": "routing-queue",
+      "arm": "codex",
+      "runs": 2,
+      "accepted": 2,
+      "medianWallMs": 118278.5,
+      "medianFreshInputTokens": 25292,
+      "medianOutputTokens": 2162,
+      "medianAllInputTokens": 137548
+    },
+    {
+      "fixture": "routing-queue",
+      "arm": "yoke-serial",
+      "runs": 2,
+      "accepted": 2,
+      "medianWallMs": 274943.5,
+      "medianFreshInputTokens": 48524,
+      "medianOutputTokens": 4822,
+      "medianAllInputTokens": 396300
+    },
+    {
+      "fixture": "independent-utils",
+      "arm": "codex",
+      "runs": 1,
+      "accepted": 1,
+      "medianWallMs": 71283,
+      "medianFreshInputTokens": 10263,
+      "medianOutputTokens": 797,
+      "medianAllInputTokens": 84503
+    },
+    {
+      "fixture": "independent-utils",
+      "arm": "yoke-serial",
+      "runs": 1,
+      "accepted": 1,
+      "medianWallMs": 442189,
+      "medianFreshInputTokens": 92330,
+      "medianOutputTokens": 3905,
+      "medianAllInputTokens": 626986
+    },
+    {
+      "fixture": "independent-utils",
+      "arm": "yoke-parallel",
+      "runs": 1,
+      "accepted": 0,
+      "medianWallMs": 117101,
+      "medianFreshInputTokens": 81497,
+      "medianOutputTokens": 3487,
+      "medianAllInputTokens": 481753
+    }
+  ],
+  "runs": [
+    {
+      "fixture": "routing-queue",
+      "repeat": 1,
+      "arm": "codex",
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "routing": false,
+      "nativeMultiAgent": false,
+      "wallMs": 112482,
+      "acceptanceMs": 175,
+      "accepted": true,
+      "outcome": "succeeded",
+      "usage": {
+        "inputTokens": 158620,
+        "cachedInputTokens": 121984,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 2190,
+        "reasoningOutputTokens": 18
+      },
+      "events": 0,
+      "freshInputTokens": 36636
+    },
+    {
+      "fixture": "routing-queue",
+      "repeat": 1,
+      "arm": "yoke-serial",
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "routing": false,
+      "nativeMultiAgent": false,
+      "wallMs": 273000,
+      "acceptanceMs": 173,
+      "accepted": true,
+      "outcome": 0,
+      "usage": {
+        "inputTokens": 383543,
+        "cachedInputTokens": 334720,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 4924,
+        "reasoningOutputTokens": 104
+      },
+      "events": 11,
+      "freshInputTokens": 48823
+    },
+    {
+      "fixture": "routing-queue",
+      "repeat": 2,
+      "arm": "yoke-serial",
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "routing": false,
+      "nativeMultiAgent": false,
+      "wallMs": 276887,
+      "acceptanceMs": 169,
+      "accepted": true,
+      "outcome": 0,
+      "usage": {
+        "inputTokens": 409057,
+        "cachedInputTokens": 360832,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 4720,
+        "reasoningOutputTokens": 81
+      },
+      "events": 11,
+      "freshInputTokens": 48225
+    },
+    {
+      "fixture": "routing-queue",
+      "repeat": 2,
+      "arm": "codex",
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "routing": false,
+      "nativeMultiAgent": false,
+      "wallMs": 124075,
+      "acceptanceMs": 409,
+      "accepted": true,
+      "outcome": "succeeded",
+      "usage": {
+        "inputTokens": 116476,
+        "cachedInputTokens": 102528,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 2134,
+        "reasoningOutputTokens": 28
+      },
+      "events": 0,
+      "freshInputTokens": 13948
+    },
+    {
+      "fixture": "independent-utils",
+      "repeat": 1,
+      "arm": "codex",
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "routing": false,
+      "nativeMultiAgent": false,
+      "parallel": 1,
+      "acceptanceDigest": "3e9734e6d286b7c9d19e6ce473eea17e1adf9e30a6ee8927c7240170602f14f7",
+      "wallMs": 71283,
+      "acceptanceMs": 354,
+      "accepted": true,
+      "outcome": "succeeded",
+      "usage": {
+        "inputTokens": 84503,
+        "cachedInputTokens": 74240,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 797,
+        "reasoningOutputTokens": 7
+      },
+      "events": 0,
+      "freshInputTokens": 10263
+    },
+    {
+      "fixture": "independent-utils",
+      "repeat": 1,
+      "arm": "yoke-serial",
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "routing": false,
+      "nativeMultiAgent": false,
+      "parallel": 1,
+      "acceptanceDigest": "3e9734e6d286b7c9d19e6ce473eea17e1adf9e30a6ee8927c7240170602f14f7",
+      "wallMs": 442189,
+      "acceptanceMs": 454,
+      "accepted": true,
+      "outcome": 0,
+      "usage": {
+        "inputTokens": 626986,
+        "cachedInputTokens": 534656,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 3905,
+        "reasoningOutputTokens": 60
+      },
+      "events": 16,
+      "freshInputTokens": 92330
+    },
+    {
+      "fixture": "independent-utils",
+      "repeat": 1,
+      "arm": "yoke-parallel",
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "routing": false,
+      "nativeMultiAgent": false,
+      "parallel": 3,
+      "acceptanceDigest": "3e9734e6d286b7c9d19e6ce473eea17e1adf9e30a6ee8927c7240170602f14f7",
+      "wallMs": 117101,
+      "acceptanceMs": 306,
+      "accepted": false,
+      "outcome": 1,
+      "usage": {
+        "inputTokens": 481753,
+        "cachedInputTokens": 400256,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 3487,
+        "reasoningOutputTokens": 72
+      },
+      "events": 22,
+      "freshInputTokens": 81497
+    }
+  ],
+  "limitations": [
+    "Small fixture sample; not representative of production projects",
+    "CPU and RAM not measured",
+    "Immutable tests replayed after execution; not hidden from agents",
+    "User config disabled; not an audit of every installed plugin",
+    "Routing disabled; fixed model and effort",
+    "Queue fixture: two alternating pairs; independent fixture: one sample per arm",
+    "Single Windows machine; uncontrolled background load",
+    "Failed parallel run is not an accepted speedup",
+    "No causal A/B test isolating context startup, worktree or verification overhead"
+  ],
+  "pricesMeasured": false,
+  "cpuMeasured": false,
+  "memoryMeasured": false,
+  "date": "2026-09-29",
+  "setupDiagnostics": [
+    {
+      "fixture": "independent-utils",
+      "repeat": 1,
+      "arm": "codex",
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "routing": false,
+      "nativeMultiAgent": false,
+      "parallel": 1,
+      "wallMs": 75037,
+      "acceptanceMs": 352,
+      "accepted": true,
+      "outcome": "succeeded",
+      "usage": {
+        "inputTokens": 86851,
+        "cachedInputTokens": 75520,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 1013,
+        "reasoningOutputTokens": 37
+      },
+      "events": 0,
+      "diagnosticOnly": true,
+      "exclusionReason": "Initial fixture lacked runtime ignore rules; not grouped with corrected fixture"
+    },
+    {
+      "fixture": "independent-utils",
+      "repeat": 1,
+      "arm": "yoke-serial",
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "routing": false,
+      "nativeMultiAgent": false,
+      "parallel": 1,
+      "wallMs": 116055,
+      "acceptanceMs": 627,
+      "accepted": false,
+      "outcome": 1,
+      "usage": {
+        "inputTokens": 176111,
+        "cachedInputTokens": 147072,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 1317,
+        "reasoningOutputTokens": 26
+      },
+      "events": 6,
+      "diagnosticOnly": true,
+      "exclusionReason": "Initial fixture lacked runtime ignore rules; not grouped with corrected fixture"
+    },
+    {
+      "fixture": "independent-utils",
+      "repeat": 1,
+      "arm": "yoke-parallel",
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "routing": false,
+      "nativeMultiAgent": false,
+      "parallel": 3,
+      "wallMs": 3555,
+      "acceptanceMs": 678,
+      "accepted": false,
+      "outcome": 1,
+      "usage": null,
+      "events": 0,
+      "diagnosticOnly": true,
+      "exclusionReason": "Git worktree path exceeded Windows limit before provider startup"
+    }
+  ]
+}

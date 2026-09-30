@@ -10,7 +10,8 @@ import { dashboardPage } from './page.js'
 import { readEvents } from '../observability/events.js'
 import { estimateSchedule } from '../estimation/schedule.js'
 import { pauseProjectGoal, runProjectGoal } from '../goals/command.js'
-import { runLoopCommand } from '../loop/run-command.js'
+import { runLoopCommand, resumeLoopCommand } from '../loop/run-command.js'
+import { readRunState } from '../loop/run-state.js'
 import { isPidAlive, readLock } from '../loop/lock.js'
 import { appendEvent } from '../observability/events.js'
 import { queueChange } from '../change/inbox.js'
@@ -206,8 +207,9 @@ export async function startDashboard(options: { port?: number } = {}): Promise<{
           }
           const current = snapshot(project, false)
           if (project.error) { send(409, { error: project.error }); return }
-          if (current.goal) pauseProjectGoal(project.root)
-          writePauseSignal(project.root)
+          const saved = readRunState(project.root)
+          if (current.goal && (!saved || saved.mode === 'goal')) pauseProjectGoal(project.root)
+          if (!saved || saved.mode !== 'goal') writePauseSignal(project.root)
           const response: DashboardControlResponse = { status: 'pause-requested' }
           send(200, response); return
         }
@@ -218,11 +220,18 @@ export async function startDashboard(options: { port?: number } = {}): Promise<{
           const current = snapshot(project, false)
           if (project.error) { send(409, { error: project.error }); return }
           if (projectIsRunning(project.root)) { send(409, { status: 'already-running', error: 'Project is already running' }); return }
-          const goal = current.goal !== null && current.goal.status !== 'complete'
+          let saved
+          try { saved = readRunState(project.root) } catch { send(409, { error: 'Saved execution state is invalid; start a fresh run from the CLI' }); return }
+          const goal = saved ? saved.mode === 'goal' : current.goal !== null && current.goal.status !== 'complete'
+          if (saved?.mode === 'goal') {
+            const rawGoal = safeFile(project.root, '.yoke/goal.json')
+            if (!rawGoal || JSON.parse(rawGoal).id !== saved.goalId) { send(409, { error: 'Saved goal identity no longer matches this project' }); return }
+          }
           activeResumes.add(project.root)
           void Promise.resolve().then(async () => {
-            if (goal) await runProjectGoal(project.root)
-            else await runLoopCommand(project.root, {})
+            if (goal) await runProjectGoal(project.root, saved?.mode === 'goal' ? { ...saved.options, provider: saved.options.agent, expectedGoalId: saved.goalId } : {})
+            else if (saved) await resumeLoopCommand(project.root)
+            else await runLoopCommand(project.root, { permissions: 'safe' })
           }).catch(() => undefined).finally(() => { activeResumes.delete(project.root) })
           const response: DashboardResumeResponse = { status: 'resume-requested' }
           send(202, response); return

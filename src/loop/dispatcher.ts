@@ -13,7 +13,7 @@ import type { StoryWorkerCancellation, StoryWorkerProvider, StoryWorkerResult } 
 import { createWorkerCleanup } from './worker-cleanup.js'
 import type { PoolLease, PoolRole, SharedPoolStatus } from './resource-pool.js'
 
-export type DispatcherWorktree = { readonly path: string; readonly baseCommit: string }
+export type DispatcherWorktree = { readonly path: string; readonly baseCommit: string; readonly recovered?: true }
 export type DispatcherWorkerInput = {
   readonly story: Story
   readonly worktree: DispatcherWorktree
@@ -39,7 +39,10 @@ export interface DispatcherWorktrees {
   create(input: Pick<DispatcherWorkerInput, 'story' | 'dispatcherId' | 'ownerToken' | 'provider'>): DispatcherWorktree
   remove(input: DispatcherWorkerInput): void
   cleanupProcess?(input: DispatcherWorkerInput): void
+  retain?(input: DispatcherWorkerInput, reason: string): void
 }
+
+export type DispatcherRecovery = { readonly reason: string; readonly worktree: string; readonly baseCommit: string; readonly ownerToken: string }
 
 export interface DispatcherGit {
   isClean(targetDir: string): boolean
@@ -82,6 +85,7 @@ export type DispatcherOptions = {
   readonly id?: () => string
   readonly clock?: DispatcherClock
   readonly onAccepted?: (story: Story) => void
+  readonly onReopened?: (story: Story, evidence: DispatcherRecovery) => void
   readonly onProgress?: (status: {
     readonly dispatcherId: string
     readonly maxConcurrency: number
@@ -136,15 +140,26 @@ async function gateResult(gates: DispatcherGates, path: string, worker: Dispatch
   if (criteria.length === 0 && gates.requireCriterionEvidence) return { passed: false, summary: 'missing criterion evidence' }
   if (criteria.length > 0 && !gates.verifyCriterion) return { passed: false, summary: 'criterion verifier is not configured' }
   for (const criterion of criteria) {
-    const result = gates.verifyCriterion?.(path, story, criterion)
+    const result = withStoryContext(story.id, () => gates.verifyCriterion?.(path, story, criterion))
     if (!result?.passed) return { passed: false, summary: result?.summary ?? 'criterion verification failed' }
   }
   for (const gate of [gates.verify, gates.design, gates.perf, gates.audit]) {
     if (!gate) continue
-    const result = gate(path, story)
+    const result = withStoryContext(story.id, () => gate(path, story))
     if (!result.passed) return result
   }
-  return gates.qualityReview?.(path, story, worker) ?? { passed: true, summary: 'integrated gates passed' }
+  return withStoryContext(story.id, () => gates.qualityReview?.(path, story, worker)) ?? { passed: true, summary: 'integrated gates passed' }
+}
+
+// All gate APIs are synchronous: never leave ambient story context set across an await.
+function withStoryContext<T>(storyId: string, gate: () => T): T {
+  const previous = process.env.YOKE_STORY
+  process.env.YOKE_STORY = storyId
+  try { return gate() }
+  finally {
+    if (previous === undefined) delete process.env.YOKE_STORY
+    else process.env.YOKE_STORY = previous
+  }
 }
 
 export function createDispatcher(options: DispatcherOptions): { readonly run: () => Promise<DispatcherResult>; readonly cancel: (reason: string) => void } {
@@ -219,6 +234,11 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
     if (input.story.area) areas.delete(input.story.area)
     if (claims.release(input) === false) throw new Error('claim release failed')
   }
+  const cleanupRetained = createWorkerCleanup({
+    cleanupProcess: options.worktrees.cleanupProcess,
+    removeWorktree: () => undefined,
+    releaseClaim: releaseCandidateClaim,
+  })
   const persistPass = (input: DispatcherWorkerInput): void => {
     if (!options.prdPath) return
     const path = join(input.worktree.path, relative(options.targetDir, options.prdPath))
@@ -228,6 +248,8 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
   }
   const enqueue = (input: DispatcherWorkerInput, result: Extract<StoryWorkerResult, { readonly kind: 'candidate' }>): void => {
     let reason = 'integrated verification failed'
+    let retained = false
+    let recoveryBaseCommit = input.worktree.baseCommit
     const integrationQueuedAt = Date.now()
     let integrationStartedAt: number | undefined
     const integrationController = new AbortController()
@@ -247,13 +269,15 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
         if (!options.git.isClean(options.targetDir)) throw new Error('target working tree is not clean')
         const rebase = await options.git.rebase(input)
         if (rebase.kind === 'reopen') { reason = rebase.reason; throw new Error(reason) }
+        recoveryBaseCommit = rebase.expectedHead
         return rebase.expectedHead
       },
       verify: async () => {
         if (cancellationReason) { reason = cancellationReason; return false }
         const gate = await gateResult(options.gates, input.worktree.path, input)
         reason = gate.summary
-        return gate.passed
+        if (!gate.passed) throw new Error(gate.summary)
+        return true
       },
       integrate: async expectedHead => {
         if (cancellationReason) throw new Error(cancellationReason)
@@ -282,6 +306,15 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
           return
         case 'reopened':
           reopened.push(input.story.id)
+          reason = merge.reason
+          if (options.worktrees.retain) {
+            // Retain first, then report/release. Recovery evidence must precede cleanup.
+            retained = true
+            options.worktrees.retain({ ...input, worktree: { ...input.worktree, baseCommit: recoveryBaseCommit } }, reason)
+            failed.push(input.story.id)
+            failureReasons.set(input.story.id, `${reason}; candidate retained at ${input.worktree.path}`)
+          }
+          options.onReopened?.(input.story, { reason, worktree: input.worktree.path, baseCommit: recoveryBaseCommit, ownerToken: input.ownerToken })
           result.routing.recordOutcome?.(false)
           return
         default: {
@@ -298,7 +331,8 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
         options.onIntegrationMetrics?.(input, Date.now() - integrationQueuedAt, integrationStartedAt === undefined ? undefined : Date.now() - integrationStartedAt)
       }
       finally {
-        cleanup(input)
+        if (retained) cleanupRetained(input)
+        else cleanup(input)
         reportProgress()
       }
     })
@@ -308,16 +342,35 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
   const launch = (story: Story): void => {
     const provider = providerFor(story)
     const ownerToken = ids()
-    const worktree = options.worktrees.create({ story, dispatcherId, ownerToken, provider })
+    let worktree: DispatcherWorktree
+    try { worktree = options.worktrees.create({ story, dispatcherId, ownerToken, provider }) }
+    catch (error) {
+      failed.push(story.id)
+      failureReasons.set(story.id, `worktree setup failed: ${error instanceof Error ? error.message : String(error)}`)
+      reportProgress()
+      return
+    }
     const controller = new AbortController()
     const candidateRace = Boolean(options.candidateCount && options.candidateCount > 1 && options.candidateCoordinator)
     const input: DispatcherWorkerInput = { story, worktree, provider, cancellation: { signal: controller.signal }, dispatcherId, ownerToken, ...(candidateRace ? { candidateRace: true } : {}) }
-    if (!claims.acquire(input)) { options.worktrees.remove(input); return }
+    if (!claims.acquire(input)) {
+      if (!worktree.recovered) options.worktrees.remove(input)
+      return
+    }
     iterations += 1
     reservedWrites.set(story.id, story.writes ?? [])
     if (story.area) areas.add(story.area)
     const candidateDispatch = candidateRace
     const activeWorker: ActiveWorker = { input, controller, task: Promise.resolve(), phase: options.acquireResource ? 'waiting-resource' : 'implementing' }
+    // Durable admission reporting must succeed before the worker microtask can start.
+    active.set(story.id, activeWorker)
+    try { reportProgress() }
+    catch (error) {
+      active.delete(story.id)
+      if (worktree.recovered) cleanupRetained(input)
+      else cleanup(input)
+      throw error
+    }
     const task = Promise.resolve().then(async () => {
       const workerLease = options.acquireResource
         ? await options.acquireResource({ story, provider, role: 'implementation', units: candidateRace ? options.candidateCount! : 1, signal: controller.signal })
@@ -325,6 +378,11 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
       activeWorker.phase = 'implementing'
       reportProgress()
       try {
+        if (worktree.recovered) options.worktrees.cleanupProcess?.(input)
+        if (worktree.recovered) return { source: 'worker' as const, result: {
+          kind: 'candidate' as const, storyId: story.id, worktree: worktree.path, baseCommit: worktree.baseCommit,
+          provider, summary: 'retained candidate recovered for independent integration checks', evidence: { criteria: [] }, routing: { outcome: 'pending-integration' as const },
+        } }
         return await (candidateDispatch && options.candidateCoordinator
           ? Promise.resolve(options.candidateCoordinator(input)).then(coordinateCandidates).then(result => ({ source: 'candidates' as const, result }))
           : options.worker(input).then(result => ({ source: 'worker' as const, result })))
@@ -384,7 +442,8 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
       if (cancellationReason || paused || options.pause?.()) {
         paused = true
         result.routing.recordOutcome?.(false)
-        cleanup(input)
+        if (input.worktree.recovered) cleanupRetained(input)
+        else cleanup(input)
         reportProgress()
         return
       }
@@ -394,7 +453,8 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
       failed.push(story.id)
       failureReasons.set(story.id, error instanceof Error ? error.message : String(error))
       try {
-        cleanup(input)
+        if (input.worktree.recovered) cleanupRetained(input)
+        else cleanup(input)
       } catch (cleanupError) {
         reportProgress()
         throw new AggregateError([error, cleanupError], `worker ${story.id} and cleanup failed`)
@@ -442,7 +502,7 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
       if (failed.length > 0) {
         const storyId = failed[0]
         const detail = storyId ? failureReasons.get(storyId) : undefined
-        return { status: 'blocked', ...(storyId && detail ? { reason: `worker ${storyId} failed: ${detail}` } : {}), iterations, integrated, reopened, failed }
+        return { status: 'blocked', ...(storyId && detail ? { reason: `${reopened.includes(storyId) ? `story ${storyId} integration rejected` : `worker ${storyId} failed`}: ${detail}` } : {}), iterations, integrated, reopened, failed }
       }
       if (iterations >= options.maxIterations) return { status: 'cap-reached', iterations, integrated, reopened, failed }
       return { status: 'blocked', iterations, integrated, reopened, failed }

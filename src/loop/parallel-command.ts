@@ -90,7 +90,12 @@ export async function runParallelLoopCommand(input: ParallelCommandInput): Promi
         units: request.units,
         signal: request.signal,
       })
-      input.reporter.resourceWait?.({ id: request.story.id, title: request.story.title }, request.role, request.units, Date.now() - started, request.provider.provider)
+      try {
+        input.reporter.resourceWait?.({ id: request.story.id, title: request.story.title }, request.role, request.units, Date.now() - started, request.provider.provider)
+      } catch (error) {
+        await lease.release()
+        throw error
+      }
       return lease
     },
     resourceStatus: () => sharedPoolStatus(),
@@ -109,6 +114,7 @@ export async function runParallelLoopCommand(input: ParallelCommandInput): Promi
     pause,
     onProgress: status => input.reporter.parallel?.(status),
     onAccepted: story => input.reporter.accepted?.(story),
+    onReopened: (story, evidence) => input.reporter.reopened?.(story, evidence),
     gates: {
       verify: input.verify,
       design: input.design,

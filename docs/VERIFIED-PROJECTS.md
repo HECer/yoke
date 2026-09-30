@@ -33,7 +33,7 @@ After intentionally editing protected tests, use `yoke check . --protect --refre
 ## Durable goals across providers
 
 ```sh
-yoke goal set . --objective="Finish guest checkout" --attempts=3 --minutes=30
+yoke goal set . --objective="Finish guest checkout" --criteria=guest-checkout --attempts=3 --minutes=30
 yoke goal run . --runner=codex
 yoke goal resume . --runner=claude --model=<installed-model-id>
 yoke goal resume . --runner=gemini --model=<installed-model-id>
@@ -42,9 +42,9 @@ yoke goal handoff .
 yoke goal pause .
 ```
 
-Goals keep objective, attempts, failure context and check IDs in `.yoke/goal.json`. They share the story-loop lock. Each implementation attempt is followed by independent executable acceptance. A completed goal is checked again on a later run. Failed work stays in the project; goal execution itself does not commit or publish it. Goal handoff is readable context for native agent goal facilities; Yoke does not invent or call an undocumented native goal API.
+Goals keep objective, explicit acceptance binding, attempts, failure context and check IDs in `.yoke/goal.json`. They share the story-loop lock and worker capacity. A completed goal is checked again on a later run. Failed work stays in the project; goal execution itself does not commit or publish it. Native Codex goals are optional through `--native-goal`; see the [goal guide](GOALS.md) for capability negotiation and migration of unbound goals.
 
-`--minutes` limits cumulative agent execution time. Verification is measured separately and commands retain their verification timeout. `--tokens=N` is a checkpoint budget: it prevents another attempt when measured consumption is exhausted or unknown, but cannot promise a hard token cap within a single provider call. An interrupted attempt is persisted before dispatch; recovery accounts for it conservatively and reconciles recorded provider processes before continuing. Unknown process ownership blocks execution. Pause takes effect at an attempt boundary; it does not instantly kill an in-flight agent.
+`--minutes` limits cumulative admitted provider execution time. Optional `--wall-minutes` also includes capacity waits and independent checks. `--tokens=N` blocks further execution when measured usage is exhausted or unknown, and reports post-call overruns even when checks pass; providers with end-of-call telemetry cannot promise a hard mid-call cap. Interrupted attempts are charged conservatively and recorded process ownership is reconciled before continuation. A pause requests cancellation of Yoke-owned asynchronous execution and retains unfinished work and evidence.
 
 Explicitly extend total budgets without deleting history:
 
@@ -65,7 +65,7 @@ Failed or paused isolated story worktrees are retained. Resume the same story wi
 yoke loop run . --isolate --resume-worktree --parallel=1 --candidates=1
 ```
 
-Yoke validates the registered worktree, repository, original target commit and PRD digest. Changed target/PRD state is refused; inspect retained edits and reconcile deliberately. This flag is for serial isolated recovery; parallel workers retain their existing coordinator lifecycle. `yoke loop cleanup` remains an explicit cleanup operation; inspect its removal flags before discarding unfinished work. Existing projects should rerun retrofit to add ignore entries for checks, events and goals.
+Yoke validates the registered worktree, repository, original target commit and PRD digest. Changed target/PRD state is refused; inspect retained edits and reconcile deliberately. This flag is for serial isolated recovery. Parallel retained candidates resume through the dispatcher without reimplementation when their recovery binding remains valid. `yoke loop cleanup` is an explicit discard operation. Existing projects should rerun retrofit to add runtime ignore entries for checks, events, goals, saved runs and recovery evidence.
 
 ## Spend fewer model calls
 

@@ -3,7 +3,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import { commitPaths, realGitOps } from '../../src/loop/git.js'
+import { commitPaths, realGitOps, stageImplementation } from '../../src/loop/git.js'
+import { acquireClaim, releaseClaim } from '../../src/loop/claims.js'
 
 let dir: string
 function git(...args: string[]) { execFileSync('git', args, { cwd: dir, stdio: 'pipe' }) }
@@ -19,6 +20,39 @@ beforeEach(() => {
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('realGitOps', () => {
+  it('excludes live nested worktree content from cleanliness, staging and commits without ignore rules', () => {
+    const worktree = join(dir, '.yoke', 'worktrees', 'owned')
+    realGitOps.addWorktree(dir, worktree)
+    try {
+      expect(realGitOps.isClean(dir)).toBe(true)
+      writeFileSync(join(worktree, 'worker-only.txt'), 'isolated implementation')
+      writeFileSync(join(dir, 'b.txt'), 'target implementation')
+      stageImplementation(dir)
+      expect(execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: dir, encoding: 'utf8' }).trim()).toBe('b.txt')
+      realGitOps.commitAll(dir, 'target implementation while isolated worker exists')
+      expect(execFileSync('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim()).toBe('b.txt')
+      expect(execFileSync('git', ['ls-files', '.yoke/worktrees'], { cwd: dir, encoding: 'utf8' })).toBe('')
+      expect(realGitOps.isClean(dir)).toBe(true)
+    } finally { realGitOps.removeWorktree(dir, worktree) }
+  })
+  it('keeps the integration target clean while an actual story claim exists without ignore rules', () => {
+    expect(acquireClaim(dir, 'A', 'dispatcher', { dispatcherId: 'dispatcher', ownerToken: 'owner' })).not.toBeNull()
+    try { expect(realGitOps.isClean(dir)).toBe(true) }
+    finally { releaseClaim(dir, 'A', 'owner') }
+  })
+  it.each([false, true])('never stages or commits live story claims without ignore rules (pre-staged: %s)', prestaged => {
+    expect(acquireClaim(dir, 'A', 'dispatcher', { dispatcherId: 'dispatcher', ownerToken: 'owner' })).not.toBeNull()
+    try {
+      if (prestaged) git('add', '--', '.yoke/claims')
+      writeFileSync(join(dir, 'b.txt'), 'implementation')
+      stageImplementation(dir)
+      expect(execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: dir, encoding: 'utf8' }).trim()).toBe('b.txt')
+      realGitOps.commitAll(dir, 'implementation while claim is held')
+      expect(execFileSync('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim()).toBe('b.txt')
+      expect(execFileSync('git', ['ls-files', '.yoke/claims'], { cwd: dir, encoding: 'utf8' })).toBe('')
+      expect(realGitOps.isClean(dir)).toBe(true)
+    } finally { releaseClaim(dir, 'A', 'owner') }
+  })
   it('ignores its own live lock and dashboard status without project ignore rules', () => {
     mkdirSync(join(dir, '.yoke'))
     for (const file of ['loop.lock', 'loop-status.json', 'runner.pid', 'story-durations.json']) {
@@ -140,8 +174,7 @@ describe('realGitOps', () => {
     realGitOps.integrate(dir, wt)
     expect(readFileSync(join(dir, 'a.txt'), 'utf8')).toBe('changed in worktree')
 
-    // removeWorktree must happen before isClean: on Windows the worktree dir at
-    // .yoke/worktrees/S1 shows as an untracked path until it is removed.
+    expect(realGitOps.isClean(dir)).toBe(true)
     realGitOps.removeWorktree(dir, wt)
     expect(existsSync(wt)).toBe(false)
     expect(realGitOps.isClean(dir)).toBe(true)

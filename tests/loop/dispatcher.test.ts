@@ -32,6 +32,28 @@ function worktree(input: Pick<DispatcherWorkerInput, 'story'>): DispatcherWorktr
 const rebased = { kind: 'rebased', expectedHead: 'target-head' } as const
 
 describe('dispatcher', () => {
+  it('scopes every integrated mechanical gate and restores ambient story context', async () => {
+    const previous = process.env.YOKE_STORY
+    process.env.YOKE_STORY = 'outer'
+    const seen: string[] = []
+    const gate = () => { seen.push(process.env.YOKE_STORY!); return { passed: true, summary: 'green' } }
+    try {
+      const result = await createDispatcher({
+        targetDir: '/repo', stories: [story('A', { acceptance: [{ id: 'proof', text: 'proof', verify: ['check'] }] }), story('B', { acceptance: [{ id: 'proof', text: 'proof', verify: ['check'] }] })], maxConcurrency: 2, maxIterations: 2,
+        worker: async input => candidate(input),
+        claims: { acquire: () => true, heartbeat: () => undefined, release: () => undefined },
+        worktrees: { create: worktree, remove: () => undefined },
+        git: { isClean: () => true, rebase: () => rebased, commit: () => undefined, integrate: () => undefined },
+        gates: { verifyCriterion: gate, verify: gate, design: gate, perf: gate, audit: gate },
+      }).run()
+      expect(result.status).toBe('complete')
+      expect(seen).toEqual(['A', 'A', 'A', 'A', 'A', 'B', 'B', 'B', 'B', 'B'])
+      expect(process.env.YOKE_STORY).toBe('outer')
+    } finally {
+      if (previous === undefined) delete process.env.YOKE_STORY
+      else process.env.YOKE_STORY = previous
+    }
+  })
   it('reserves overlapping write scopes through integration while filling unrelated slots', async () => {
     const starts: string[] = []
     const integrated = new Set<string>()

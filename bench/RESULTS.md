@@ -1,10 +1,40 @@
 # Benchmark results
 
+The [1.20.0 parallel acceptance smoke](results/parallel-validation-2026-09-30.json)
+accepted all three independent stories and passed all 15 immutable replay tests after
+the runtime claim exclusion fix. Its single corrected run took 112,949 ms. This is
+validation of the corrected fixture, not a new A/B efficiency comparison; the dated
+1.19.0 comparisons below remain historical. See the
+[release validation report](../docs/RELEASE-VALIDATION-1.20.0.md) for limits.
+
 Result schema v1 records fixture version, sample label, permission profile, telemetry/model
 availability, verdict/blocker, conflicts, wall time, iterations, and final fixture-test status.
 
 Fixture `string-kit` (3 stories, 16 pre-written assertions). Methodology and caveats:
 [README.md](README.md). One row per run — raw JSON in [`results/`](results/).
+
+## Direct Codex comparison and integration audit (2026-09-29)
+
+Authenticated comparison of Yoke 1.19.0 against direct Codex, requesting the same
+`gpt-6.1-sol / low` model and effort with routing and native delegation disabled.
+Two alternating queue pairs passed the same ten original tests: median elapsed time
+was **118.3 seconds for direct Codex** and **274.9 seconds for Yoke serial**.
+Yoke used **91.9% more fresh input tokens** in this small sample.
+
+One corrected independent-task run per arm passed all fifteen original tests for
+direct Codex (71.3 seconds) and Yoke serial (442.2 seconds). Yoke parallel used three
+workers but accepted **0/3 stories**: integration gates lost the worker's
+`YOKE_STORY` context. Its 117.1-second failure is **not** a speedup.
+The deterministic control probe reproduced this integration defect separately
+from provider calls. Initial fixture setup/path failures are retained as diagnostics.
+
+These measurements do not establish general superiority, USD cost, CPU/RAM savings,
+or routing benefits. Host skills/plugins were not fully audited and background load
+was uncontrolled. See [the complete comparison](../docs/CODEX-COMPARISON-2026-09-29.md),
+[Goals/resource findings](../docs/GOALS-RESOURCE-AUDIT-2026-09-29.md), and the separately
+formatted [comparison summary](results/codex-comparison-2026-09-29.json) and
+[integration diagnostics](results/goal-integration-probes-2026-09-29.json).
+These two aggregate audit artifacts are not individual result-schema-v1 run records.
 
 ## Synthetic dispatcher matrix (2026-09-27)
 

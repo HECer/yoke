@@ -1,0 +1,30 @@
+- id: STORY-1
+  title: Stable unique values
+  priority: 1
+  writes: [src/unique.mjs]
+  needs: []
+  acceptance:
+    - Export unique(values) from src/unique.mjs, returning first occurrences in input order using SameValueZero equality.
+    - Never mutate the input. Non-array input throws TypeError. Preserve object identity.
+    - node bench-verify.mjs exits 0
+  passes: false
+- id: STORY-2
+  title: Array chunking
+  priority: 2
+  writes: [src/chunk.mjs]
+  needs: []
+  acceptance:
+    - Export chunk(values,size) from src/chunk.mjs. Split arrays into consecutive new arrays of at most size elements.
+    - An empty input returns an empty array. Never mutate the input. Non-array input throws TypeError; size must be a positive integer or throw RangeError.
+    - node bench-verify.mjs exits 0
+  passes: false
+- id: STORY-3
+  title: Numeric range
+  priority: 3
+  writes: [src/range.mjs]
+  needs: []
+  acceptance:
+    - Export range(start,end,step=1) from src/range.mjs. Generate start-inclusive, end-exclusive numbers with a positive or negative step.
+    - A step pointing away from end returns an empty array. Zero step or any non-finite argument throws RangeError. Equal endpoints return an empty array.
+    - node bench-verify.mjs exits 0
+  passes: false

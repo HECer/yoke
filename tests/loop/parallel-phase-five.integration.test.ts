@@ -109,7 +109,8 @@ describe('Phase 5 parallel integration', { timeout: 60_000 }, () => {
     expect(git(project.dir, ['status', '--porcelain'])).toBe('')
     expect(runtimeEntries(project.dir, 'claims')).toEqual([])
     expect(runtimeEntries(project.dir, 'provider-processes')).toEqual([])
-    expect(runtimeEntries(project.dir, 'worktrees')).toEqual([])
+    expect(runtimeEntries(project.dir, 'worktrees')).toHaveLength(1)
+    expect(runtimeEntries(project.dir, 'integration-recovery')).toHaveLength(1)
   })
 
   it('fails closed on a dirty target before dispatching workers', async () => {

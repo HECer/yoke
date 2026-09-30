@@ -9,6 +9,7 @@ import { saveConfig } from '../../src/retrofit/config.js'
 import { loopStatus } from '../../src/loop/run-command.js'
 import type { AgentResult } from '../../src/loop/runner.js'
 import type { GitOps } from '../../src/loop/gates.js'
+import * as resourcePool from '../../src/loop/resource-pool.js'
 
 vi.mock('../../src/agents/process-incarnation.js', () => ({ processIncarnation: () => 'test-process:1' }))
 
@@ -34,6 +35,18 @@ afterEach(() => {
 })
 
 describe('parallel status reporting', () => {
+  it('releases an acquired permit when resource reporting fails before returning the lease', async () => {
+    const release = vi.fn(async () => true)
+    const acquire = vi.spyOn(resourcePool, 'acquireSharedWorker').mockResolvedValue({ id: 'test-lease', acquiredAt: new Date().toISOString(), release })
+    const reporter = makeReporter(dir, { quiet: true })
+    reporter.resourceWait = () => { throw new Error('resource event could not be persisted') }
+    const runner = vi.fn(() => ({ success: true, summary: 'must not run' }))
+    try {
+      expect(await runLoopCommand(dir, { parallel: 2, maxIterations: 1, git: parallelGit(), runner, verify: () => ({ passed: true, summary: 'green' }), reporter })).toBe(1)
+      expect(release).toHaveBeenCalledTimes(1)
+      expect(runner).not.toHaveBeenCalled()
+    } finally { acquire.mockRestore() }
+  })
   it('reports PRD progress, dispatch iterations, and active worker attribution during a concurrent run', async () => {
     const completeWorkers = new Map<string, () => void>()
     let signalWorkersStarted: () => void = () => undefined

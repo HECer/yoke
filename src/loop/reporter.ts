@@ -215,6 +215,7 @@ export interface LoopReporter {
   /** Accumulate runner token usage; totals ride along on every subsequent status write. */
   addTokens(usage: TokenUsage): void
   accepted?(story: StoryRef): void
+  reopened?(story: StoryRef, evidence: { reason: string; worktree: string; baseCommit: string; ownerToken: string }): void
   routingDecision?(storyId: string, decision: NonNullable<LoopStatus["routingDecisions"]>[string]): void
   execution?(provider: string, requestedModel?: string): void
   parallel?(status: ParallelStatus): void
@@ -445,6 +446,9 @@ export function makeReporter(
     },
     integrationDuration(story, durationMs, provider) {
       appendEvent(dir, { runId, timestamp: now().toISOString(), type: 'phase-ended', storyId: story.id, phase: 'integration', provider, durationMs: Math.max(0, durationMs) })
+    },
+    reopened(story, evidence) {
+      appendEvent(dir, { runId, timestamp: now().toISOString(), type: 'status', storyId: story.id, data: { status: 'reopened', ...evidence } })
     },
     parallelWorker(status) {
       const base = current
