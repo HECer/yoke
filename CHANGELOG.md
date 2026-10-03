@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.22.0 — 2026-10-03
+
+### Added
+- Add durable routing attempt reservations independent of optional analytics retention, per-call goal admission and persistent consumption accounting, including planning and interrupted calls.
+- Add optional evidence-based economic ranking inside capability routing. Cost, speed and balanced objectives require comparable, complete execution evidence; configured capability floors and fallback limits remain authoritative.
+- Add `yoke goal assess` to prepare a bound goal contract explicitly, and record versioned provenance for setup model profiles as configuration priors rather than measured price or capability claims.
+- Add compact persistent failure signatures: repeated unchanged failures request diagnosis and then stop instead of exhausting repeated identical turns. Completion failures carry typed reasons into repair planning.
+- Add optional multi-step browser journeys and structured proof reports. Project checks can bind declared artifacts and journeys to an acceptance digest, source fingerprint, runtime environment and individual requirement results.
+- Add versioned direct-Codex benchmark manifests containing actual source/build, fixture, acceptance, model and startup-policy provenance. Only compatible verified pairs contribute to comparisons; legacy data remains diagnostic.
+
+### Fixed
+- Retain incomplete parallel work across failure, pause and decision boundaries, including unsuccessful candidate races, and resume implementation separately from already prepared integration candidates.
+- Honor ambiguity aborts consistently in serial and parallel execution. Reuse successful gates only on unchanged source, task and gate inputs; rerun them after relevant changes and integration.
+- Prevent exhausted routing budgets from resetting after statistics eviction or failed registry writes. Preserve the cost of planning even when routing blocks before implementation.
+- Preserve known partial provider usage without converting unknown calls to zero-cost work or discarding measured worker usage. Record PRD drafting, decomposition and change-planning/coverage calls on success and failure.
+- Apply goal assessment policy and routing rules, reset provider-specific defaults when changing runners, and separate historic native Codex bindings from the currently executing provider.
+- Correct Code Intelligence reference edges, report unverified index freshness and traversal coverage honestly, and enforce shared request deadlines and bounded UTF-8 responses including evidence metadata.
+- Synchronize package, lockfile, Canon, provider manifests and README release metadata.
+
+### Migration and validation limits
+- Existing configurations retain their routing ranking unless `routing.optimization` is added. New setup configurations select `balanced` with a minimum of 20 comparable samples per candidate; insufficient or incomplete evidence keeps the conservative order. Profile tiers and `costTier` are configuration priors, not live provider prices.
+- Goal token ceilings are checked before each additional call. A provider reporting only at call completion can still exceed a ceiling within that call; the overrun is retained and prevents further budgeted dispatch. Unknown interrupted consumption requires an explicit budget decision.
+- Retained work consumes disk space until successful integration or explicit reviewed cleanup. Candidate recovery resumes the first retained alternative; additional alternatives remain available for inspection and cleanup. Custom lifecycles without `retain` keep their existing cleanup policy. Interrupted attempts remain spent budget and are excluded from model-quality comparisons; recovery does not invent missing accounting history.
+- Delivery declarations map project-authored commands to artifacts and journeys. Hashes compare pre-check and post-check artifact content; they do not detect changes reverted between snapshots or independently prove that a command exercised a particular device or deployment. Artifact snapshots are limited to 512 MiB per file, 1 GiB total and 10 seconds per snapshot. Build artifacts before `yoke check`; inspect and explicitly refresh protected acceptance after intentional manifest changes.
+- Code Intelligence token budgets use a documented conservative UTF-8 estimate, not provider-measured token counts. A tiny budget can only return a bounded `BUDGET_EXCEEDED` error envelope; backend freshness stays unknown without independent index evidence.
+- This release uses deterministic regression and packaging checks. No new paid model benchmark or general speed/cost improvement is claimed; see the [validation record](docs/RELEASE-VALIDATION-1.22.0.md).
+
 ## 1.21.1 — 2026-10-03
 
 ### Fixed
