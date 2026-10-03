@@ -35,8 +35,10 @@ that the independent durable attempt account remains exhausted.
 
 The first GitHub matrix passed both Linux jobs and exposed a Windows-only fixture
 issue in the new recovery tests. Windows TEMP can use a DOS short-name alias while
-recovery intentionally persists canonical paths. Both fixtures now canonicalize
-their temporary project root before asserting exact ownership paths; production
+recovery intentionally persists canonical paths. The JavaScript `realpathSync`
+implementation can retain that alias, so an initial fixture correction was
+insufficient. Both fixtures now use `realpathSync.native`, matching recovery's
+handle-based resolution, before asserting exact ownership paths. Production
 recovery validation remains unchanged. The full matrix is rerun on that correction.
 
 ## Regressions covered

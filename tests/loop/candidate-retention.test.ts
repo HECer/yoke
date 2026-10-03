@@ -10,7 +10,7 @@ import { recoverParallelWorktree } from '../../src/loop/recovery.js'
 
 function fixture(scenario: 'red' | 'pause' | 'cancel' | 'evidence-error' | 'winner') {
   // Recovery stores canonical paths; Windows TEMP may use a DOS short-name alias.
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'yoke-candidate-retention-')))
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'yoke-candidate-retention-')))
   const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim()
   const story: Story = { id: 'S1', title: 'retain useful candidates', priority: 1, acceptance: ['legacy'], passes: false }
   mkdirSync(join(root, '.yoke'), { recursive: true })

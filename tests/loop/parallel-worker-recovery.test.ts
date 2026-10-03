@@ -18,7 +18,7 @@ const candidate = (input: DispatcherWorkerInput): Extract<StoryWorkerResult, { k
 
 function fixture() {
   // Match the canonical ownership paths persisted by recovery on Windows too.
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'yoke-worker-recovery-')))
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'yoke-worker-recovery-')))
   const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim()
   const story: Story = { id: 'A', title: 'recover incomplete work', priority: 1, acceptance: ['legacy'], passes: false }
   mkdirSync(join(root, '.yoke'), { recursive: true })
