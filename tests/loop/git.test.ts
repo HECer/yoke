@@ -66,6 +66,20 @@ describe('realGitOps', () => {
     expect(existsSync(join(dir, '.yoke', 'loop.lock'))).toBe(true)
   })
 
+  it.each([false, true])('keeps durable attempt and failure records out of story commits (pre-staged: %s)', prestaged => {
+    for (const name of ['routing-attempts', 'failure-progress']) {
+      mkdirSync(join(dir, '.yoke', name), { recursive: true })
+      writeFileSync(join(dir, '.yoke', name, 'record.json'), '{"cost":0.42}')
+    }
+    if (prestaged) git('add', '--', '.yoke')
+    expect(realGitOps.isClean(dir)).toBe(true)
+    writeFileSync(join(dir, 'b.txt'), 'implementation')
+    realGitOps.commitAll(dir, 'implementation with durable attempt accounting')
+    expect(execFileSync('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim()).toBe('b.txt')
+    expect(execFileSync('git', ['ls-files', '.yoke'], { cwd: dir, encoding: 'utf8' })).toBe('')
+    expect(readFileSync(join(dir, '.yoke/routing-attempts/record.json'), 'utf8')).toContain('0.42')
+  })
+
   it('commits source when runtime directories are already gitignored', () => {
     writeFileSync(join(dir, '.gitignore'), '.yoke/events/\n.yoke/history/\n')
     for (const name of ['events', 'history']) {

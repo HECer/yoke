@@ -70,7 +70,10 @@ export function defaultRoutingWorkers(agents: Agent[]): RoutingWorker[] {
       { id: 'hermes-standard', agent: 'hermes', tier: 'standard', costTier: 'medium', capabilities: ['implementation'] },
     ],
   }
-  return agents.flatMap(agent => workers[agent])
+  return agents.flatMap(agent => workers[agent]).map(worker => ({
+    ...worker,
+    profileMetadata: { version: 1 as const, catalog: 'yoke-1.22.0', source: 'yoke-default' as const, basis: 'configured-prior' as const },
+  }))
 }
 
 function parseAgents(value: string, fallback: Agent[]): Agent[] {
@@ -186,7 +189,9 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
     const workers = rawWorkers.map(w => {
       const model = agentModels[w.agent] ?? w.model
       const reasoningEffort = agentReasoning[w.agent] ?? w.reasoningEffort
-      return { ...w, ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}) }
+      return { ...w, ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}),
+        ...((agentModels[w.agent] || agentReasoning[w.agent]) && w.profileMetadata ? { profileMetadata: { ...w.profileMetadata, source: 'operator' as const } } : {}),
+      }
     })
     config.routing = {
       ...config.routing,
@@ -195,6 +200,7 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
       maxCandidates: config.routing?.maxCandidates ?? 3,
       assessmentPolicy: existing?.routing?.assessmentPolicy ?? (existing ? 'on-demand' : 'prepared'),
       fallback: existing?.routing?.fallback ?? (existing ? 'parent' : 'block'),
+      ...(!existing && !config.routing?.optimization ? { optimization: { version: 1 as const, objective: 'balanced' as const, minSamples: 20 } } : {}),
       ...(config.routing?.orchestrator ? { orchestrator: config.routing.orchestrator } : {}),
       workers,
     }

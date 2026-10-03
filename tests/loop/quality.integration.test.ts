@@ -147,16 +147,21 @@ describe('runLoopCommand declared quality integration', () => {
     const winners: Array<'candidate' | 'reference'> = ['reference', 'reference', 'reference', 'reference', 'reference', 'reference', 'reference', 'reference', 'candidate', 'candidate']
 
     const statusLines: string[] = []
+    let repairs = 0
     const code = runLoopCommand(projectDir, {
       maxIterations: 1, qualityUnbounded: true, git, verify: () => ({ passed: true, summary: 'green' }),
       runner: () => ({ success: true, summary: 'implemented' }),
       reporter: makeReporter(projectDir, { json: true, log: line => statusLines.push(line) }),
       qualityRuntime: {
-        invoke: (_agent, invocation) => ({
-          success: true,
-          output: invocation.args.includes('read-only') ? qualityVerdictFor(invocation, winners.shift() ?? 'candidate') : 'repair completed',
-          summary: 'provider completed',
-        }),
+        invoke: (_agent, invocation) => {
+          const critic = invocation.args.includes('read-only')
+          if (!critic) writeFileSync(join(projectDir, 'layout.ts'), `export const headerOffset = ${++repairs}\n`)
+          return {
+            success: true,
+            output: critic ? qualityVerdictFor(invocation, winners.shift() ?? 'candidate') : 'repair completed',
+            summary: 'provider completed',
+          }
+        },
         firstLabel: () => 'A',
       },
     })

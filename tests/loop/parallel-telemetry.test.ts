@@ -23,4 +23,15 @@ describe('parallel provider telemetry', () => {
 
     expect(result).toMatchObject({ success, summary, tokens: { inputTokens: 3, outputTokens: 5, model: 'provider-model' } })
   })
+
+  it('retains partial-only usage and marks its coverage incomplete', () => {
+    const result = providerProcessResultToAgentResult('codex', 'S1', {
+      ...evidence, kind: 'cancelled', reason: 'operator paused',
+      telemetry: { usageAvailable: false, partialUsage: { inputTokens: 12, totalCostUsd: 0.04 } },
+    })
+    expect(result).toMatchObject({ success: false, infrastructureFailure: true, tokens: {
+      inputTokens: 12, outputTokens: 0, totalCostUsd: 0.04,
+      measurementComplete: false, costMeasurementComplete: false,
+    } })
+  })
 })

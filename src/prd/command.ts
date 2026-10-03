@@ -11,13 +11,15 @@ import { acquireLock, releaseLock } from '../loop/lock.js'
 import {
   agentInvocation,
   buildWatchdogInvocation,
-  runAgent,
+  runCapturedAgent,
   isAgentAvailable,
   type Invocation,
   type AgentResult,
 } from '../loop/runner.js'
 import { resolveIdleMs } from '../loop/run-command.js'
 import { detectHostAgent, resolveRunnerAgent } from '../agents/host.js'
+import { measureInvocation } from '../observability/invocation.js'
+import { statePath } from '../workspace/state.js'
 
 export const PRD_TEMPLATE = `# Yoke PRD — the loop picks the lowest-priority open story each iteration.
 # Story format (see canon/loop/prd.schema.md):
@@ -140,11 +142,22 @@ export function runPrdDraft(targetDir: string, opts: PrdDraftOptions): number {
   if (!lock.acquired) { console.error('A loop or planner already owns this project'); return 1 }
   try {
   const before = readPlanningFile(targetDir, '.yoke/prd.yaml')
-  const rollback = () => { if (before === undefined) rmSync(path, { force: true }); else writeFileSync(path, before) }
+  const rollback = () => {
+    const destination = join(statePath(targetDir), 'prd.yaml')
+    // Unlink a provider-created file link instead of writing through it.
+    rmSync(destination, { force: true })
+    if (before !== undefined) writeFileSync(destination, before, { flag: 'wx' })
+  }
   const inv = agentInvocation(agent, buildPrdDraftPrompt(idea, planningBrief), targetDir, 'safe', planner.selection)
   console.log(`Drafting PRD with ${agent}...`)
-  const run = opts.run ?? ((i: Invocation) => runAgent(buildWatchdogInvocation(i, idleMs)))
-  const result = run(inv)
+  const run = opts.run ?? ((i: Invocation) => runCapturedAgent(agent, buildWatchdogInvocation(i, idleMs)))
+  let result: AgentResult
+  try { result = measureInvocation({ root: targetDir, agent, role: 'prd-draft', selection: planner.selection, invocation: inv, execute: run }) }
+  catch (error) {
+    rollback()
+    console.error(`PRD draft failed: ${(error as Error).message}`)
+    return 1
+  }
   if (!result.success) {
     rollback()
     console.error(`PRD draft failed: ${result.summary}`)

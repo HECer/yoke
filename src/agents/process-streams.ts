@@ -1,5 +1,5 @@
 import type { Agent } from '../retrofit/config.js'
-import { parseProviderTelemetry } from './telemetry.js'
+import { createStepTelemetry, parseProviderTelemetry } from './telemetry.js'
 import type { ProviderTelemetry } from './types.js'
 import { createPiTelemetry } from './pi-telemetry.js'
 
@@ -37,11 +37,15 @@ export function createTelemetryAccumulator(agent: Agent): TelemetryAccumulator {
   let trailing = ''
   let telemetry: ProviderTelemetry = { usageAvailable: false }
   let reportedModels: string[] = []
-  const stepTotals = agent === 'opencode' || agent === 'kilo'
-    ? { input: 0, output: 0, cached: 0, cacheWrite: 0, reasoning: 0, cost: 0, hasInput: false, hasOutput: false, hasCached: false, hasCacheWrite: false, hasReasoning: false, hasCost: false }
-    : undefined
+  const steps = agent === 'opencode' || agent === 'kilo' ? createStepTelemetry() : undefined
   const update = (lines: readonly string[]): void => {
     for (const line of lines) {
+      if (steps) {
+        try {
+          const event: unknown = JSON.parse(line)
+          if (event && typeof event === 'object' && !Array.isArray(event)) steps.consume(event as Record<string, unknown>)
+        } catch { /* non-JSON diagnostics carry no usage */ }
+      }
       if (pi) {
         try {
           const event: unknown = JSON.parse(line)
@@ -55,17 +59,6 @@ export function createTelemetryAccumulator(agent: Agent): TelemetryAccumulator {
       // Provider result usage is cumulative: replace the latest measurement,
       // never add it to earlier results or to assistant-message snapshots.
       if (next.tokens || next.partialUsage) telemetry = next
-      if (stepTotals && isStepFinish(line)) {
-        const usage = next.tokens ?? next.partialUsage
-        if (usage) {
-          if (usage.inputTokens !== undefined) { stepTotals.input += usage.inputTokens; stepTotals.hasInput = true }
-          if (usage.outputTokens !== undefined) { stepTotals.output += usage.outputTokens; stepTotals.hasOutput = true }
-          if (usage.cachedInputTokens !== undefined) { stepTotals.cached += usage.cachedInputTokens; stepTotals.hasCached = true }
-          if (usage.cacheWriteInputTokens !== undefined) { stepTotals.cacheWrite += usage.cacheWriteInputTokens; stepTotals.hasCacheWrite = true }
-          if (usage.reasoningOutputTokens !== undefined) { stepTotals.reasoning += usage.reasoningOutputTokens; stepTotals.hasReasoning = true }
-          if (usage.totalCostUsd !== undefined) { stepTotals.cost += usage.totalCostUsd; stepTotals.hasCost = true }
-        }
-      }
     }
   }
   return {
@@ -78,41 +71,13 @@ export function createTelemetryAccumulator(agent: Agent): TelemetryAccumulator {
       if (trailing) update([trailing])
       trailing = ''
       if (pi) return pi.finish()
-      if (stepTotals && (stepTotals.hasInput || stepTotals.hasOutput)) {
-        const latest = telemetry.tokens
-        const inputTokens = stepTotals.hasInput ? stepTotals.input : latest?.inputTokens
-        const outputTokens = stepTotals.hasOutput ? stepTotals.output : latest?.outputTokens
-        const partialUsage = {
-          ...(inputTokens !== undefined ? { inputTokens } : {}),
-          ...(outputTokens !== undefined ? { outputTokens } : {}),
-          ...(stepTotals.hasCached ? { cachedInputTokens: stepTotals.cached } : latest?.cachedInputTokens !== undefined ? { cachedInputTokens: latest.cachedInputTokens } : {}),
-          ...(stepTotals.hasCacheWrite ? { cacheWriteInputTokens: stepTotals.cacheWrite } : latest?.cacheWriteInputTokens !== undefined ? { cacheWriteInputTokens: latest.cacheWriteInputTokens } : {}),
-          ...(stepTotals.hasReasoning ? { reasoningOutputTokens: stepTotals.reasoning } : latest?.reasoningOutputTokens !== undefined ? { reasoningOutputTokens: latest.reasoningOutputTokens } : {}),
-          ...(stepTotals.hasCost ? { totalCostUsd: stepTotals.cost } : latest?.totalCostUsd !== undefined ? { totalCostUsd: latest.totalCostUsd } : {}),
-          ...(latest?.model ? { model: latest.model } : {}),
-        }
-        if (inputTokens !== undefined && outputTokens !== undefined) {
-          telemetry = { usageAvailable: true, tokens: { ...partialUsage, inputTokens, outputTokens } }
-        } else {
-          telemetry = { usageAvailable: false, partialUsage }
-        }
-      }
+      telemetry = steps?.finish() ?? telemetry
       if (telemetry.tokens) {
         const { model: _model, ...tokens } = telemetry.tokens
-        return { usageAvailable: telemetry.usageAvailable, tokens: { ...tokens, ...(reportedModels.length === 1 ? { model: reportedModels[0] } : {}) },
+        return { ...telemetry, tokens: { ...tokens, ...(reportedModels.length === 1 ? { model: reportedModels[0] } : {}) },
           ...(reportedModels.length > 1 ? { reportedModels } : {}) }
       }
       return { ...telemetry, ...(reportedModels.length ? { reportedModels } : {}) }
     },
-  }
-}
-
-function isStepFinish(line: string): boolean {
-  try {
-    const value = JSON.parse(line) as Record<string, unknown>
-    const part = value.part && typeof value.part === 'object' ? value.part as Record<string, unknown> : undefined
-    return value.type === 'step_finish' || part?.type === 'step-finish'
-  } catch {
-    return false
   }
 }

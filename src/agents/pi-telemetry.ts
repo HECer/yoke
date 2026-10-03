@@ -38,10 +38,11 @@ export function createPiTelemetry() {
       if (complete) {
         // Optional totals must also cover every turn; omitted is not measured zero.
         const measured = Object.fromEntries(Object.entries(totals).filter(([key]) => counts[key] === turns))
+        const partial = Object.fromEntries(Object.entries(totals).filter(([key]) => counts[key] !== turns))
         return { usageAvailable: true, tokens: {
           ...measured, inputTokens: totals.inputTokens, outputTokens: totals.outputTokens,
           ...(reportedModels.length === 1 ? { model: reportedModels[0] } : {}),
-        }, ...(reportedModels.length > 1 ? { reportedModels } : {}) }
+        }, ...(Object.keys(partial).length ? { partialUsage: partial } : {}), ...(reportedModels.length > 1 ? { reportedModels } : {}) }
       }
       return { usageAvailable: false,
         ...(Object.keys(totals).length ? { partialUsage: { ...totals } } : {}),

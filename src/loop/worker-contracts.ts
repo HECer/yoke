@@ -47,7 +47,7 @@ export type StoryWorkerEvidence = {
 
 export type WorkerRouting = {
   readonly outcome: 'pending-integration'
-  readonly recordOutcome?: (verified: boolean) => void
+  readonly recordOutcome?: (verified: boolean, failureKind?: 'implementation' | 'infrastructure') => void
 }
 
 type WorkerBaseResult = {
@@ -57,6 +57,7 @@ type WorkerBaseResult = {
   readonly provider: StoryWorkerProvider
   readonly summary: string
   readonly evidence: StoryWorkerEvidence
+  readonly failure?: import('./failure.js').LoopFailure
 }
 
 export type StoryWorkerCandidate = WorkerBaseResult & {
@@ -71,7 +72,7 @@ export type StoryWorkerResult =
   | (WorkerBaseResult & { readonly kind: 'quality-failure'; readonly reason: 'inconsistent' | 'infrastructure' })
   | (WorkerBaseResult & { readonly kind: 'review-failure'; readonly reason: 'malformed' | 'infrastructure' })
   | (WorkerBaseResult & { readonly kind: 'cancelled' })
-  | (WorkerBaseResult & { readonly kind: 'paused'; readonly reason?: 'decision' })
+  | (WorkerBaseResult & { readonly kind: 'paused'; readonly reason?: 'decision' | 'ambiguity' })
 
 export type StoryWorkerCallbacks = {
   readonly onGate?: (stage: 'criterion' | 'verify' | 'design' | 'perf' | 'audit', result: VerifyResult) => void
@@ -84,6 +85,12 @@ export type StoryWorkerInput = {
   readonly baseCommit: string
   readonly provider: StoryWorkerProvider
   readonly runner: (context: AgentContext) => MaybePromise<AgentResult>
+  /** Trusted recovery feedback from the dispatcher, never a replacement acceptance contract. */
+  readonly feedback?: string
+  /** Parent-owned checkpoint directory for repeated-failure diagnosis. */
+  readonly failureRoot?: string
+  /** Independent alternatives must not increment each other's failure count. */
+  readonly failureScope?: string
   readonly verifyCriterion?: (targetDir: string, story: Story, criterion: AcceptanceCriterion) => VerifyResult
   readonly requireCriterionEvidence?: boolean
   readonly verify: Verifier

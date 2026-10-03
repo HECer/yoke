@@ -11,11 +11,12 @@ import { z } from 'zod'
 import type { Agent } from '../retrofit/config.js'
 import { criterionCommandProblem, isAcceptanceCriterion, loadPrd, parsePrd, savePrd, validateDependencies, type Story } from '../loop/prd.js'
 import {
-  agentInvocation, buildWatchdogInvocation, isAgentAvailable, runAgent,
+  agentInvocation, buildWatchdogInvocation, isAgentAvailable, runCapturedAgent,
   type AgentResult, type Invocation,
 } from '../loop/runner.js'
 import { commitPaths } from '../loop/git.js'
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
+import { measureInvocation } from '../observability/invocation.js'
 
 const ChangeRequestSchema = z.object({
   version: z.literal(1),
@@ -223,7 +224,9 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
     opts.selection,
   )
   const invocation = buildWatchdogInvocation(base, opts.timeoutMs ?? 0)
-  const result = (opts.run ?? runAgent)(invocation)
+  const result = measureInvocation({ root: targetDir, agent: opts.runner, role: 'change-planner', storyId: request.id, runId: `change:${request.id}`, selection: opts.selection, invocation,
+    execute: opts.run ?? (item => runCapturedAgent(opts.runner, item)),
+  })
   if (!result.success) return { ok: false, added: 0, summary: `planner failed: ${result.summary}`, changeId: request.id }
   if (readFileSync(prdPath, 'utf8') !== existingText || (readPlanningFile(targetDir, '.yoke/plan.md', 80_000) ?? '') !== brief) {
     return {
@@ -284,7 +287,9 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
     reviewer === opts.runner ? opts.selection : undefined,
   )
   const reviewInvocation = buildWatchdogInvocation(reviewBase, opts.timeoutMs ?? 0)
-  const reviewResult = (opts.review ?? runAgent)(reviewInvocation)
+  const reviewResult = measureInvocation({ root: targetDir, agent: reviewer, role: 'coverage-review', storyId: request.id, runId: `change:${request.id}`, selection: reviewer === opts.runner ? opts.selection : undefined, invocation: reviewInvocation,
+    execute: opts.review ?? (item => runCapturedAgent(reviewer, item)),
+  })
   if (!reviewResult.success) {
     return { ok: false, added: 0, summary: `coverage review failed: ${reviewResult.summary}`, changeId: request.id }
   }

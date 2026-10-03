@@ -22,6 +22,7 @@ describe('yoke setup', () => {
     saveConfig(dir, { canonVersion: 'test', agents: ['codex'], loop: { enabled: true }, routing: { enabled: true, strategy: 'balanced', maxCandidates: 3, workers: [custom] } })
     await runSetup(dir, { interactive: false, routingStrategy: 'capability' })
     expect(loadConfig(dir)?.routing?.workers).toEqual([custom])
+    expect(loadConfig(dir)?.routing?.optimization).toBeUndefined()
     await runSetup(dir, { interactive: false, routingPreset: true })
     expect(loadConfig(dir)?.routing?.workers.map(w => w.tier)).toEqual(['light', 'standard', 'strong', 'frontier'])
   })
@@ -48,9 +49,10 @@ describe('yoke setup', () => {
     expect(loadConfig(dir)).toMatchObject({
       agents: ['codex'], codeGraph: 'graphify',
       loop: { enabled: true, decisionPolicy: 'auto', parallel: 'auto', isolate: true },
-      routing: { enabled: true },
+      routing: { enabled: true, optimization: { version: 1, objective: 'balanced', minSamples: 20 } },
       runner: { agent: 'codex' },
     })
+    expect(loadConfig(dir)?.routing?.workers[0]?.profileMetadata).toEqual({ version: 1, catalog: 'yoke-1.22.0', source: 'yoke-default', basis: 'configured-prior' })
   })
 
   it('recovers an old empty agent list with a valid fallback runner', async () => {

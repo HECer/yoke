@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Agent, RoutingWorker } from '../retrofit/config.js'
+import type { routingEpisodeSummary } from './attempts.js'
 
 export interface RoutingObservation {
   schemaVersion: 1
@@ -34,6 +35,11 @@ export interface RoutingObservation {
   failureKind?: 'implementation' | 'infrastructure'
   usageAvailable?: boolean
   totalCostUsd?: number
+  costMeasurementComplete?: boolean
+  accountingScope?: 'worker' | 'execution-attempt'
+  totalDurationMs?: number
+  executionPolicyKey?: string
+  economicEpisode?: ReturnType<typeof routingEpisodeSummary> & { assessmentSignature: string }
 }
 
 export interface WorkerHistory {
@@ -90,7 +96,9 @@ export function recordRoutingObservation(observation: Omit<RoutingObservation, '
 export function readRoutingObservations(limit = 1000): RoutingObservation[] {
   const dir = eventsDir()
   if (!existsSync(dir)) return []
-  const files = readdirSync(dir).filter(file => file.endsWith('.json')).sort().slice(-limit)
+  let files: string[]
+  try { files = readdirSync(dir).filter(file => file.endsWith('.json')).sort().slice(-limit) }
+  catch { return [] } // Optional evidence must never decide whether a task can run.
   const observations: RoutingObservation[] = []
   for (const file of files) {
     try {

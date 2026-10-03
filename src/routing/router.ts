@@ -1,4 +1,5 @@
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
+import { randomUUID } from 'node:crypto'
 import type { Agent, RoutingRule, RoutingStrategy, RoutingWorker } from '../retrofit/config.js'
 import type { AgentContext, AgentResult, AgentRunner, CapturedAgentRun, RunnerOpts } from '../loop/runner.js'
 import {
@@ -14,11 +15,18 @@ import { historyForWorkers, projectHash, readRoutingObservations, recordRoutingO
 import { assessmentInstructions, parseAssessment, tiers, type CapabilityTier } from './assessment.js'
 import { chooseCapability, readAssessment, saveAssessment, routingAssessmentKey, knownInfrastructureFailure } from './capability.js'
 import { readPlanningFile } from './contracts.js'
+import { finishRoutingAttempt, markRoutingAttemptUsageIncomplete, readRoutingAttempts, recordRoutingAttemptUsage, reserveRoutingAttempt, routingEpisodeSummary, type RoutingAttemptReservation } from './attempts.js'
+import { assessmentSignature } from './optimization.js'
 
 export interface RouteDecision {
   worker: 'SELF' | string
   reason: string
 }
+
+export interface RoutingCallRequest {
+  callId: string; storyId: string; role: ModelCallUsage['role']; provider: Agent; selection: ModelSelection
+}
+export interface RoutingCallUsage extends RoutingCallRequest { durationMs: number; usage: TokenUsage }
 
 export interface AdaptiveRunnerOptions {
   parent: Agent
@@ -30,6 +38,12 @@ export interface AdaptiveRunnerOptions {
   maxAttempts?: number
   planner?: { agent: Agent; selection: ModelSelection }
   assessmentPolicy?: 'on-demand' | 'prepared'
+  contractKind?: 'prd' | 'goal'
+  optimization?: { version: 1; objective: 'cost' | 'speed' | 'balanced'; minSamples?: number }
+  accountingScope?: 'execution-attempt'
+  executionPolicyKey?: string
+  admitCall?: (request: RoutingCallRequest) => string | undefined
+  onCallUsage?: (event: RoutingCallUsage) => void
   fallback?: 'parent' | 'block'
   maxTier?: CapabilityTier
   onDecision?: (storyId: string, decision: { profile: string; provider: Agent; model?: string; reasoningEffort?: string; variant?: string; providerModel?: string; reason: string; next: string; assessment?: import('./assessment.js').TaskAssessment }) => void
@@ -43,6 +57,12 @@ export interface AdaptiveRunnerOptions {
   now?: () => number
   /** Stable project identity when execution occurs in disposable worktrees. */
   projectRoot?: string
+}
+
+export function buildAssessmentPrompt(root: string, ctx: AgentContext): string {
+  return [assessmentInstructions, 'Use the supplied task contract and project context to produce a bounded plan. Do not implement or change files.',
+    'Approved planning brief:', readPlanningFile(root, '.yoke/plan.md', 80_000) ?? '',
+    contextBlockFor(ctx.targetDir, ctx.story), JSON.stringify(ctx.story), 'Return exactly one line: YOKE_ASSESS {"taskClass":"implementation","difficulty":"medium","uncertainty":"low","risk":"low","scope":"low","testability":"high","reason":"evidence","approach":"steps and tests"}'].join('\n')
 }
 
 const costRank = { low: 0, medium: 1, high: 2 } as const
@@ -143,6 +163,7 @@ function callUsage(role: ModelCallUsage['role'], provider: Agent, selection: Mod
     usageAvailable: tokens !== undefined && tokens.measurementComplete !== false,
     ...(tokens?.reasoningOutputTokens !== undefined ? { reasoningOutputTokens: tokens.reasoningOutputTokens } : {}),
     ...(tokens?.totalCostUsd !== undefined ? { totalCostUsd: tokens.totalCostUsd } : {}),
+    costMeasurementComplete: tokens?.totalCostUsd !== undefined && tokens.costMeasurementComplete !== false,
     durationMs,
   }
 }
@@ -157,7 +178,12 @@ export function makeAdaptiveRunner(options: AdaptiveRunnerOptions): AgentRunner 
   return ctx => {
     const steps = run(ctx)
     let next = steps.next()
-    while (!next.done) next = steps.next(next.value() as CapturedAgentRun & AgentResult)
+    while (!next.done) {
+      let result: CapturedAgentRun & AgentResult
+      try { result = next.value() as CapturedAgentRun & AgentResult }
+      catch (error) { next = steps.throw(error); continue }
+      next = steps.next(result)
+    }
     return next.value
   }
 }
@@ -167,7 +193,12 @@ export function makeAsyncAdaptiveRunner(options: AsyncAdaptiveRunnerOptions): (c
   return async ctx => {
     const steps = run(ctx)
     let next = steps.next()
-    while (!next.done) next = steps.next(await next.value() as CapturedAgentRun & AgentResult)
+    while (!next.done) {
+      let result: CapturedAgentRun & AgentResult
+      try { result = await next.value() as CapturedAgentRun & AgentResult }
+      catch (error) { next = steps.throw(error); continue }
+      next = steps.next(result)
+    }
     return next.value
   }
 }
@@ -178,96 +209,193 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
   const eligibleWorkers = options.workers.filter(worker => available(worker.agent))
   const failedStories = new Set<string>()
   const makeWorker = options.makeWorker ?? ((agent, selection) => makeRunner(agent, options.idleTimeoutMs ?? 0, {
-    ...options.runnerOpts,
-    permissions: options.permissions ?? 'safe',
-    selection,
+    ...options.runnerOpts, permissions: options.permissions ?? 'safe', selection,
   }))
+  type RunValue = CapturedAgentRun & AgentResult
+  type Work = () => CapturedAgentRun | AgentResult | Promise<CapturedAgentRun | AgentResult>
+  type Step = Generator<Work, { result?: RunValue; blocked?: string }, RunValue>
 
-  return function* (ctx: AgentContext): Generator<() => CapturedAgentRun | AgentResult | Promise<CapturedAgentRun | AgentResult>, AgentResult, CapturedAgentRun & AgentResult> {
-    const blocked = (summary: string): AgentResult => ({ success: false, summary, routing: { blocked: true, recordOutcome: () => undefined } })
+  return function* (ctx: AgentContext): Generator<Work, AgentResult, RunValue> {
+    const root = options.projectRoot ?? ctx.targetDir
+    const calls: ModelCallUsage[] = []
+    let reservation: RoutingAttemptReservation | undefined
+    const routeStartedAt = new Date().toISOString()
+    const blocked = (summary: string): AgentResult => ({ success: false, summary,
+      ...(calls.length ? { tokens: { ...aggregateCalls(calls), storyId: ctx.story.id, ...(reservation ? { routingAttemptId: reservation.id } : {}) } } : {}),
+      routing: { blocked: true, recordOutcome: () => undefined },
+    })
+    function* perform(role: ModelCallUsage['role'], provider: Agent, selection: ModelSelection, work: Work, profile?: string, beforeInvoke?: () => void): Step {
+      const request: RoutingCallRequest = { callId: randomUUID(), storyId: ctx.story.id, role, provider, selection: { ...selection } }
+      try {
+        if (!available(provider)) return { blocked: `Configured ${role} provider is unavailable` }
+        const refusal = options.admitCall?.(request)
+        if (refusal) return { blocked: refusal }
+        beforeInvoke?.()
+      } catch (error) { return { blocked: `Call admission failed: ${(error as Error).message}` } }
+      const started = now()
+      let result: RunValue
+      try { result = yield work }
+      catch (error) {
+        const reported = error && typeof error === 'object' ? (error as { tokens?: TokenUsage }).tokens : undefined
+        result = { success: false, infrastructureFailure: true, summary: (error as Error)?.message ?? String(error), output: '', ...(reported ? { tokens: reported } : {}) }
+      }
+      const durationMs = Math.max(0, now() - started)
+      const callId = result.tokens?.callId ?? (result.tokens?.calls?.length === 1 ? result.tokens.calls[0].callId : undefined) ?? request.callId
+      const call = { ...callUsage(role, provider, selection, result.tokens, durationMs, profile), callId,
+        ...(reservation ? { routingAttemptId: reservation.id } : {}) }
+      calls.push(call)
+      const usage: TokenUsage = { ...aggregateCalls([call]), callId, storyId: ctx.story.id,
+        ...(reservation ? { routingAttemptId: reservation.id } : {}) }
+      let accountingError: unknown
+      try {
+        // Earlier planning calls acquire the same execution identity once a worker
+        // has actually been admitted. Stable call IDs make reporter joins idempotent.
+        if (reservation) recordRoutingAttemptUsage(root, reservation.id, { ...aggregateCalls(calls), routingAttemptId: reservation.id })
+      } catch (error) { accountingError = error }
+      // A failed optional join must never suppress delivery of already paid
+      // usage to the caller's own durable budget account.
+      try { options.onCallUsage?.({ ...request, callId, durationMs, usage }) }
+      catch (error) { accountingError ??= error }
+      if (accountingError) {
+        if (reservation) {
+          try { markRoutingAttemptUsageIncomplete(root, reservation.id) } catch { /* unreadable state cannot provide a complete sample */ }
+          try { finishRoutingAttempt(root, reservation, { verificationSuccess: false, failureKind: 'infrastructure', actualModel: result.tokens?.model }) } catch { /* reservation remains charged and unresolved */ }
+        }
+        return { blocked: `Call accounting failed: ${(accountingError as Error).message}` }
+      }
+      return { result }
+    }
+    const capture = (provider: Agent, prompt: string, selection: ModelSelection): Work => () => options.captureRoute
+      ? options.captureRoute(provider, ctx, prompt, selection)
+      : runCapturedAgent(provider, buildWatchdogInvocation(runnerInvocation(provider, prompt, ctx.targetDir, true, 'read-only', selection), options.idleTimeoutMs ?? 0))
+    const reserveWorker = (provider: Agent, selection: ModelSelection, profile: string, limit: number) => {
+      reservation = reserveRoutingAttempt({ root, storyId: ctx.story.id, contractKey: routingAssessmentKey(root, ctx.story), limit,
+        provider, profile, selection, startedAt: routeStartedAt, accountingScope: options.accountingScope,
+        executionPolicyKey: options.executionPolicyKey })
+    }
     if (options.strategy === 'capability' && options.assessmentPolicy === 'prepared') {
       try {
-        const criteria = ctx.story.acceptance
-        if (criteria.length < 2 || criteria.length > 5 || criteria.some(c => !isAcceptanceCriterion(c) || criterionCommandProblem(c))) return blocked('Prepared routing requires 2-5 executable acceptance criteria')
-        if (!readAssessment(options.projectRoot ?? ctx.targetDir, ctx.story, true)) return blocked('Task assessment is missing or stale. Run yoke prd assess before execution.')
+        const criteria = ctx.story.acceptance, goal = options.contractKind === 'goal'
+        if (criteria.length < (goal ? 1 : 2) || (!goal && criteria.length > 5) || criteria.some(c => !isAcceptanceCriterion(c) || (!goal && criterionCommandProblem(c)) || (goal && (!c.verify.length || c.verify.some(command => !command.trim()))))) return blocked(goal ? 'Prepared goal routing requires bound executable acceptance criteria' : 'Prepared routing requires 2-5 executable acceptance criteria')
+        if (!readAssessment(root, ctx.story, true)) return blocked(`Task assessment is missing or stale. Run yoke ${goal ? 'goal' : 'prd'} assess before execution.`)
       } catch (error) { return blocked(`Cannot read prepared assessment: ${(error as Error).message}`) }
     }
     if (options.strategy === 'capability' && !options.rules?.some(rule => (!rule.area || rule.area === ctx.story.area) && (!rule.storyId || rule.storyId === ctx.story.id))) {
-      const root = options.projectRoot ?? ctx.targetDir
       let assessment
       try { assessment = readAssessment(root, ctx.story, options.assessmentPolicy === 'prepared') }
       catch (error) { return blocked(`Cannot read assessment: ${(error as Error).message}`) }
-      let planning: CapturedAgentRun | undefined
-      const calls: ModelCallUsage[] = []
       if (!assessment) {
-        const inputKey = routingAssessmentKey(root, ctx.story)
-        const prompt = [assessmentInstructions, 'Use the supplied task contract and project context to produce a bounded plan. Do not implement or change files.',
-          'Approved planning brief:', readPlanningFile(root, '.yoke/plan.md', 80_000) ?? '',
-          contextBlockFor(ctx.targetDir, ctx.story), JSON.stringify(ctx.story), 'Return exactly one line: YOKE_ASSESS {"taskClass":"implementation","difficulty":"medium","uncertainty":"low","risk":"low","scope":"low","testability":"high","reason":"evidence","approach":"steps and tests"}'].join('\n')
         const planner = options.planner?.agent ?? options.parent
-        if (!available(planner)) return blocked('Configured planning provider is unavailable')
         const selection = { ...(options.planner?.selection ?? options.parentSelection), nativeMultiAgent: false }
-        const started = now()
-        planning = yield () => options.captureRoute ? options.captureRoute(planner, ctx, prompt, selection)
-          : runCapturedAgent(planner, buildWatchdogInvocation(runnerInvocation(planner, prompt, ctx.targetDir, true, 'read-only', selection), options.idleTimeoutMs ?? 0))
-        calls.push(callUsage('orchestrator', planner, selection, planning.tokens, now() - started))
-        if (routingAssessmentKey(root, ctx.story) !== inputKey) return { ...blocked('Planning inputs changed during assessment; retry planning with the current contract'), tokens: aggregateCalls(calls) }
-        assessment = planning.success ? parseAssessment(planning.output) : undefined
-        if (assessment) saveAssessment(root, ctx.story, assessment, { provider: planner, model: planning.tokens?.model ?? selection.model })
+        let inputKey: string, prompt: string
+        try { inputKey = routingAssessmentKey(root, ctx.story); prompt = buildAssessmentPrompt(root, ctx) }
+        catch (error) { return blocked(`Cannot prepare assessment: ${(error as Error).message}`) }
+        const planningCall = yield* perform('orchestrator', planner, selection, capture(planner, prompt, selection))
+        if (planningCall.blocked) return blocked(planningCall.blocked)
+        const planning = planningCall.result!
+        try {
+          if (routingAssessmentKey(root, ctx.story) !== inputKey) return blocked('Planning inputs changed during assessment; retry planning with the current contract')
+          assessment = planning.success ? parseAssessment(planning.output) : undefined
+          if (assessment) saveAssessment(root, ctx.story, assessment, { provider: planner, model: planning.tokens?.model ?? selection.model })
+        } catch (error) { return blocked(`Cannot persist current assessment: ${(error as Error).message}`) }
       }
-      if (!assessment) return { success: false, summary: 'Routing assessment unavailable or invalid; implementation was not started', tokens: aggregateCalls(calls), routing: { recordOutcome: () => undefined, blocked: true } }
-      const choice = chooseCapability({ root, story: ctx.story, assessment, workers: eligibleWorkers, parent: options.parent, parentSelection: options.parentSelection, maxAttempts: options.maxAttempts, fallback: options.fallback, maxTier: options.maxTier })
+      if (!assessment) return blocked('Routing assessment unavailable or invalid; implementation was not started')
+      let choice: ReturnType<typeof chooseCapability>
+      try {
+        choice = chooseCapability({ root, story: ctx.story, assessment, workers: eligibleWorkers, parent: options.parent, parentSelection: options.parentSelection,
+          maxAttempts: options.maxAttempts, fallback: options.fallback, maxTier: options.maxTier,
+          optimization: options.optimization, executionPolicyKey: options.executionPolicyKey })
+      } catch (error) { return blocked(`Cannot admit routing attempt: ${(error as Error).message}`) }
       options.onDecision?.(ctx.story.id, { profile: choice.worker?.id ?? 'SELF', provider: choice.provider, model: choice.selection.model, reasoningEffort: choice.selection.reasoningEffort, variant: choice.selection.variant, providerModel: choice.selection.provider, reason: choice.reason, next: choice.next, assessment })
-      if (choice.blocked) return { ...blocked(choice.reason), tokens: aggregateCalls(calls) }
-      if (choice.exhausted) return { success: false, summary: 'Routing attempt budget exhausted; replan this task before retrying', tokens: aggregateCalls(calls), routing: { recordOutcome: () => undefined, blocked: true } }
-      const started = now()
-      const result = yield () => makeWorker(choice.provider, choice.selection)({ ...ctx, attempt: choice.failures + 1, story: { ...ctx.story, assessment } })
-      calls.push(callUsage(choice.worker ? 'worker' : 'parent', choice.provider, choice.selection, result.tokens, now() - started, choice.worker?.id ?? 'SELF'))
+      if (choice.blocked) return blocked(choice.reason)
+      if (choice.exhausted) return blocked('Routing attempt budget exhausted; replan this task before retrying')
+      let runner: ReturnType<typeof makeWorker>
+      const implementation = yield* perform(choice.worker ? 'worker' : 'parent', choice.provider, choice.selection,
+        () => runner({ ...ctx, attempt: reservation!.ordinal, story: { ...ctx.story, assessment } }), choice.worker?.id ?? 'SELF',
+        () => { runner = makeWorker(choice.provider, choice.selection); reserveWorker(choice.provider, choice.selection, choice.worker?.id ?? 'SELF', choice.attemptLimit) })
+      if (implementation.blocked) return blocked(implementation.blocked)
+      const result = implementation.result!
       let recorded = false
       const infrastructureFailure = result.infrastructureFailure || (!result.success && knownInfrastructureFailure(result.summary))
+      const recordOutcome = (verified: boolean, failureKind?: 'implementation' | 'infrastructure'): void => {
+        if (recorded) return
+        const kind = infrastructureFailure ? 'infrastructure' : failureKind ?? 'implementation'
+        const measured = finishRoutingAttempt(root, reservation!, { verificationSuccess: infrastructureFailure ? false : verified, failureKind: kind, actualModel: result.tokens?.model })
+        const episode = routingEpisodeSummary(root, reservation!)
+        recorded = true
+        recordRoutingObservation({ projectHash: projectHash(root), storyHash: storyHash(projectHash(root), ctx.story.id), assessmentKey: reservation!.contractKey, taskClass: assessment!.taskClass, requiredTier: choice.requiredTier,
+          role: 'implementation', strategy: 'capability', selected: choice.worker?.id ?? 'SELF', provider: choice.provider,
+          requestedProvider: choice.selection.provider, requestedModel: choice.selection.model, requestedReasoningEffort: choice.selection.reasoningEffort, requestedVariant: choice.selection.variant,
+          actualModel: result.tokens?.model, orchestratorProvider: options.planner?.agent ?? options.parent, orchestratorModel: (options.planner?.selection ?? options.parentSelection)?.model,
+          orchestratorDurationMs: calls.filter(c => c.role === 'orchestrator').reduce((sum, call) => sum + call.durationMs, 0), workerDurationMs: calls.at(-1)!.durationMs,
+          processSuccess: result.success, verificationSuccess: infrastructureFailure ? false : verified, failureKind: kind,
+          usageAvailable: measured.usageComplete, inputTokens: measured.inputTokens, outputTokens: measured.outputTokens,
+          totalCostUsd: measured.totalCostUsd, costMeasurementComplete: measured.costComplete, accountingScope: measured.accountingScope,
+          totalDurationMs: measured.durationMs, executionPolicyKey: options.executionPolicyKey,
+          economicEpisode: { ...episode, assessmentSignature: assessmentSignature(assessment!) },
+        })
+      }
+      if (infrastructureFailure) recordOutcome(false, 'infrastructure')
       return { ...result, summary: `route=${choice.worker?.id ?? 'SELF'} (${choice.reason}); ${result.summary}`,
         ...(infrastructureFailure ? { success: false, infrastructureFailure: true } : {}),
-        tokens: { ...aggregateCalls(calls), storyId: ctx.story.id, escalated: choice.failures > 1 },
-        routing: { blocked: infrastructureFailure || undefined, canRetry: !infrastructureFailure && choice.failures + 1 < (options.maxAttempts ?? 5), recordOutcome: (verified, failureKind) => {
-          if (recorded) return
-          recorded = true
-          recordRoutingObservation({ projectHash: projectHash(root), storyHash: storyHash(projectHash(root), ctx.story.id), assessmentKey: routingAssessmentKey(root, ctx.story), taskClass: assessment!.taskClass, requiredTier: choice.requiredTier,
-            role: 'implementation', strategy: 'capability', selected: choice.worker?.id ?? 'SELF', provider: choice.provider, requestedProvider: choice.selection.provider, requestedModel: choice.selection.model, requestedReasoningEffort: choice.selection.reasoningEffort, requestedVariant: choice.selection.variant,
-            actualModel: result.tokens?.model, orchestratorProvider: options.planner?.agent ?? options.parent, orchestratorModel: (options.planner?.selection ?? options.parentSelection)?.model, orchestratorDurationMs: calls.filter(c => c.role === 'orchestrator').reduce((s,c) => s+c.durationMs,0), workerDurationMs: calls[calls.length-1].durationMs,
-            processSuccess: result.success, verificationSuccess: infrastructureFailure ? false : verified, failureKind: infrastructureFailure ? 'infrastructure' : failureKind ?? 'implementation', usageAvailable: result.tokens !== undefined && result.tokens.measurementComplete !== false,
-            inputTokens: result.tokens?.inputTokens ?? 0, outputTokens: result.tokens?.outputTokens ?? 0, totalCostUsd: result.tokens?.totalCostUsd })
-        } } }
+        tokens: { ...aggregateCalls(calls), storyId: ctx.story.id, routingAttemptId: reservation!.id, escalated: choice.failures > 1 },
+        routing: { blocked: infrastructureFailure || undefined, canRetry: !infrastructureFailure && reservation!.ordinal < choice.attemptLimit, recordOutcome } }
     }
-    // Re-rank per story so a long-running loop can use gate outcomes learned by
-    // earlier stories without rebuilding the runner.
     const rule = options.rules?.find(rule => (!rule.area || rule.area === ctx.story.area) && (!rule.storyId || rule.storyId === ctx.story.id) && (rule.area || rule.storyId))
-    if (rule) {
-      const project = projectHash(options.projectRoot ?? ctx.targetDir)
-      const prior = readRoutingObservations().reverse().find(event => event.projectHash === project && event.storyHash === storyHash(project, ctx.story.id) && typeof event.verificationSuccess === 'boolean')
-      if (prior?.verificationSuccess === false) failedStories.add(ctx.story.id)
+    const bounded = options.strategy === 'capability' || options.maxAttempts !== undefined
+    let priorAttempts: ReturnType<typeof readRoutingAttempts> = []
+    let failureKey = ctx.story.id
+    if (bounded) {
+      try {
+        failureKey = routingAssessmentKey(root, ctx.story)
+        priorAttempts = readRoutingAttempts(root, ctx.story.id, failureKey)
+        if (priorAttempts.length >= (options.maxAttempts ?? 5)) return blocked('Routing attempt budget exhausted; replan this task before retrying')
+      } catch (error) { return blocked(`Cannot read routing attempt state: ${(error as Error).message}`) }
     }
-    const ruleWorker = rule && failedStories.has(ctx.story.id) ? rule.escalateTo ?? 'SELF' : rule?.worker
+    if (rule) {
+      const project = projectHash(root)
+      try {
+        const prior = bounded ? priorAttempts.filter(entry => entry.outcome?.failureKind !== 'infrastructure').at(-1)?.outcome
+          : readRoutingObservations().reverse().find(event => event.projectHash === project && event.storyHash === storyHash(project, ctx.story.id) && typeof event.verificationSuccess === 'boolean')
+        if (prior?.verificationSuccess === false) failedStories.add(failureKey)
+      } catch (error) { return blocked(`Cannot read routing attempt state: ${(error as Error).message}`) }
+    }
+    const ruleWorker = rule && failedStories.has(failureKey) ? rule.escalateTo ?? 'SELF' : rule?.worker
     const candidates = rule ? eligibleWorkers : rankWorkers(eligibleWorkers, options.strategy, options.maxCandidates)
     if (candidates.length === 0) {
       if (options.fallback === 'block' || options.maxTier) return blocked('No eligible routing profiles; parent fallback is disabled')
-      return yield () => makeWorker(options.parent, options.parentSelection ?? {})(ctx)
+      let runner: ReturnType<typeof makeWorker>
+      const selection = options.parentSelection ?? {}
+      options.onDecision?.(ctx.story.id, { profile: 'SELF', provider: options.parent, model: selection.model, providerModel: selection.provider,
+        reasoningEffort: selection.reasoningEffort, variant: selection.variant, reason: 'No eligible profile; configured parent fallback', next: 'independent gate verification' })
+      const execution = yield* perform('parent', options.parent, selection, () => runner(ctx), 'SELF', () => {
+        runner = makeWorker(options.parent, selection)
+        if (bounded) reserveWorker(options.parent, selection, 'SELF', options.maxAttempts ?? 5)
+      })
+      if (execution.blocked) return blocked(execution.blocked)
+      const result = execution.result!
+      const infrastructureFailure = result.infrastructureFailure || (!result.success && knownInfrastructureFailure(result.summary))
+      let recorded = false
+      const recordOutcome = (verified: boolean, failureKind?: 'implementation' | 'infrastructure'): void => {
+        if (recorded) return
+        const kind = infrastructureFailure ? 'infrastructure' : failureKind ?? 'implementation'
+        if (reservation) finishRoutingAttempt(root, reservation, { verificationSuccess: infrastructureFailure ? false : verified, failureKind: kind, actualModel: result.tokens?.model })
+        recorded = true
+      }
+      if (infrastructureFailure) recordOutcome(false, 'infrastructure')
+      return { ...result, ...(infrastructureFailure ? { success: false, infrastructureFailure: true } : {}),
+        tokens: { ...aggregateCalls(calls), storyId: ctx.story.id, ...(reservation ? { routingAttemptId: reservation.id } : {}) },
+        routing: { recordOutcome, ...(infrastructureFailure ? { blocked: true } : {}), ...(bounded ? { canRetry: !infrastructureFailure && reservation!.ordinal < (options.maxAttempts ?? 5) } : {}) } }
     }
-
-    const prompt = buildRoutingPrompt(ctx, candidates, options.strategy)
     const orchestratorSelection = { ...(options.parentSelection ?? {}), ...(options.orchestratorSelection ?? {}), nativeMultiAgent: false }
-    const orchestratorStarted = now()
-    const routeRun: CapturedAgentRun = rule ? { success: true, summary: 'Explicit rule', output: '', tokens: { inputTokens: 0, outputTokens: 0 } } : yield () => options.captureRoute
-      ? options.captureRoute(options.parent, ctx, prompt, orchestratorSelection)
-      : runCapturedAgent(
-          options.parent,
-          buildWatchdogInvocation(
-            runnerInvocation(options.parent, prompt, ctx.targetDir, true, 'read-only', orchestratorSelection),
-            options.idleTimeoutMs ?? 0,
-          ),
-        )
-    const orchestratorDurationMs = Math.max(0, now() - orchestratorStarted)
+    let routeRun: RunValue = { success: true, summary: 'Explicit rule', output: '' }
+    if (!rule) {
+      const routed = yield* perform('orchestrator', options.parent, orchestratorSelection, capture(options.parent, buildRoutingPrompt(ctx, candidates, options.strategy), orchestratorSelection))
+      if (routed.blocked) return blocked(routed.blocked)
+      routeRun = routed.result!
+    }
     const decision = rule
-      ? { worker: ruleWorker === 'SELF' || candidates.some(w => w.id === ruleWorker) ? ruleWorker! : 'SELF', reason: failedStories.has(ctx.story.id) ? 'gate failure escalated by project rule' : 'explicit project routing rule' }
+      ? { worker: ruleWorker === 'SELF' || candidates.some(w => w.id === ruleWorker) ? ruleWorker! : 'SELF', reason: failedStories.has(failureKey) ? 'gate failure escalated by project rule' : 'explicit project routing rule' }
       : routeRun.success ? parseRouteDecision(routeRun.output, candidates.map(worker => worker.id)) : null
     const selected = decision?.worker ?? 'SELF'
     const worker = selected === 'SELF' ? undefined : candidates.find(candidate => candidate.id === selected)
@@ -276,76 +404,48 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
     const selection: ModelSelection = worker
       ? { provider: worker.provider, model: worker.model, reasoningEffort: worker.reasoningEffort, variant: worker.variant, nativeMultiAgent: false, ...(provider !== 'gemini' && provider !== 'qwen' && provider !== 'pi' && provider !== 'hermes' ? { bare: options.parentSelection?.bare } : {}) }
       : { ...(options.parentSelection ?? {}), nativeMultiAgent: false }
-
-    const workerStarted = now()
-    const result = yield () => makeWorker(provider, selection)(ctx)
-    const workerDurationMs = Math.max(0, now() - workerStarted)
-    const calls = [
-      ...(!rule ? [callUsage('orchestrator', options.parent, orchestratorSelection, routeRun.tokens, orchestratorDurationMs)] : []),
-      callUsage(worker ? 'worker' : 'parent', provider, selection, result.tokens, workerDurationMs, selected),
-    ]
-    const tokens: TokenUsage = {
-      storyId: ctx.story.id,
-      escalated: Boolean(rule && failedStories.has(ctx.story.id)),
-      inputTokens: (routeRun.tokens?.inputTokens ?? 0) + (result.tokens?.inputTokens ?? 0),
-      ...((routeRun.tokens?.cachedInputTokens !== undefined || result.tokens?.cachedInputTokens !== undefined)
-        ? { cachedInputTokens: (routeRun.tokens?.cachedInputTokens ?? 0) + (result.tokens?.cachedInputTokens ?? 0) }
-        : {}),
-      ...((routeRun.tokens?.cacheWriteInputTokens !== undefined || result.tokens?.cacheWriteInputTokens !== undefined)
-        ? { cacheWriteInputTokens: (routeRun.tokens?.cacheWriteInputTokens ?? 0) + (result.tokens?.cacheWriteInputTokens ?? 0) }
-        : {}),
-      outputTokens: (routeRun.tokens?.outputTokens ?? 0) + (result.tokens?.outputTokens ?? 0),
-      ...((routeRun.tokens?.reasoningOutputTokens !== undefined || result.tokens?.reasoningOutputTokens !== undefined)
-        ? { reasoningOutputTokens: (routeRun.tokens?.reasoningOutputTokens ?? 0) + (result.tokens?.reasoningOutputTokens ?? 0) }
-        : {}),
-      ...((routeRun.tokens?.totalCostUsd !== undefined || result.tokens?.totalCostUsd !== undefined)
-        ? { totalCostUsd: (routeRun.tokens?.totalCostUsd ?? 0) + (result.tokens?.totalCostUsd ?? 0) }
-        : {}),
-      ...(result.tokens?.model ? { model: result.tokens.model } : routeRun.tokens?.model ? { model: routeRun.tokens.model } : {}),
-      calls,
-      measurementComplete: calls.every(call => call.usageAvailable),
-      costMeasurementComplete: calls.every(call => call.totalCostUsd !== undefined),
-    }
-
+    options.onDecision?.(ctx.story.id, { profile: selected, provider, model: selection.model, providerModel: selection.provider,
+      reasoningEffort: selection.reasoningEffort, variant: selection.variant, reason: decision?.reason ?? 'Invalid controller response; configured parent fallback',
+      next: rule?.escalateTo ?? 'independent gate verification', ...(ctx.story.assessment ? { assessment: ctx.story.assessment } : {}) })
+    let runner: ReturnType<typeof makeWorker>
+    const execution = yield* perform(worker ? 'worker' : 'parent', provider, selection, () => runner(ctx), selected, () => {
+      runner = makeWorker(provider, selection)
+      if (bounded) reserveWorker(provider, selection, selected, options.maxAttempts ?? 5)
+    })
+    if (execution.blocked) return blocked(execution.blocked)
+    const result = execution.result!
+    const tokens = { ...aggregateCalls(calls), storyId: ctx.story.id, escalated: Boolean(rule && failedStories.has(failureKey)), ...(reservation ? { routingAttemptId: reservation.id } : {}) }
     let recorded = false
-    const recordOutcome = (verificationSuccess: boolean): void => {
+    const recordOutcome = (verificationSuccess: boolean, failureKind?: 'implementation' | 'infrastructure'): void => {
       if (recorded) return
+      if (reservation) finishRoutingAttempt(root, reservation, { verificationSuccess, failureKind, actualModel: result.tokens?.model })
       recorded = true
-      if (!verificationSuccess) failedStories.add(ctx.story.id)
-      else failedStories.delete(ctx.story.id)
-      const project = projectHash(options.projectRoot ?? ctx.targetDir)
-      recordRoutingObservation({
-        projectHash: project,
-        storyHash: storyHash(project, ctx.story.id),
-        strategy: options.strategy,
-        selected,
-        provider,
-        ...(selection.model ? { requestedModel: selection.model } : {}),
-        ...(selection.reasoningEffort ? { requestedReasoningEffort: selection.reasoningEffort } : {}),
-        ...(selection.provider ? { requestedProvider: selection.provider } : {}),
-        ...(selection.variant ? { requestedVariant: selection.variant } : {}),
-        ...(result.tokens?.model ? { actualModel: result.tokens.model } : {}),
-        orchestratorProvider: options.parent,
-        ...(orchestratorSelection.model ? { orchestratorModel: orchestratorSelection.model } : {}),
-        orchestratorDurationMs,
-        workerDurationMs,
-        processSuccess: result.success,
-        verificationSuccess,
-        inputTokens: tokens.inputTokens,
-        outputTokens: tokens.outputTokens,
+      if (!verificationSuccess && failureKind !== 'infrastructure') failedStories.add(failureKey); else if (verificationSuccess) failedStories.delete(failureKey)
+      const project = projectHash(root)
+      recordRoutingObservation({ projectHash: project, storyHash: storyHash(project, ctx.story.id), strategy: options.strategy, selected, provider,
+        requestedModel: selection.model, requestedReasoningEffort: selection.reasoningEffort, requestedProvider: selection.provider, requestedVariant: selection.variant,
+        actualModel: result.tokens?.model, orchestratorProvider: options.parent, orchestratorModel: orchestratorSelection.model,
+        orchestratorDurationMs: calls.filter(call => call.role === 'orchestrator').reduce((sum, call) => sum + call.durationMs, 0), workerDurationMs: calls.at(-1)!.durationMs,
+        processSuccess: result.success, verificationSuccess, failureKind,
+        inputTokens: tokens.inputTokens, outputTokens: tokens.outputTokens, usageAvailable: tokens.measurementComplete,
+        totalCostUsd: tokens.totalCostUsd, costMeasurementComplete: tokens.costMeasurementComplete,
       })
     }
-
-    const routeSummary = decision
-      ? `route=${selected} (${decision.reason})`
-      : `route=SELF (${routeRun.success ? 'invalid routing response' : 'orchestrator failed'})`
-    return { ...result, summary: `${routeSummary}; ${result.summary}`, tokens, routing: { recordOutcome } }
+    if (result.infrastructureFailure) recordOutcome(false, 'infrastructure')
+    const routeSummary = decision ? `route=${selected} (${decision.reason})` : `route=SELF (${routeRun.success ? 'invalid routing response' : 'orchestrator failed'})`
+    return { ...result, summary: `${routeSummary}; ${result.summary}`, tokens, routing: { recordOutcome, ...(result.infrastructureFailure ? { blocked: true } : {}),
+      ...(bounded ? { canRetry: !result.infrastructureFailure && reservation!.ordinal < (options.maxAttempts ?? 5) } : {}) } }
   }
 }
 
 function aggregateCalls(calls: ModelCallUsage[]): TokenUsage {
-  return { inputTokens: calls.reduce((n,c) => n+c.inputTokens,0), outputTokens: calls.reduce((n,c) => n+c.outputTokens,0),
-    cachedInputTokens: calls.reduce((n,c) => n+(c.cachedInputTokens ?? 0),0), cacheWriteInputTokens: calls.reduce((n,c) => n+(c.cacheWriteInputTokens ?? 0),0),
-    ...(calls.some(c => c.totalCostUsd !== undefined) ? { totalCostUsd: calls.reduce((n,c) => n+(c.totalCostUsd ?? 0),0) } : {}),
-    calls, measurementComplete: calls.every(c => c.usageAvailable), costMeasurementComplete: calls.every(c => c.totalCostUsd !== undefined) }
+  const optional: Partial<TokenUsage> = {}
+  for (const field of ['cachedInputTokens', 'cacheWriteInputTokens', 'reasoningOutputTokens', 'totalCostUsd'] as const) {
+    if (calls.some(call => call[field] !== undefined)) optional[field] = calls.reduce((sum, call) => sum + (call[field] ?? 0), 0)
+  }
+  const model = calls.at(-1)?.actualModel
+  return { inputTokens: calls.reduce((sum, call) => sum + call.inputTokens, 0), outputTokens: calls.reduce((sum, call) => sum + call.outputTokens, 0),
+    ...optional, ...(model ? { model } : {}), calls,
+    measurementComplete: calls.every(call => call.usageAvailable !== false),
+    costMeasurementComplete: calls.every(call => call.totalCostUsd !== undefined && call.costMeasurementComplete !== false) }
 }

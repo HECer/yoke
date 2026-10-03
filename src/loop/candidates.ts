@@ -28,6 +28,7 @@ export async function coordinateCandidates(input: CandidateCoordinatorInput): Pr
   const owned: OwnedCandidate[] = []
   const outcomes = new Map<string, StoryWorkerResult>()
   const cleanup = new CandidateCleanup(input.lifecycle, input.onLifecycle)
+  const preserveAll = (reason: string) => cleanup.preserveAll(reason, id => outcomes.get(id)?.kind === 'candidate' ? 'integration' : 'implementation')
   const terminalize = async (candidate: OwnedCandidate, reason: string): Promise<void> => {
     const result = outcomes.get(candidate.candidateId) ?? {
       kind: 'cancelled' as const, storyId: candidate.storyId, worktree: candidate.worktree.path,
@@ -48,11 +49,11 @@ export async function coordinateCandidates(input: CandidateCoordinatorInput): Pr
 
   const finishPaused = async (): Promise<CandidateCoordinatorResult> => {
     await terminalizeAll('candidate coordination paused')
-    await cleanup.cleanupAll('candidate coordination paused')
+    await preserveAll('candidate coordination paused')
     ensureActive()
     return cleanup.hasFailures()
       ? blocked(cleanup, 'cleanup-error', 'candidate pause cleanup failed')
-      : { kind: 'paused', summary: 'candidate coordination paused' }
+      : { kind: 'paused', summary: `candidate coordination paused${cleanup.retainedSummary()}` }
   }
 
   try {
@@ -103,7 +104,7 @@ export async function coordinateCandidates(input: CandidateCoordinatorInput): Pr
         case 'review-failure':
           input.onLifecycle?.(run.owned, 'cleaning', run.result.summary)
           await input.recordElimination?.({ ...run.owned, result: run.result })
-          await cleanup.cleanup(run.owned, run.result.summary)
+          if (!input.lifecycle.retain) await cleanup.cleanup(run.owned, run.result.summary)
           ensureActive()
           break
         case 'paused':
@@ -112,7 +113,10 @@ export async function coordinateCandidates(input: CandidateCoordinatorInput): Pr
     }
     ensureActive()
     if (input.pause?.()) return await finishPaused()
-    if (green.length === 0) return blocked(cleanup, 'zero-green', 'no candidate passed every mechanical gate')
+    if (green.length === 0) {
+      if (input.lifecycle.retain) await preserveAll('no candidate passed every mechanical gate')
+      return blocked(cleanup, 'zero-green', 'no candidate passed every mechanical gate')
+    }
 
     for (const candidate of green) input.onLifecycle?.(candidate, 'selecting')
     input.onSelecting?.()
@@ -126,14 +130,14 @@ export async function coordinateCandidates(input: CandidateCoordinatorInput): Pr
       ensureActive,
       discard: async candidate => {
         await input.recordElimination?.(candidate)
-        await cleanup.cleanup(candidate, 'candidate was not selected')
+        if (!input.lifecycle.retain) await cleanup.cleanup(candidate, 'candidate was not selected')
       },
     })
     ensureActive()
     if (selection.kind === 'paused') return await finishPaused()
     if (selection.kind === 'inconsistent') {
       for (const candidate of green) await input.recordElimination?.({ ...candidate, result: candidate.result }, `selection-inconsistent: ${selection.reason}`)
-      await cleanup.cleanupAll(`candidate selection was inconsistent: ${selection.reason}`)
+      await preserveAll(`candidate selection was inconsistent: ${selection.reason}`)
       ensureActive()
       if (input.pause?.()) return await finishPaused()
       return blocked(cleanup, 'selection-inconsistent', selection.reason)
@@ -151,7 +155,7 @@ export async function coordinateCandidates(input: CandidateCoordinatorInput): Pr
     ensureActive()
     if (input.pause?.()) return await finishPaused()
     if (cleanup.hasFailures()) {
-      await cleanup.cleanup(selection.candidate, 'candidate cleanup failed')
+      await cleanup.preserve(selection.candidate, 'candidate cleanup failed', 'integration')
       ensureActive()
       if (input.pause?.()) return await finishPaused()
       return blocked(cleanup, 'cleanup-error', 'candidate loser cleanup failed')
@@ -168,12 +172,12 @@ export async function coordinateCandidates(input: CandidateCoordinatorInput): Pr
     } catch (proofError) {
       proofFailure = message(proofError)
     }
-    await cleanup.cleanupAll('candidate coordinator failed')
+    await preserveAll('candidate coordinator failed')
     if (proofFailure) return blocked(cleanup, 'cleanup-error', `candidate terminal proof failed: ${proofFailure}`)
     if (input.signal?.aborted) {
       return cleanup.hasFailures()
         ? blocked(cleanup, 'cleanup-error', 'candidate cancellation cleanup failed')
-        : { kind: 'cancelled', summary: cancellationSummary(input.signal) }
+        : { kind: 'cancelled', summary: cancellationSummary(input.signal) + cleanup.retainedSummary() }
     }
     if (input.pause?.()) {
       try {
@@ -182,7 +186,7 @@ export async function coordinateCandidates(input: CandidateCoordinatorInput): Pr
         if (input.signal?.aborted) {
           return cleanup.hasFailures()
             ? blocked(cleanup, 'cleanup-error', 'candidate cancellation cleanup failed')
-            : { kind: 'cancelled', summary: cancellationSummary(input.signal) }
+            : { kind: 'cancelled', summary: cancellationSummary(input.signal) + cleanup.retainedSummary() }
         }
         return blocked(cleanup, 'coordinator-error', message(pauseError))
       }
@@ -234,5 +238,5 @@ function blocked(
   const recovery = cleanup.recovery()
   return cleanup.hasFailures()
     ? { kind: 'blocked', reason: 'cleanup-error', summary: cleanup.failureSummary(), recovery }
-    : { kind: 'blocked', reason, summary }
+    : { kind: 'blocked', reason, summary: summary + cleanup.retainedSummary() }
 }

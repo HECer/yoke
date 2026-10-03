@@ -7,6 +7,7 @@ type CleanupState = {
   readonly completed: Set<CandidateCleanupStage>
   readonly failed: Map<CandidateCleanupStage, string>
   readonly pending: Map<CandidateCleanupStage, Promise<void>>
+  preserve?: 'implementation' | 'integration'
 }
 
 const stageOrder = ['cancel', 'reap', 'remove'] as const
@@ -14,7 +15,7 @@ const stageOrder = ['cancel', 'reap', 'remove'] as const
 export class CandidateCleanup {
   readonly #states = new Map<string, CleanupState>()
 
-  constructor(readonly lifecycle: CandidateLifecycle, readonly onLifecycle?: (candidate: CandidateOwnership, state: 'cleaning' | 'removed', reason?: string) => void) {}
+  constructor(readonly lifecycle: CandidateLifecycle, readonly onLifecycle?: (candidate: CandidateOwnership, state: 'cleaning' | 'removed' | 'retained', reason?: string) => void) {}
 
   register(ownership: ManagedCandidate): void {
     this.#states.set(ownership.candidateId, { ownership, materialized: false, completed: new Set(), failed: new Map(), pending: new Map() })
@@ -27,6 +28,7 @@ export class CandidateCleanup {
 
   cancelNow(reason: string): void {
     for (const state of this.#states.values()) {
+      if (state.completed.has('remove') || state.completed.has('retain')) continue
       state.ownership.controller.abort(reason)
       this.onLifecycle?.(state.ownership, 'cleaning', reason)
       void this.#runStage(state, 'cancel', () => this.lifecycle.cancel(state.ownership, reason))
@@ -36,6 +38,7 @@ export class CandidateCleanup {
   async cleanup(ownership: ManagedCandidate, reason: string): Promise<void> {
     const state = this.#states.get(ownership.candidateId)
     if (!state) return
+    if (state.preserve) return this.preserve(ownership, reason, state.preserve)
     ownership.controller.abort(reason)
     this.onLifecycle?.(ownership, 'cleaning', reason)
     if (!await this.#runStage(state, 'cancel', () => this.lifecycle.cancel(ownership, reason))) return
@@ -49,6 +52,26 @@ export class CandidateCleanup {
     }
   }
 
+  async preserve(ownership: ManagedCandidate, reason: string, phase: 'implementation' | 'integration'): Promise<void> {
+    const state = this.#states.get(ownership.candidateId)
+    if (!state || state.completed.has('remove') || state.completed.has('retain')) return
+    if (!this.lifecycle.retain || !state.materialized) return this.cleanup(ownership, reason)
+    state.preserve = phase
+    ownership.controller.abort(reason)
+    if (!await this.#runStage(state, 'cancel', () => this.lifecycle.cancel(ownership, reason))) return
+    if (!await this.#runStage(state, 'reap', () => this.lifecycle.reap(ownership))) return
+    if (await this.#runStage(state, 'retain', () => this.lifecycle.retain!(ownership, reason, phase))) this.onLifecycle?.(ownership, 'retained', reason)
+  }
+
+  async preserveAll(reason: string, phase: (candidateId: string) => 'implementation' | 'integration'): Promise<void> {
+    for (const state of this.#states.values()) await this.preserve(state.ownership, reason, phase(state.ownership.candidateId))
+  }
+
+  retainedSummary(): string {
+    const paths = [...this.#states.values()].filter(state => state.completed.has('retain')).map(state => state.ownership.worktree.path)
+    return paths.length ? `; work retained at ${paths.join(', ')}` : ''
+  }
+
   hasFailures(): boolean {
     return [...this.#states.values()].some(state => state.failed.size > 0)
   }
@@ -58,23 +81,26 @@ export class CandidateCleanup {
   }
 
   recovery(): readonly CandidateRecovery[] {
-    return [...this.#states.values()].filter(state => state.failed.size > 0).map(state => ({
-      ownership: {
-        candidateId: state.ownership.candidateId,
-        coordinatorId: state.ownership.coordinatorId,
-        ownerToken: state.ownership.ownerToken,
-        storyId: state.ownership.storyId,
-        provider: { ...state.ownership.provider },
-        worktree: { ...state.ownership.worktree },
-      },
-      materialized: state.materialized,
-      completedStages: stageOrder.filter(stage => state.completed.has(stage)),
-      failedStages: stageOrder.flatMap(stage => {
-        const summary = state.failed.get(stage)
-        return summary ? [{ stage, summary }] : []
-      }),
-      pendingStages: stageOrder.filter(stage => !state.completed.has(stage) && !state.failed.has(stage)),
-    }))
+    return [...this.#states.values()].filter(state => state.failed.size > 0).map(state => {
+      const stages: readonly CandidateCleanupStage[] = state.preserve ? ['cancel', 'reap', 'retain'] : stageOrder
+      return {
+        ownership: {
+          candidateId: state.ownership.candidateId,
+          coordinatorId: state.ownership.coordinatorId,
+          ownerToken: state.ownership.ownerToken,
+          storyId: state.ownership.storyId,
+          provider: { ...state.ownership.provider },
+          worktree: { ...state.ownership.worktree },
+        },
+        materialized: state.materialized,
+        completedStages: stages.filter(stage => state.completed.has(stage)),
+        failedStages: stages.flatMap(stage => {
+          const summary = state.failed.get(stage)
+          return summary ? [{ stage, summary }] : []
+        }),
+        pendingStages: stages.filter(stage => !state.completed.has(stage) && !state.failed.has(stage)),
+      }
+    })
   }
 
   #runStage(state: CleanupState, stage: CandidateCleanupStage, operation: () => void | Promise<void>): Promise<boolean> {

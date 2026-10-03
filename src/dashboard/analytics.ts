@@ -114,7 +114,8 @@ export function aggregateMeasurements(events: LoopEvent[], period: Period) {
     const targets = [total, bucket, task]
     for (const target of targets) target.activity++
     if (event.type === 'tokens') {
-      const calls = Array.isArray(data.calls) && data.calls.length ? data.calls : [{ ...data, actualModel: data.model, durationMs: event.durationMs }]
+      const hasCallBreakdown = Array.isArray(data.calls) && data.calls.length > 0
+      const calls = hasCallBreakdown ? data.calls as unknown[] : [{ ...data, actualModel: data.model, durationMs: event.durationMs }]
       for (const item of calls) {
         if (!item || typeof item !== 'object') continue
         const call = item as Record<string, unknown>
@@ -133,7 +134,8 @@ export function aggregateMeasurements(events: LoopEvent[], period: Period) {
           dimensionTargets.push(dimension)
         }
         for (const target of [...targets, get(models, key), get(modelBuckets, JSON.stringify([bucketOf(event.timestamp, period.bucket), provider, model, role])), ...dimensionTargets]) {
-          const usageAvailable = call.usageAvailable !== false && data.usageAvailable !== false && call.measurementComplete !== false && data.measurementComplete !== false
+          const usageAvailable = call.usageAvailable !== false && call.measurementComplete !== false
+            && (hasCallBreakdown || (data.usageAvailable !== false && data.measurementComplete !== false))
           if (usageAvailable) {
             addMetric(target, 'inputTokens', call.inputTokens); addMetric(target, 'outputTokens', call.outputTokens)
             addMetric(target, 'cachedInputTokens', call.cachedInputTokens); addMetric(target, 'cacheWriteInputTokens', call.cacheWriteInputTokens)
@@ -143,7 +145,7 @@ export function aggregateMeasurements(events: LoopEvent[], period: Period) {
           const measured = finite(call.inputTokens) && finite(call.outputTokens) && usageAvailable
           if (measured) target.measuredCalls++; else target.unknownCalls++
           if (finite(call.totalCostUsd)) target.costReportedCalls++
-          if (call.costMeasurementComplete === false || data.costMeasurementComplete === false) target.incompleteCosts++
+          if (call.costMeasurementComplete === false || (!hasCallBreakdown && data.costMeasurementComplete === false)) target.incompleteCosts++
         }
       }
       if (data.escalated === true) for (const target of targets) target.escalations++

@@ -11,7 +11,8 @@ import { writeScopesOverlap, validWriteScope } from '../loop/scheduler.js'
 import { withSharedWorkerSync } from '../loop/resource-pool.js'
 import { loadConfig, type Agent } from '../retrofit/config.js'
 import { detectHostAgent, resolveRunnerAgent } from '../agents/host.js'
-import { agentInvocation, buildWatchdogInvocation, isAgentAvailable, runAgent, type AgentResult, type Invocation } from '../loop/runner.js'
+import { agentInvocation, buildWatchdogInvocation, isAgentAvailable, runCapturedAgent, type AgentResult, type Invocation } from '../loop/runner.js'
+import { measureInvocation } from '../observability/invocation.js'
 
 const ProposalSchema = z.array(z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u),
@@ -175,7 +176,9 @@ export function runPrdDecompose(root: string, options: PrdDecomposeOptions): num
     const invocation = agentInvocation(planner.agent, prompt, root, 'safe', planner.selection)
     const result = withSharedWorkerSync(
       { targetDir: root, storyId: `prd-decompose:${parent.id}`, provider: planner.agent, role: 'implementation' },
-      () => (options.run ?? (item => runAgent(buildWatchdogInvocation(item, options.timeoutMinutes === undefined ? 20 * 60_000 : options.timeoutMinutes > 0 ? options.timeoutMinutes * 60_000 : 0))))(invocation),
+      () => measureInvocation({ root, agent: planner.agent, role: 'prd-decompose', storyId: parent.id, selection: planner.selection, invocation,
+        execute: options.run ?? (item => runCapturedAgent(planner.agent, buildWatchdogInvocation(item, options.timeoutMinutes === undefined ? 20 * 60_000 : options.timeoutMinutes > 0 ? options.timeoutMinutes * 60_000 : 0))),
+      }),
     )
     if (!result.success) throw Error(`planning request failed: ${result.summary}`)
     if (!existsSync(proposalPath)) throw Error('planner did not create the requested proposal file')

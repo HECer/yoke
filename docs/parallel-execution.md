@@ -80,15 +80,43 @@ one serial integration lane when integration measurements exist. Older runs with
 remain visible as missing integration history; forecasts are empirical ranges, not deadlines, and do
 not predict future contention from other projects.
 
-### Rejected integration recovery
+### Interrupted work and rejected integration recovery
 
-Worker and integrated-tree gates receive the same `YOKE_STORY` context. A rejected
-candidate is retained with its reason and an `integration-recovery.json` proof record;
-it is not silently discarded and regenerated. The next parallel run can reuse it
-without a new implementation model call when canonical project/worktree ownership,
-Git registration, target base and PRD digest still match. Integration gates run again.
-Changed target or PRD state blocks recovery and requires explicit reconciliation.
-Generated worktree names are shorter and Windows path limits are checked before setup.
+Worker and integrated-tree gates receive the same `YOKE_STORY` context. Production
+parallel execution retains useful work after failed gates, pause, cancellation and
+decision boundaries. Versioned records under `.yoke/integration-recovery/` bind the
+worktree, original owner, Git base, PRD contract and failure reason to a recovery phase:
+
+- `implementation` resumes the retained implementation with the previous failure as
+  feedback. An unchanged or descendant target is allowed after ownership and history
+  validation; integration still rebases and runs its gates.
+- `integration` resumes an already prepared candidate without another implementation
+  call. It requires the unchanged target base and reruns integration gates.
+
+Both phases require a valid registered worktree in the same repository and the same
+PRD contract. Untrusted or stale state requires explicit reconciliation. Generated
+worktree names are shorter and Windows path limits are checked before setup.
+
+Optional candidate races defer destructive loser cleanup until successful selection.
+If every candidate fails, the race pauses or is cancelled, or selection cannot finish,
+materialized candidates are retained after process cleanup. The first retained
+candidate occupies the ordinary story recovery record and resumes on the next run.
+Additional alternatives have separate records and remain available for inspection
+and explicit worktree cleanup; Yoke does not automatically schedule another race to
+compare those retained alternatives. Successful selection still removes unselected
+alternatives. A failed retention write reports recovery information and leaves the
+files in place. Custom or injected lifecycles without the optional `retain` hook keep
+their own existing cleanup contract.
+
+Retention preserves implementation and evidence, but consumes disk until integration
+or intentional cleanup. It does not reconstruct a previous process's routing callback:
+a recovered integration cannot manufacture a missing economic success observation.
+
+Repeated failures are tracked persistently against source, failure and approved
+contract identity. The first unchanged failure permits retry, the second requests a
+focused diagnosis, and the third blocks as `no-progress`. A real source, assertion,
+failure or approved-plan change resets the sequence. Volatile test durations and
+reporter timestamps do not reset it; concurrent candidates have separate scopes.
 
 Goals also use the worker pool. Their asynchronous checks use a separate default-one
 check pool; see [goal resources](GOALS.md). These are concurrency permits, not hard CPU

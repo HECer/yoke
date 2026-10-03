@@ -1,4 +1,5 @@
 import { roleSelection } from "../routing/capability.js"
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { existsSync, unlinkSync } from 'node:fs'
 import { loadConfig, saveConfig, defaultConfig, resolveOutputPolicy, resolveVerifyCommand, type DecisionPolicy } from '../retrofit/config.js'
@@ -39,6 +40,15 @@ import { runPrdExplore } from '../prd/explore.js'
 
 export const DEFAULT_IDLE_MINUTES = 20
 const STALE_MINUTES = 20  // a running status older than this likely means the loop died
+const nativeReporters = new WeakSet<LoopReporter>()
+
+function executionPolicyFingerprint(policy: Readonly<Record<string, unknown>>): string {
+  const canonical = JSON.stringify(policy, (_key, value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+    return Object.fromEntries(Object.keys(value).sort().map(key => [key, (value as Record<string, unknown>)[key]]))
+  })
+  return createHash('sha256').update(canonical).digest('hex')
+}
 
 export function relativeTime(fromIso: string, now: Date): string {
   const ms = Math.max(0, now.getTime() - Date.parse(fromIso))
@@ -130,6 +140,8 @@ export function resolveIdleMs(flagMinutes: number | undefined, configMinutes: nu
 }
 
 export interface RunLoopCommandOptions {
+  /** Internal recovery handoff; not a new acceptance contract. */
+  recoveryFeedback?: string
   /** Internal runtime ownership; never serialized. */
   ownedLockToken?: string
   savedRun?: SavedRunState
@@ -289,6 +301,7 @@ async function runContinuousExploration(targetDir: string, options: RunLoopComma
   }
   const limitDeadline = options.savedRun?.exploreDeadline ?? (options.exploreLimitMs === undefined ? undefined : Date.now() + options.exploreLimitMs)
   const reporter = options.reporter ?? makeReporter(targetDir, { json: options.json, quiet: true })
+  if (!options.reporter) nativeReporters.add(reporter)
   let config: ReturnType<typeof loadConfig>
   try { config = loadConfig(targetDir) } catch { config = null }
   const defaultImplementationAgent = options.agent ?? resolveRunnerAgent(config, undefined, detectHostAgent())
@@ -304,6 +317,7 @@ async function runContinuousExploration(targetDir: string, options: RunLoopComma
   let reviewerAgent = options.reviewer ?? (reviewRequested ? SUPPORTED_AGENTS.find(agent => agent !== defaultImplementationAgent && available(agent)) : undefined)
   let explorationAgent = defaultExplorer
   let retryWorktree = false
+  let retryFeedback: string | undefined
   const safeBatchSize = (): number => {
     if (retryWorktree) return 1
     const parallelSetting = options.parallelAuto ? 'auto' : options.parallel ?? config?.loop.parallel ?? 'auto'
@@ -404,6 +418,7 @@ async function runContinuousExploration(targetDir: string, options: RunLoopComma
       resultCode = await Promise.resolve(runLoopCommand(targetDir, {
         ...innerOptions,
         agent: implementationAgent,
+        recoveryFeedback: retryFeedback,
         ...(reviewRequested && reviewerAgent ? { reviewer: reviewerAgent } : {}),
         ...(batchLimit !== undefined ? { maxIterations: batchLimit } : {}),
         ...(retryWorktree ? { resumeWorktree: true, parallel: 1, candidates: 1 } : {}),
@@ -485,7 +500,11 @@ async function runContinuousExploration(targetDir: string, options: RunLoopComma
       }
       continue
     }
-    if (afterStatus?.reason?.startsWith('integrated completion gate failed') && allCurrentStoriesPass(targetDir)) {
+    if (afterStatus?.failure?.kind === 'no-progress') {
+      reporter.blocked(afterStatus.reason ?? 'Automatic continuation stopped after unchanged failures', afterStatus.failure)
+      return 1
+    }
+    if (afterStatus?.failure?.kind === 'completion-failed' && allCurrentStoriesPass(targetDir)) {
       retryWorktree = false
       reporter.phase('exploring', `all planned tasks pass, but ${afterStatus.reason}; looking for work that can resolve the completion gate`, currentProgress(targetDir))
       const scan = await scanForWork(`The integrated completion gate is still failing: ${afterStatus.reason}`)
@@ -507,6 +526,7 @@ async function runContinuousExploration(targetDir: string, options: RunLoopComma
     }
 
     retryCount++
+    retryFeedback = afterStatus?.reason
     advanceRecoveryProviders()
     retryWorktree = (afterStatus?.parallel?.reopened ?? 0) === 0
     const wait = retryDelay(retryCount)
@@ -601,9 +621,10 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }
   }
   const outputPolicy = resolveOutputPolicy(config)
+  const configuredVerifyCommand = opts.verify ? undefined : resolveVerifyCommand(targetDir, config)
   let verify = opts.verify
   if (!verify) {
-    const command = resolveVerifyCommand(targetDir, config)
+    const command = configuredVerifyCommand
     if (!command) {
       console.error('No verify command configured. Set verify.command in .yoke/config.yaml (e.g. "npm test") so the loop can confirm tests pass before marking work done.')
       return 2
@@ -771,6 +792,69 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     commit: (_path, request) => commitPaths(targetDir, ['.yoke/prd.yaml'], `yoke: plan change ${request.id}`, commitIdentity),
   }))
 
+  const reviewerProviders = !opts.reviewRunner && (opts.review || opts.reviewer) ? SUPPORTED_AGENTS.filter(available) : []
+  let review = opts.reviewRunner
+  let reviewProvider: string = 'unknown'
+  if (!review && (opts.review || opts.reviewer)) {
+    const reviewerAgent = opts.reviewer ?? reviewerProviders.find(agent => agent !== runnerAgent)
+    if (!reviewerAgent) {
+      if (!opts.allowSelfReview) {
+        console.error('No independent reviewer CLI is available. Install or select a second agent, or pass --allow-self-review explicitly.')
+        return 2
+      }
+    }
+    const resolvedReviewer = reviewerAgent ?? runnerAgent
+    reviewProvider = resolvedReviewer
+    if (resolvedReviewer === runnerAgent && !opts.allowSelfReview) {
+      console.error(`Reviewer "${resolvedReviewer}" is also the implementer. Pick another agent or pass --allow-self-review explicitly.`)
+      return 2
+    }
+    if (!available(resolvedReviewer)) {
+      console.error(`Reviewer agent CLI "${resolvedReviewer}" was not found on PATH. Install it, or pick another with --reviewer=<${AGENT_LIST}>.`)
+      return 2
+    }
+    review = context => {
+      const implementer = readStatus(targetDir)?.routingDecisions?.[context.story.id]?.provider ?? runnerAgent
+      const selectedReviewer = !opts.reviewer && resolvedReviewer === implementer
+        ? reviewerProviders.find(agent => agent !== implementer) ?? resolvedReviewer : resolvedReviewer
+      if (selectedReviewer === implementer && !opts.allowSelfReview) return { success: false, summary: "Independent review requires a provider distinct from the routed implementer", reviewOutcome: { kind: "infrastructure", summary: "Routed implementation and reviewer share a provider" } }
+      reviewProvider = selectedReviewer
+      return makeReviewRunner(selectedReviewer, idleMs, undefined, routingEnabled ? roleSelection(targetDir, config, context.story, selectedReviewer, "reviewer") : undefined)(context)
+    }
+  }
+
+  if (review) {
+    const reviewRunner = review
+    review = context => {
+      const started = Date.now()
+      let result: import('./runner.js').AgentResult | undefined
+      try { result = reviewRunner(context); return result }
+      finally { executionReporter?.addTokens({ inputTokens: 0, outputTokens: 0, measurementComplete: result?.tokens !== undefined, ...result?.tokens, provider: reviewProvider, role: 'reviewer', storyId: context.story.id, durationMs: Date.now() - started }) }
+    }
+  }
+
+  // Only native, attributable roles justify comparisons of complete attempts.
+  // Concurrent candidates have ambiguous story-wide role attribution and remain
+  // conservative until their costs can be joined to an individual alternative.
+  const completeAccounting = candidates === 1 && !opts.runner && !opts.verify && !opts.design && !opts.perf && !opts.audit
+    && !opts.reviewRunner && !opts.qualityRuntime && !opts.git && !opts.intake
+    && (!opts.reporter || nativeReporters.has(opts.reporter))
+  const accountingScope = completeAccounting ? 'execution-attempt' as const : undefined
+  const executionPolicyKey = completeAccounting ? executionPolicyFingerprint({
+    version: 1,
+    mode: useParallelDispatcher ? candidates > 1 ? 'candidates' : 'parallel' : 'serial',
+    parallel, candidates, isolate: useParallelDispatcher || isolate,
+    verify: { command: configuredVerifyCommand, retries: config.verify?.retries ?? 1, requireCriteria: config.verify?.requireCriteria ?? false },
+    design: design ? { max: config.design?.max } : false,
+    perf: perf ? { command: config.perf?.command, retries: config.perf?.retries ?? 1 } : false,
+    audit: audit ? config.audit : false,
+    completion: completion ? { command: config.completion?.command, retries: config.completion?.retries ?? 1 } : false,
+    quality: quality ? { defaults: config.quality, overrides: qualityOverrides, limits: quality.repairLimits, runnerAgent, runner: config.runner, agents: config.agents } : false,
+    review: review ? { provider: reviewProvider, explicitProvider: opts.reviewer, eligibleProviders: reviewerProviders, allowSelfReview: opts.allowSelfReview ?? false } : false,
+    roleRouting: routingEnabled && (quality || review) ? config.routing : false,
+    permissions: { implementation: permissions, orchestrator: 'read-only', reviewer: 'read-only', critic: 'read-only', repair: 'safe' },
+    idleMs, ambiguityPolicy,
+  }) : undefined
   let runner = opts.runner
   if (!runner) {
     const requiredProviders = useParallelDispatcher
@@ -802,6 +886,9 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
           strategy: config.routing.strategy,
           maxCandidates: config.routing.maxCandidates,
           maxAttempts: config.routing.maxAttempts,
+          optimization: config.routing.optimization,
+          accountingScope,
+          executionPolicyKey,
           planner: resolvePlanner(config, runnerAgent, runnerSelection),
           assessmentPolicy: config.routing.assessmentPolicy,
           fallback: config.routing.fallback,
@@ -820,45 +907,6 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   if (config.actions?.length) {
     if (parallel > 1 || candidates > 1) { console.error('Configured tool actions currently require --parallel=1 --candidates=1'); return 2 }
     runner = makeActionRunner(config.actions, runner)
-  }
-  let review = opts.reviewRunner
-  let reviewProvider: string = 'unknown'
-  if (!review && (opts.review || opts.reviewer)) {
-    const reviewerAgent = opts.reviewer ?? SUPPORTED_AGENTS.find(agent => agent !== runnerAgent && available(agent))
-    if (!reviewerAgent) {
-      if (!opts.allowSelfReview) {
-        console.error('No independent reviewer CLI is available. Install or select a second agent, or pass --allow-self-review explicitly.')
-        return 2
-      }
-    }
-    const resolvedReviewer = reviewerAgent ?? runnerAgent
-    reviewProvider = resolvedReviewer
-    if (resolvedReviewer === runnerAgent && !opts.allowSelfReview) {
-      console.error(`Reviewer "${resolvedReviewer}" is also the implementer. Pick another agent or pass --allow-self-review explicitly.`)
-      return 2
-    }
-    if (!available(resolvedReviewer)) {
-      console.error(`Reviewer agent CLI "${resolvedReviewer}" was not found on PATH. Install it, or pick another with --reviewer=<${AGENT_LIST}>.`)
-      return 2
-    }
-    review = context => {
-      const implementer = readStatus(targetDir)?.routingDecisions?.[context.story.id]?.provider ?? runnerAgent
-      const selectedReviewer = !opts.reviewer && resolvedReviewer === implementer
-        ? SUPPORTED_AGENTS.find(agent => agent !== implementer && available(agent)) ?? resolvedReviewer : resolvedReviewer
-      if (selectedReviewer === implementer && !opts.allowSelfReview) return { success: false, summary: "Independent review requires a provider distinct from the routed implementer", reviewOutcome: { kind: "infrastructure", summary: "Routed implementation and reviewer share a provider" } }
-      reviewProvider = selectedReviewer
-      return makeReviewRunner(selectedReviewer, idleMs, undefined, routingEnabled ? roleSelection(targetDir, config, context.story, selectedReviewer, "reviewer") : undefined)(context)
-    }
-  }
-
-  if (review) {
-    const reviewRunner = review
-    review = context => {
-      const started = Date.now()
-      let result: import('./runner.js').AgentResult | undefined
-      try { result = reviewRunner(context); return result }
-      finally { executionReporter?.addTokens({ inputTokens: 0, outputTokens: 0, measurementComplete: result?.tokens !== undefined, ...result?.tokens, provider: reviewProvider, role: 'reviewer', storyId: context.story.id, durationMs: Date.now() - started }) }
-    }
   }
   if (!useParallelDispatcher) {
     if (runner) {
@@ -953,6 +1001,8 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       providers: parallelProviders,
       affinityProviders: parallelAffinityProviders,
       routing: routingEnabled ? config.routing : undefined,
+      accountingScope,
+      executionPolicyKey,
       planning: config.planning,
       isAvailable: available,
       onAmbiguity: ambiguityPolicy,
@@ -977,6 +1027,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       prdPath: path,
       targetDir,
       runner,
+      feedback: opts.recoveryFeedback,
       git,
       commitIdentity,
       verify,

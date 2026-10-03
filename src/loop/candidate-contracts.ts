@@ -29,6 +29,8 @@ export type CandidateLifecycle = {
   readonly cancel: (input: CandidateOwnership, reason: string) => MaybePromise<void>
   readonly reap: (input: CandidateOwnership) => MaybePromise<void>
   readonly remove: (input: CandidateOwnership) => MaybePromise<void>
+  /** Preserve interrupted work after process cleanup; older custom lifecycles keep their own cleanup policy. */
+  readonly retain?: (input: CandidateOwnership, reason: string, phase: 'implementation' | 'integration') => MaybePromise<void>
 }
 
 export type CandidateEvidence = { readonly digest: string; readonly artifacts: readonly string[] }
@@ -49,8 +51,8 @@ export type CandidateComparisonTrail = {
   readonly selectedDigest: string
 }
 export type CandidateWinner = CandidateEvidenceInput & CandidateEvidence & { readonly comparisons: readonly CandidateComparisonTrail[] }
-export type CandidateCleanupStage = 'cancel' | 'reap' | 'remove'
-export type CandidateLifecycleState = 'reserved' | 'materialized' | 'running' | 'selecting' | 'cleaning' | 'removed'
+export type CandidateCleanupStage = 'cancel' | 'reap' | 'remove' | 'retain'
+export type CandidateLifecycleState = 'reserved' | 'materialized' | 'running' | 'selecting' | 'cleaning' | 'removed' | 'retained'
 export type CandidateRecoveryOwnership = CandidateProvenance & { readonly worktree: CandidateWorktree }
 export type CandidateRecovery = {
   readonly ownership: CandidateRecoveryOwnership

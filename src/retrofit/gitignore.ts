@@ -4,6 +4,7 @@ import { join } from 'node:path'
 export const YOKE_IGNORE_LINES = [
   '.yoke/worktrees/',
   '.yoke/integration-recovery/',
+  '.yoke/failure-progress/',
   '.yoke/run-state.json',
   '.yoke/run-state.*.tmp',
   '.yoke/backup/',
@@ -32,6 +33,7 @@ export const YOKE_IGNORE_LINES = [
   '.yoke/checks/',
   '.yoke/events/',
   '.yoke/history/', '.yoke/routing/',
+  '.yoke/routing-attempts/',
   '.yoke/goal.json',
   '.yoke/goal.json.*.tmp',
   '.yoke/goal.pause',

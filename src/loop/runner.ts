@@ -11,6 +11,7 @@ import { loadContext, formatForPrompt, contextDir } from '../context/context.js'
 import { contextPacket } from '../context/packet.js'
 import { buildProviderInvocation, startProviderProcess } from '../agents/providers.js'
 import { parseProviderResult, parseProviderTelemetry } from '../agents/telemetry.js'
+import { providerTelemetryUsage } from '../observability/usage.js'
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
 import type { ProviderProcessHandle, ProviderProcessOptions } from '../agents/process.js'
 import { formatReviewContract, formatReviewStdoutContract, parseReviewVerdict, type ReviewVerdict } from '../review/verdict.js'
@@ -324,7 +325,7 @@ export interface CapturedAgentRun {
 export function runCapturedAgent(agent: Agent, inv: Invocation): CapturedAgentRun {
   try {
     const output = runCliCapture(inv)
-    return { success: true, output, summary: 'exited 0', tokens: parseProviderTelemetry(agent, output.split(/\r?\n/)).tokens }
+    return { success: true, output, summary: 'exited 0', tokens: providerTelemetryUsage(parseProviderTelemetry(agent, output.split(/\r?\n/))) }
   } catch (error) {
     const partial = (error as { stdout?: unknown }).stdout
     const output = partial == null ? '' : String(partial)
@@ -332,7 +333,7 @@ export function runCapturedAgent(agent: Agent, inv: Invocation): CapturedAgentRu
       success: false,
       output,
       summary: (error as Error).message,
-      tokens: output ? parseProviderTelemetry(agent, output.split(/\r?\n/)).tokens : undefined,
+      tokens: output ? providerTelemetryUsage(parseProviderTelemetry(agent, output.split(/\r?\n/))) : undefined,
     }
   }
 }
@@ -434,11 +435,11 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
       try {
         const out = capture(inv)
         const telemetry = parseProviderTelemetry(agent, out.split(/\r?\n/))
-        return { success: true, summary: `${agent} implemented ${ctx.story.id}`, tokens: attributed(telemetry.tokens) }
+        return { success: true, summary: `${agent} implemented ${ctx.story.id}`, tokens: attributed(providerTelemetryUsage(telemetry)) }
       } catch (e) {
         // Salvage usage from whatever the agent streamed before dying — those tokens were spent.
         const partial = (e as { stdout?: unknown }).stdout
-        const tokens = partial == null ? undefined : parseProviderTelemetry(agent, String(partial).split(/\r?\n/)).tokens
+        const tokens = partial == null ? undefined : providerTelemetryUsage(parseProviderTelemetry(agent, String(partial).split(/\r?\n/)))
         const reason = readSupervision(ctx.targetDir, new Date(started).toISOString())[0]?.reason
         return { success: false, infrastructureFailure: true, summary: `${agent} failed on ${ctx.story.id}: ${reason ?? (e as Error).message}`, tokens: attributed(tokens) }
       }

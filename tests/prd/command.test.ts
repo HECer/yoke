@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runPrdDraft, runPrdCheck, buildPrdDraftPrompt, PRD_TEMPLATE } from '../../src/prd/command.js'
@@ -129,6 +129,19 @@ describe('runPrdDraft', () => {
   it('fails when the agent run fails', () => {
     const run = (_: Invocation) => ({ success: false, summary: 'boom' })
     expect(runPrdDraft(dir, { idea: 'x', isAvailable: () => true, run })).toBe(1)
+  })
+
+  it('restores the previous PRD when the measured runner writes and throws', () => {
+    const path = join(dir, '.yoke', 'prd.yaml')
+    writeFileSync(path, VALID_PRD)
+    const code = runPrdDraft(dir, { idea: 'x', force: true, isAvailable: () => true, run: () => {
+      writeFileSync(path, 'partial replacement')
+      throw Error('provider interrupted')
+    } })
+    expect(code).toBe(1)
+    expect(readFileSync(path, 'utf8')).toBe(VALID_PRD)
+    // The failed call also releases planner ownership.
+    expect(runPrdDraft(dir, { idea: 'x', force: true, isAvailable: () => true, run: writingRun(VALID_PRD) })).toBe(0)
   })
 })
 

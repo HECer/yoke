@@ -5,7 +5,9 @@ import { join, relative } from 'node:path'
 import { isAcceptanceCriterion, loadPrd, savePrd, selectNextStory, allPass, progress, storyPathSegment, type AcceptanceCriterion, type Story } from './prd.js'
 import { stopTheLineGate, preDispatchGate, type GitOps } from './gates.js'
 import type { AgentContext, AgentResult, AgentRunner } from './runner.js'
-import type { Verifier } from './verify.js'
+import type { Verifier, VerifyResult } from './verify.js'
+import { observeFailure, clearFailureProgress, type LoopFailure, type FailureStage } from './failure.js'
+import { gateIdentity, snapshotGates, reuseGates, type GateSnapshot } from './gate-snapshot.js'
 import { appendDecision, contextDir } from '../context/context.js'
 import { noopReporter, type LoopReporter } from './reporter.js'
 import type { CommitIdentity } from './identity.js'
@@ -28,6 +30,7 @@ export interface LoopOptions {
   prdPath: string
   targetDir: string
   runner: AgentRunner
+  feedback?: string
   git: GitOps
   verify: Verifier
   design?: Verifier
@@ -78,7 +81,7 @@ function runQualityReview(
   executionDir: string,
   story: Story,
   reporter: LoopReporter,
-): ReturnType<typeof runQualityRepairLoop> | null {
+): (ReturnType<typeof runQualityRepairLoop> & { readonly failure?: LoopFailure }) | null {
   const qualityAssessment = opts.qualityEnabled?.(story) === false ? undefined : opts.qualityStage
   const reviewAssessment = opts.review
   if (!qualityAssessment && !reviewAssessment) return null
@@ -106,7 +109,8 @@ function runQualityReview(
     }
     return { kind: 'passed' as const }
   }
-  return runQualityRepairLoop({
+  let failure: LoopFailure | undefined
+  const outcome = runQualityRepairLoop({
     quality: qualityAssessment
       ? round => {
         reporter.phase('comparing')
@@ -122,7 +126,10 @@ function runQualityReview(
     repair: request => {
       reporter.phase('repairing')
       if (!opts.repair) return { kind: 'blocked', summary: 'repair callback is not configured' }
-      const result = opts.repair({ targetDir: executionDir, story }, request)
+      const observed = observeFailure({ root: opts.targetDir, directory: executionDir, story, stage: 'quality', summary: JSON.stringify(request.finding) })
+      if (observed.action === 'blocked') { failure = observed.failure; return { kind: 'blocked', summary: observed.feedback } }
+      const targetedRequest = observed.action === 'diagnose' ? { ...request, finding: { ...request.finding, message: observed.feedback } } : request
+      const result = opts.repair({ targetDir: executionDir, story }, targetedRequest)
       return result.success ? { kind: 'repaired' } : { kind: 'blocked', summary: result.summary }
     },
     rerunGates,
@@ -132,10 +139,12 @@ function runQualityReview(
       if (qualityMetadata) reporter.quality({ ...status, ...qualityMetadata })
     },
   })
+  return { ...outcome, ...(failure ? { failure } : {}) }
 }
 
 export interface LoopResult {
   status: 'complete' | 'blocked' | 'cap-reached' | 'paused'
+  failure?: LoopFailure
   iterations: number
   reason?: string
   finalProgress: { passed: number; total: number }
@@ -185,7 +194,7 @@ function runGate(gate: Verifier, dir: string, storyId: string) {
   }
 }
 
-function consumeAmbiguity(dir: string): string | null {
+export function consumeAmbiguity(dir: string): string | null {
   const file = ambiguityFilePath(dir)
   if (!existsSync(file)) return null
   let content = ''
@@ -199,21 +208,21 @@ function runCompletionGate(opts: LoopOptions, stories: Story[]): LoopResult | nu
   if (!opts.completion) return null
   const previous = process.env.YOKE_PHASE
   process.env.YOKE_PHASE = 'completion'
-  let verdict
+  let reason: string | undefined
   try {
-    verdict = opts.completion(opts.targetDir)
+    const verdict = opts.completion(opts.targetDir)
+    if (!verdict.passed) reason = `integrated system did not verify: ${verdict.summary}`
   } catch (error) {
-    const reason = `integrated completion gate failed: ${(error as Error).message}`
-    ;(opts.reporter ?? noopReporter).blocked(reason)
-    return { status: 'blocked', iterations: 0, reason, finalProgress: progress(stories) }
+    reason = `integrated completion gate failed: ${(error as Error).message}`
   } finally {
     if (previous === undefined) delete process.env.YOKE_PHASE
     else process.env.YOKE_PHASE = previous
   }
-  if (verdict.passed) return null
-  const reason = `integrated system did not verify: ${verdict.summary}`
-  ;(opts.reporter ?? noopReporter).blocked(reason)
-  return { status: 'blocked', iterations: 0, reason, finalProgress: progress(stories) }
+  if (!reason) { clearFailureProgress(opts.targetDir); return null }
+  const observed = observeFailure({ root: opts.targetDir, directory: opts.targetDir, stage: 'completion', summary: reason })
+  if (observed.action !== 'retry') reason = observed.feedback
+  ;(opts.reporter ?? noopReporter).blocked(reason, observed.failure)
+  return { status: 'blocked', iterations: 0, reason, failure: observed.failure, finalProgress: progress(stories) }
 }
 
 function runCriterionGates(opts: LoopOptions, executionDir: string, story: Story): { passed: boolean; summary: string } {
@@ -348,77 +357,79 @@ export function runLoop(opts: LoopOptions): LoopResult {
       const wt = join(opts.targetDir, '.yoke', 'worktrees', storyPathSegment(story.id))
       const wtPrd = join(wt, relative(opts.targetDir, opts.prdPath))
       let landed: { passed: number; total: number } | null = null
+      let activeRouting: AgentResult['routing']
       try {
         opts.git.addWorktree(opts.targetDir, wt)
-        const result = runImplementation(opts, wt, story, reporter)
+        const implementation = runImplementation(opts, wt, story, reporter)
+        const result = implementation.result
+        activeRouting = result.routing
         iterations++
         if (result.tokens) reporter.addTokens(result.tokens)
-        if (result.infrastructureFailure || result.routing?.blocked) { if (result.infrastructureFailure) result.routing?.recordOutcome(false, "infrastructure"); reporter.blocked(result.summary); return { status: "blocked", iterations, reason: result.summary, finalProgress: progress(stories) } }
+        if (result.infrastructureFailure || result.routing?.blocked) { if (result.infrastructureFailure) result.routing?.recordOutcome(false, "infrastructure"); reporter.blocked(result.summary, implementation.failure); return { status: "blocked", iterations, reason: result.summary, ...(implementation.failure ? { failure: implementation.failure } : {}), finalProgress: progress(stories) } }
         let decision
         try { decision = consumeDecisionRequest(wt, opts.targetDir, story.id) } catch (error) {
+          result.routing?.recordOutcome(false, 'infrastructure')
           const reason = `invalid critical decision request for story ${story.id}: ${(error as Error).message}`
           reporter.blocked(reason)
           return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
         }
         if (decision) {
+          result.routing?.recordOutcome(false, 'infrastructure')
           const reason = `critical decision required for story ${story.id}: ${decision.question}`
           reporter.blocked(reason)
           return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
         }
         const ambiguity = consumeAmbiguity(wt)
         if (ambiguity) {
+          result.routing?.recordOutcome(false, 'infrastructure')
           const reason = `story ${story.id} stopped: ambiguous acceptance criteria — ${ambiguity}`
           reporter.blocked(reason)
           return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
         }
-        const criteriaVerdict = runCriterionGates(opts, wt, story)
+        const verified = reuseGates(wt, story, implementation.gates)
+        const criteriaVerdict = verified?.criteria ?? runCriterionGates(opts, wt, story)
         if (!criteriaVerdict.passed) {
           result.routing?.recordOutcome(false)
           const reason = blockReason(`story ${story.id} lacks acceptance evidence: ${criteriaVerdict.summary}`, opts.targetDir, opts.git)
-          reporter.blocked(reason)
-          return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+          return blockedMechanicalGate(opts, wt, story, 'criterion', criteriaVerdict.summary, reason, iterations, stories)
         }
         // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
         // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
         reporter.phase('verifying')
-        const verdict = runGate(opts.verify, wt, story.id)
+        const verdict = verified?.verify ?? runGate(opts.verify, wt, story.id)
         if (!verdict.passed) {
           result.routing?.recordOutcome(false)
           const base = result.success
             ? `story ${story.id} did not verify: ${verdict.summary}`
             : `story ${story.id} runner failed (${result.summary}) and verify is red: ${verdict.summary}`
           const reason = blockReason(base, opts.targetDir, opts.git)
-          reporter.blocked(reason)
-          return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+          return blockedMechanicalGate(opts, wt, story, 'verify', verdict.summary, reason, iterations, stories)
         }
         if (opts.design) {
           reporter.phase('design')
-          const designVerdict = runGate(opts.design, wt, story.id)
+          const designVerdict = verified?.design ?? runGate(opts.design, wt, story.id)
           if (!designVerdict.passed) {
             result.routing?.recordOutcome(false)
             const reason = blockReason(`story ${story.id} failed its design gate: ${designVerdict.summary}`, opts.targetDir, opts.git)
-            reporter.blocked(reason)
-            return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+            return blockedMechanicalGate(opts, wt, story, 'design', designVerdict.summary, reason, iterations, stories)
           }
         }
         if (opts.perf) {
           reporter.phase('perf')
-          const perfVerdict = runGate(opts.perf, wt, story.id)
+          const perfVerdict = verified?.perf ?? runGate(opts.perf, wt, story.id)
           if (!perfVerdict.passed) {
             result.routing?.recordOutcome(false)
             const reason = blockReason(`story ${story.id} exceeded its performance budget: ${perfVerdict.summary}`, opts.targetDir, opts.git)
-            reporter.blocked(reason)
-            return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+            return blockedMechanicalGate(opts, wt, story, 'perf', perfVerdict.summary, reason, iterations, stories)
           }
         }
         if (opts.audit) {
           reporter.phase('audit')
-          const auditVerdict = runGate(opts.audit, wt, story.id)
+          const auditVerdict = verified?.audit ?? runGate(opts.audit, wt, story.id)
           if (!auditVerdict.passed) {
             result.routing?.recordOutcome(false)
             const reason = blockReason(`story ${story.id} failed security audit: ${auditVerdict.summary}`, opts.targetDir, opts.git)
-            reporter.blocked(reason)
-            return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+            return blockedMechanicalGate(opts, wt, story, 'audit', auditVerdict.summary, reason, iterations, stories)
           }
         }
         const summary = result.success
@@ -427,14 +438,15 @@ export function runLoop(opts: LoopOptions): LoopResult {
         const repairOutcome = runQualityReview(opts, wt, story, reporter)
         if (repairOutcome) {
           if (repairOutcome.kind === 'paused') {
+            result.routing?.recordOutcome(false, 'infrastructure')
             reporter.paused(progress(stories))
             return { status: 'paused', iterations, finalProgress: progress(stories) }
           }
           const reason = repairBlockReason(repairOutcome, story, opts.targetDir, opts.git)
           if (reason) {
             result.routing?.recordOutcome(false)
-            reporter.blocked(reason)
-            return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+            reporter.blocked(reason, repairOutcome.failure)
+            return { status: 'blocked', iterations, reason, ...(repairOutcome.failure ? { failure: repairOutcome.failure } : {}), finalProgress: progress(stories) }
           }
         }
         const protection = acceptanceProtectionProblem(wt, opts.targetDir)
@@ -456,8 +468,10 @@ export function runLoop(opts: LoopOptions): LoopResult {
         opts.git.commitAll(wt, `yoke: complete ${story.id} ${story.title}`, opts.commitIdentity)
         opts.git.integrate(opts.targetDir, wt)
         result.routing?.recordOutcome(true)
+        clearFailureProgress(opts.targetDir, story.id)
         landed = progress(updated)
       } catch (e) {
+        activeRouting?.recordOutcome(false, 'infrastructure')
         const reason = blockReason(`isolated iteration failed for ${story.id}: ${(e as Error).message}`, opts.targetDir, opts.git)
         reporter.blocked(reason)
         return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
@@ -472,18 +486,21 @@ export function runLoop(opts: LoopOptions): LoopResult {
       continue
     }
 
-    const result = runImplementation(opts, opts.targetDir, story, reporter)
+    const implementation = runImplementation(opts, opts.targetDir, story, reporter)
+    const result = implementation.result
     iterations++
     if (result.tokens) reporter.addTokens(result.tokens)
-        if (result.infrastructureFailure || result.routing?.blocked) { if (result.infrastructureFailure) result.routing?.recordOutcome(false, "infrastructure"); reporter.blocked(result.summary); return { status: "blocked", iterations, reason: result.summary, finalProgress: progress(stories) } }
+        if (result.infrastructureFailure || result.routing?.blocked) { if (result.infrastructureFailure) result.routing?.recordOutcome(false, "infrastructure"); reporter.blocked(result.summary, implementation.failure); return { status: "blocked", iterations, reason: result.summary, ...(implementation.failure ? { failure: implementation.failure } : {}), finalProgress: progress(stories) } }
 
     let decision
     try { decision = consumeDecisionRequest(opts.targetDir, opts.targetDir, story.id) } catch (error) {
+      result.routing?.recordOutcome(false, 'infrastructure')
       const reason = `invalid critical decision request for story ${story.id}: ${(error as Error).message}`
       reporter.blocked(reason)
       return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
     }
     if (decision) {
+      result.routing?.recordOutcome(false, 'infrastructure')
       const reason = `critical decision required for story ${story.id}: ${decision.question}`
       reporter.blocked(reason)
       return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
@@ -491,65 +508,57 @@ export function runLoop(opts: LoopOptions): LoopResult {
 
     const ambiguity = consumeAmbiguity(opts.targetDir)
     if (ambiguity) {
+      result.routing?.recordOutcome(false, 'infrastructure')
       const reason = `story ${story.id} stopped: ambiguous acceptance criteria — ${ambiguity}`
       reporter.blocked(reason)
       return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
     }
 
-    const criteriaVerdict = runCriterionGates(opts, opts.targetDir, story)
+    const verified = reuseGates(opts.targetDir, story, implementation.gates)
+    const criteriaVerdict = verified?.criteria ?? runCriterionGates(opts, opts.targetDir, story)
     if (!criteriaVerdict.passed) {
       result.routing?.recordOutcome(false)
       const reason = blockReason(`story ${story.id} lacks acceptance evidence: ${criteriaVerdict.summary}`, opts.targetDir, opts.git)
-      reporter.blocked(reason)
-      return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+      return blockedMechanicalGate(opts, opts.targetDir, story, 'criterion', criteriaVerdict.summary, reason, iterations, stories)
     }
 
     // Verify is the source of truth — NOT the runner's exit code. A spurious non-zero
     // exit (e.g. a Windows .cmd wrapper ghost) must not block a story whose tests are green.
     reporter.phase('verifying')
-    const verdict = runGate(opts.verify, opts.targetDir, story.id)
+    const verdict = verified?.verify ?? runGate(opts.verify, opts.targetDir, story.id)
     if (!verdict.passed) {
       result.routing?.recordOutcome(false)
       const base = result.success
         ? `story ${story.id} did not verify: ${verdict.summary}`
         : `story ${story.id} runner failed (${result.summary}) and verify is red: ${verdict.summary}`
       const reason = blockReason(base, opts.targetDir, opts.git)
-      reporter.blocked(reason)
-      return {
-        status: 'blocked',
-        iterations,
-        reason,
-        finalProgress: progress(stories),
-      }
+      return blockedMechanicalGate(opts, opts.targetDir, story, 'verify', verdict.summary, reason, iterations, stories)
     }
     if (opts.design) {
       reporter.phase('design')
-      const designVerdict = runGate(opts.design, opts.targetDir, story.id)
+      const designVerdict = verified?.design ?? runGate(opts.design, opts.targetDir, story.id)
       if (!designVerdict.passed) {
         result.routing?.recordOutcome(false)
         const reason = blockReason(`story ${story.id} failed its design gate: ${designVerdict.summary}`, opts.targetDir, opts.git)
-        reporter.blocked(reason)
-        return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+        return blockedMechanicalGate(opts, opts.targetDir, story, 'design', designVerdict.summary, reason, iterations, stories)
       }
     }
     if (opts.perf) {
       reporter.phase('perf')
-      const perfVerdict = runGate(opts.perf, opts.targetDir, story.id)
+      const perfVerdict = verified?.perf ?? runGate(opts.perf, opts.targetDir, story.id)
       if (!perfVerdict.passed) {
         result.routing?.recordOutcome(false)
         const reason = blockReason(`story ${story.id} exceeded its performance budget: ${perfVerdict.summary}`, opts.targetDir, opts.git)
-        reporter.blocked(reason)
-        return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+        return blockedMechanicalGate(opts, opts.targetDir, story, 'perf', perfVerdict.summary, reason, iterations, stories)
       }
     }
     if (opts.audit) {
       reporter.phase('audit')
-      const auditVerdict = runGate(opts.audit, opts.targetDir, story.id)
+      const auditVerdict = verified?.audit ?? runGate(opts.audit, opts.targetDir, story.id)
       if (!auditVerdict.passed) {
         result.routing?.recordOutcome(false)
         const reason = blockReason(`story ${story.id} failed security audit: ${auditVerdict.summary}`, opts.targetDir, opts.git)
-        reporter.blocked(reason)
-        return { status: 'blocked', iterations, reason, finalProgress: progress(stories) }
+        return blockedMechanicalGate(opts, opts.targetDir, story, 'audit', auditVerdict.summary, reason, iterations, stories)
       }
     }
     const summary = result.success
@@ -559,17 +568,19 @@ export function runLoop(opts: LoopOptions): LoopResult {
     const repairOutcome = runQualityReview(opts, opts.targetDir, story, reporter)
     if (repairOutcome) {
       if (repairOutcome.kind === 'paused') {
+        result.routing?.recordOutcome(false, 'infrastructure')
         reporter.paused(progress(stories))
         return { status: 'paused', iterations, finalProgress: progress(stories) }
       }
       const reason = repairBlockReason(repairOutcome, story, opts.targetDir, opts.git)
       if (reason) {
         result.routing?.recordOutcome(false)
-        reporter.blocked(reason)
+        reporter.blocked(reason, repairOutcome.failure)
         return {
           status: 'blocked',
           iterations,
           reason,
+          ...(repairOutcome.failure ? { failure: repairOutcome.failure } : {}),
           finalProgress: progress(stories),
         }
       }
@@ -580,7 +591,6 @@ export function runLoop(opts: LoopOptions): LoopResult {
       result.routing?.recordOutcome(false); reporter.blocked(protection)
       return { status: 'blocked', iterations, reason: protection, finalProgress: progress(stories) }
     }
-    result.routing?.recordOutcome(true)
     reporter.phase('committing')
     const dec = appendDecision(contextDir(opts.targetDir), {
       storyId: story.id,
@@ -596,6 +606,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
     try {
       opts.git.commitAll(opts.targetDir, `yoke: complete ${story.id} ${story.title}`, opts.commitIdentity)
     } catch (e) {
+      result.routing?.recordOutcome(false, 'infrastructure')
       savePrd(opts.prdPath, onDisk) // revert — never persist passes:true without a commit
       dec.rollback()                 // and never leave an orphan decision
       const reason = blockReason(`commit failed for ${story.id}: ${(e as Error).message}`, opts.targetDir, opts.git)
@@ -607,29 +618,63 @@ export function runLoop(opts: LoopOptions): LoopResult {
         finalProgress: progress(stories),
       }
     }
+    result.routing?.recordOutcome(true)
+    clearFailureProgress(opts.targetDir, story.id)
     reporter.storyDone({ id: story.id, title: story.title }, progress(updated))
   }
 }
 
-function runImplementation(opts: LoopOptions, dir: string, story: Story, reporter: LoopReporter): AgentResult {
-  let feedback: string | undefined
+function blockedMechanicalGate(opts: LoopOptions, directory: string, story: Story, stage: FailureStage, summary: string, reason: string, iterations: number, stories: Story[]): LoopResult {
+  const observed = observeFailure({ root: opts.targetDir, directory, story, stage, summary })
+  const detail = observed.action === 'retry' ? reason : `${reason}\n${observed.feedback}`
+  ;(opts.reporter ?? noopReporter).blocked(detail, observed.failure)
+  return { status: 'blocked', iterations, reason: detail, failure: observed.failure, finalProgress: progress(stories) }
+}
+
+interface LocalMechanicalEvidence {
+  readonly criteria: VerifyResult
+  readonly verify?: VerifyResult
+  readonly design?: VerifyResult
+  readonly perf?: VerifyResult
+  readonly audit?: VerifyResult
+}
+
+interface ImplementationOutcome {
+  readonly result: AgentResult
+  readonly gates?: GateSnapshot<LocalMechanicalEvidence>
+  readonly failure?: LoopFailure
+}
+
+function runImplementation(opts: LoopOptions, dir: string, story: Story, reporter: LoopReporter): ImplementationOutcome {
+  let feedback: string | undefined = opts.feedback
   for (let attempt = 0; ; attempt++) {
     const result = opts.runner({ targetDir: dir, story, feedback })
-    if (!result.routing?.canRetry || result.routing.blocked || attempt >= 7) return result
-    if (["decision-request.yaml", "ambiguity.md", "loop.pause"].some(name => existsSync(join(dir, ".yoke", name))) || existsSync(pauseFilePath(opts.targetDir))) return result
+    if (!result.routing?.canRetry || result.routing.blocked || attempt >= 7) return { result }
+    if (["decision-request.yaml", "ambiguity.md", "loop.pause"].some(name => existsSync(join(dir, ".yoke", name))) || existsSync(pauseFilePath(opts.targetDir))) return { result }
     const protection = acceptanceProtectionProblem(dir, opts.targetDir)
-    if (protection) return result
+    if (protection) return { result }
+    const before = gateIdentity(dir, story)
     const criteria = runCriterionGates(opts, dir, story)
-    const gates = [opts.verify, opts.design, opts.perf, opts.audit].filter((gate): gate is Verifier => Boolean(gate))
+    const evidence: { criteria: VerifyResult; verify?: VerifyResult; design?: VerifyResult; perf?: VerifyResult; audit?: VerifyResult } = { criteria }
     let verdict = criteria
-    if (verdict.passed) for (const gate of gates) { verdict = runGate(gate, dir, story.id); if (!verdict.passed) break }
-    if (verdict.passed) return result
+    let failedStage: FailureStage = 'criterion'
+    if (verdict.passed) for (const name of ['verify', 'design', 'perf', 'audit'] as const) {
+      const gate = opts[name]
+      if (!gate) continue
+      verdict = runGate(gate, dir, story.id)
+      failedStage = name
+      evidence[name] = verdict
+      if (!verdict.passed) break
+    }
+    if (verdict.passed) return { result, gates: snapshotGates(dir, story, before, evidence) }
     if (knownInfrastructureFailure(verdict.summary)) {
       result.routing.recordOutcome(false, 'infrastructure')
-      return { ...result, success: false, infrastructureFailure: true, summary: verdict.summary, routing: { ...result.routing, blocked: true, canRetry: false } }
+      return { result: { ...result, success: false, infrastructureFailure: true, summary: verdict.summary, routing: { ...result.routing, blocked: true, canRetry: false } } }
     }
     result.routing.recordOutcome(false)
+    const observed = observeFailure({ root: opts.targetDir, directory: dir, story, stage: failedStage, summary: verdict.summary })
+    if (observed.action === 'blocked') return { result: { ...result, success: false, summary: observed.feedback, routing: { ...result.routing, blocked: true, canRetry: false } }, failure: observed.failure }
     if (result.tokens) reporter.addTokens(result.tokens)
-    feedback = verdict.summary
+    feedback = observed.feedback
   }
 }

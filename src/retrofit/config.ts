@@ -80,6 +80,12 @@ const RoutingWorkerSchema = z.object({
   capabilities: z.array(z.string().min(1)).default([]),
   tier: z.enum(['light', 'standard', 'strong', 'frontier']).optional(),
   roles: z.array(z.enum(['implementation', 'reviewer', 'critic', 'repair'])).optional(),
+  profileMetadata: z.object({
+    version: z.literal(1),
+    catalog: z.string().min(1).max(120),
+    source: z.enum(['yoke-default', 'operator']),
+    basis: z.literal('configured-prior'),
+  }).strict().optional(),
 })
 const RoutingRuleSchema = z.object({
   area: z.string().min(1).optional(),
@@ -130,6 +136,11 @@ export const YokeConfigSchema = z.object({
     assessmentPolicy: z.enum(['on-demand', 'prepared']).optional(),
     fallback: z.enum(['parent', 'block']).optional(),
     maxTier: z.enum(['light', 'standard', 'strong', 'frontier']).optional(),
+    optimization: z.object({
+      version: z.literal(1),
+      objective: z.enum(['cost', 'speed', 'balanced']),
+      minSamples: z.number().int().min(10).max(10000).optional(),
+    }).strict().optional(),
     maxCandidates: z.number().int().min(1).max(5).default(3),
     orchestrator: z.object({
       provider: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).optional(),
@@ -190,6 +201,8 @@ export interface RoutingWorker {
   capabilities: string[]
   tier?: import('../routing/assessment.js').CapabilityTier
   roles?: Array<'implementation' | 'reviewer' | 'critic' | 'repair'>
+  /** Versioned configuration priors, never claims of measured capability or price. */
+  profileMetadata?: { version: 1; catalog: string; source: 'yoke-default' | 'operator'; basis: 'configured-prior' }
 }
 
 export interface YokeConfig {
@@ -207,6 +220,7 @@ export interface YokeConfig {
     assessmentPolicy?: 'on-demand' | 'prepared'
     fallback?: 'parent' | 'block'
     maxTier?: 'light' | 'standard' | 'strong' | 'frontier'
+    optimization?: { version: 1; objective: 'cost' | 'speed' | 'balanced'; minSamples?: number }
     maxCandidates: number
     orchestrator?: { provider?: string; model?: string; reasoningEffort?: string; variant?: string }
     workers: RoutingWorker[]

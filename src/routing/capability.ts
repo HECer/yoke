@@ -6,6 +6,8 @@ import type { Story } from '../loop/prd.js'
 import { AssessmentSchema, assessmentKey, requiredTier, tiers, type TaskAssessment } from './assessment.js'
 import { projectHash, readRoutingObservations, type RoutingObservation } from './registry.js'
 import { currentContractKey } from './contracts.js'
+import { readRoutingAttempts } from './attempts.js'
+import { optimizeCapability, type RoutingOptimization } from './optimization.js'
 
 export function knownInfrastructureFailure(summary: string): boolean {
   return /\bENOENT\b|\bECONNREFUSED\b|\bETIMEDOUT\b|CreateProcess(?:AsUserW|W)? failed|Failed to create unified exec process|command not found|is not recognized as|Missing script:|rate limit exceeded|authentication failed|AuthRequired|No access token was provided|invalid api key|credentials (?:missing|not found)|quota exceeded/i.test(summary)
@@ -53,18 +55,21 @@ export function chooseCapability(input: {
   repairRound?: number;
   fallback?: 'parent' | 'block';
   maxTier?: import('./assessment.js').CapabilityTier;
+  optimization?: RoutingOptimization;
+  executionPolicyKey?: string;
 }) {
   const role = input.role ?? 'implementation'
-  const events = taskOutcomes(input.root, input.story)
-  const lastSuccess = events.map(e => e.verificationSuccess).lastIndexOf(true)
-  const failures = events.slice(lastSuccess + 1).filter(e => e.verificationSuccess === false)
+  const attempts = readRoutingAttempts(input.root, input.story.id, routingAssessmentKey(input.root, input.story))
+  const lastSuccess = attempts.map(entry => entry.outcome?.verificationSuccess).lastIndexOf(true)
+  const failures = attempts.slice(lastSuccess + 1).filter(entry => entry.outcome?.verificationSuccess === false && entry.outcome.failureKind !== 'infrastructure')
   const baseTier = requiredTier(input.assessment, role)
   const level = Math.min(3, tiers.indexOf(baseTier) + Math.max(0, failures.length - 1, (input.repairRound ?? 1) - 1))
-  const exhausted = failures.length >= Math.min(input.maxAttempts ?? 5, 5 - tiers.indexOf(baseTier))
+  const attemptLimit = Math.min(input.maxAttempts ?? 5, 5 - tiers.indexOf(baseTier))
+  const exhausted = attempts.length >= attemptLimit
   const candidates = input.workers.filter(w => w.tier && tiers.indexOf(w.tier) >= level && (!input.maxTier || tiers.indexOf(w.tier) <= tiers.indexOf(input.maxTier)) && (!w.roles || w.roles.includes(role)) && (!input.story.agent || w.agent === input.story.agent) && (input.available?.(w.agent) ?? true))
-  const history = readRoutingObservations().filter(e => e.projectHash === projectHash(input.root) && e.taskClass === input.assessment.taskClass && e.requiredTier === baseTier && e.role === role && e.failureKind !== 'infrastructure' && Date.now() - Date.parse(e.recordedAt) < 30 * 86400000)
+  const history = readRoutingObservations().filter(e => e.projectHash === projectHash(input.root) && e.taskClass === input.assessment.taskClass && e.requiredTier === baseTier && e.role === role && Date.now() - Date.parse(e.recordedAt) < 30 * 86400000)
   const evidence = (w: RoutingWorker) => {
-    const matching = history.filter(e => e.provider === w.agent && e.requestedProvider === w.provider && e.requestedModel === w.model && e.requestedReasoningEffort === w.reasoningEffort && e.requestedVariant === w.variant && e.actualModel)
+    const matching = history.filter(e => e.failureKind !== 'infrastructure' && e.provider === w.agent && e.requestedProvider === w.provider && e.requestedModel === w.model && e.requestedReasoningEffort === w.reasoningEffort && e.requestedVariant === w.variant && e.actualModel)
     const actual = matching.at(-1)?.actualModel
     return actual ? matching.filter(e => e.actualModel === actual) : []
   }
@@ -72,13 +77,14 @@ export function chooseCapability(input: {
   const reliable = candidates.filter(w => { const rows = evidence(w); return rows.length < 10 || rows.filter(e => e.verificationSuccess).length / rows.length >= 0.8 })
   const cost = { low: 0, medium: 1, high: 2 }
   reliable.sort((a, b) => tiers.indexOf(a.tier!) - tiers.indexOf(b.tier!) || cost[a.costTier] - cost[b.costTier] || a.id.localeCompare(b.id))
-  const worker = reliable[0]
+  const economic = optimizeCapability({ workers: reliable, observations: history, assessment: input.assessment, settings: input.optimization, executionPolicyKey: input.executionPolicyKey, role })
+  const worker = economic.worker
   const blocked = !worker && (input.fallback === 'block' || input.maxTier !== undefined)
   const provider = worker?.agent ?? input.story.agent ?? input.parent
   const selection: ModelSelection = worker ? { provider: worker.provider, model: worker.model, reasoningEffort: worker.reasoningEffort, variant: worker.variant, nativeMultiAgent: false, ...(provider !== 'gemini' && provider !== 'qwen' && provider !== 'pi' && provider !== 'hermes' && input.parentSelection?.bare !== undefined ? { bare: input.parentSelection.bare } : {}) }
     : { ...(provider === input.parent ? input.parentSelection : {}), nativeMultiAgent: false }
-  const reason = `${role}: ${tiers[level]}; ${input.assessment.reason}${failures.length ? `; ${failures.length} verified failure(s), ${failures.length === 1 ? 'one targeted repair' : 'escalated'}` : ''}${worker ? '' : '; no eligible profile, parent/provider fallback'}`
-  return { worker, provider, selection, reason: blocked ? `${role}: no eligible profile within routing limits; execution blocked` : reason, blocked, requiredTier: baseTier, selectedTier: tiers[level], failures: failures.length, exhausted, next: input.maxTier && level >= tiers.indexOf(input.maxTier) ? 'stop at configured tier limit' : level < 3 ? tiers[level + 1] : 'stop after bounded attempts' }
+  const reason = `${role}: ${tiers[level]}; ${input.assessment.reason}${failures.length ? `; ${failures.length} verified failure(s), ${failures.length === 1 ? 'one targeted repair' : 'escalated'}` : ''}${worker ? '' : '; no eligible profile, parent/provider fallback'}${economic.reason ? `; ${economic.reason}` : ''}`
+  return { worker, provider, selection, reason: blocked ? `${role}: no eligible profile within routing limits; execution blocked` : reason, blocked, requiredTier: baseTier, selectedTier: tiers[level], failures: failures.length, usedAttempts: attempts.length, attemptLimit, exhausted, next: input.maxTier && level >= tiers.indexOf(input.maxTier) ? 'stop at configured tier limit' : level < 3 ? tiers[level + 1] : 'stop after bounded attempts' }
 }
 
 /** Explicit role models are resolved by callers before consulting this fallback. */

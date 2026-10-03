@@ -22,6 +22,47 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** OpenCode-family usage belongs to individual completed steps. Each field needs
+ * coverage of every step before it can be called a total. Shared by batch and
+ * streaming readers so an omitted measurement cannot turn into a measured zero. */
+export function createStepTelemetry() {
+  let steps = 0
+  const totals: Record<string, number> = {}
+  const counts: Record<string, number> = {}
+  return {
+    consume(event: Record<string, unknown>): void {
+      const part = isRecord(event.part) ? event.part : undefined
+      if (event.type !== 'step_finish' && part?.type !== 'step-finish') return
+      steps++
+      const tokens = isRecord(part?.tokens) ? part.tokens : {}
+      const cache = isRecord(tokens.cache) ? tokens.cache : undefined
+      const fields = {
+        inputTokens: tokens.input,
+        outputTokens: tokens.output,
+        cachedInputTokens: tokens.cached ?? tokens.cacheRead ?? cache?.read,
+        cacheWriteInputTokens: tokens.cacheWrite ?? cache?.write,
+        reasoningOutputTokens: tokens.reasoning,
+        totalCostUsd: part?.cost ?? event.cost,
+      }
+      for (const [field, raw] of Object.entries(fields)) {
+        const value = finite(raw)
+        if (value === undefined) continue
+        totals[field] = (totals[field] ?? 0) + value
+        counts[field] = (counts[field] ?? 0) + 1
+      }
+    },
+    finish(): ProviderTelemetry | undefined {
+      if (!steps) return undefined
+      const complete = counts.inputTokens === steps && counts.outputTokens === steps
+      if (!complete) return { usageAvailable: false, ...(Object.keys(totals).length ? { partialUsage: { ...totals } } : {}) }
+      const measured = Object.fromEntries(Object.entries(totals).filter(([field]) => counts[field] === steps))
+      const partialUsage = Object.fromEntries(Object.entries(totals).filter(([field]) => counts[field] !== steps))
+      return { usageAvailable: true, tokens: { ...measured, inputTokens: totals.inputTokens, outputTokens: totals.outputTokens },
+        ...(Object.keys(partialUsage).length ? { partialUsage } : {}) }
+    },
+  }
+}
+
 function textContent(value: unknown): string {
   if (typeof value === 'string') return value
   if (!Array.isArray(value)) return ''
@@ -141,34 +182,16 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
   let totalCostUsd: number | undefined
   let model: string | undefined
   let reportedModels: string[] = []
-  const harnessTotals = agent === 'opencode' || agent === 'kilo'
-    ? { input: 0, output: 0, cached: 0, cacheWrite: 0, reasoning: 0, cost: 0, hasInput: false, hasOutput: false, hasCached: false, hasCacheWrite: false, hasReasoning: false, hasCost: false }
-    : undefined
+  const steps = agent === 'opencode' || agent === 'kilo' ? createStepTelemetry() : undefined
   for (const line of lines) {
     let parsed: unknown
     try { parsed = JSON.parse(line) } catch { continue }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue
     const event = parsed as Record<string, unknown>
+    steps?.consume(event)
     if ((agent === 'qwen' || agent === 'claude') && event.parent_tool_use_id != null) continue
     const message = event.message && typeof event.message === 'object' ? event.message as Record<string, unknown> : undefined
     const stats = event.stats && typeof event.stats === 'object' ? event.stats as Record<string, unknown> : undefined
-    const part = event.part && typeof event.part === 'object' ? event.part as Record<string, unknown> : undefined
-    const partTokens = part?.tokens && typeof part.tokens === 'object' ? part.tokens as Record<string, unknown> : undefined
-    if (harnessTotals && (event.type === 'step_finish' || part?.type === 'step-finish') && partTokens) {
-      const cache = partTokens.cache && typeof partTokens.cache === 'object' ? partTokens.cache as Record<string, unknown> : undefined
-      const stepInput = finite(partTokens.input)
-      const stepOutput = finite(partTokens.output)
-      const stepCached = finite(partTokens.cached ?? partTokens.cacheRead ?? cache?.read)
-      const stepCacheWrite = finite(partTokens.cacheWrite ?? cache?.write)
-      const stepReasoning = finite(partTokens.reasoning)
-      const stepCost = finite(part?.cost ?? event.cost)
-      if (stepInput !== undefined) { harnessTotals.input += stepInput; harnessTotals.hasInput = true }
-      if (stepOutput !== undefined) { harnessTotals.output += stepOutput; harnessTotals.hasOutput = true }
-      if (stepCached !== undefined) { harnessTotals.cached += stepCached; harnessTotals.hasCached = true }
-      if (stepCacheWrite !== undefined) { harnessTotals.cacheWrite += stepCacheWrite; harnessTotals.hasCacheWrite = true }
-      if (stepReasoning !== undefined) { harnessTotals.reasoning += stepReasoning; harnessTotals.hasReasoning = true }
-      if (stepCost !== undefined) { harnessTotals.cost += stepCost; harnessTotals.hasCost = true }
-    }
     const usage = (event.usage && typeof event.usage === 'object'
       ? event.usage
       : message?.usage && typeof message.usage === 'object'
@@ -227,13 +250,10 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
     const eventModel = event.model ?? message?.model ?? firstModel?.[0]
     if (typeof eventModel === 'string' && eventModel && reportedModels.length <= 1) model = eventModel
   }
-  if (harnessTotals) {
-    if (harnessTotals.hasInput) inputTokens = harnessTotals.input
-    if (harnessTotals.hasOutput) outputTokens = harnessTotals.output
-    if (harnessTotals.hasCached) cachedInputTokens = harnessTotals.cached
-    if (harnessTotals.hasCacheWrite) cacheWriteInputTokens = harnessTotals.cacheWrite
-    if (harnessTotals.hasReasoning) reasoningOutputTokens = harnessTotals.reasoning
-    if (harnessTotals.hasCost) totalCostUsd = harnessTotals.cost
+  const stepUsage = steps?.finish()
+  if (stepUsage) return { ...stepUsage,
+    ...(stepUsage.tokens && model ? { tokens: { ...stepUsage.tokens, model } } : {}),
+    ...(!stepUsage.tokens && model ? { reportedModels: [model] } : {}),
   }
   if (inputTokens === undefined || outputTokens === undefined) {
     const partialUsage = {

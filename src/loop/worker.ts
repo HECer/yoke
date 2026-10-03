@@ -5,6 +5,9 @@ import { acceptanceProtectionProblem } from "../check/command.js"
 import { isAcceptanceCriterion } from './prd.js'
 import type { AgentContext, AgentResult } from './runner.js'
 import type { Verifier, VerifyResult } from './verify.js'
+import { observeFailure, type LoopFailure } from './failure.js'
+import { consumeAmbiguity } from './loop.js'
+import { gateIdentity, snapshotGates, reuseGates, type GateSnapshot } from './gate-snapshot.js'
 import { runQualityRepairLoop, type QualityRepairLoopResult, type QualityStage, type RepairRequest } from '../quality/loop.js'
 import type { ReviewOutcome } from '../quality/repair.js'
 import type { StoryWorkerCancellation, StoryWorkerEvidence, StoryWorkerInput, StoryWorkerResult, WorkerCriterionEvidence, WorkerGateEvidence } from './worker-contracts.js'
@@ -75,6 +78,7 @@ function reviewOutcome(result: AgentResult): ReviewOutcome {
 }
 
 function runMechanicalGates(input: StoryWorkerInput, context: AgentContext, evidence: MutableWorkerEvidence): MechanicalGateResult {
+  evidence.criteria = []
   const criteria = context.story.acceptance.filter(isAcceptanceCriterion)
   if (criteria.length === 0) {
     if (input.requireCriterionEvidence) return { kind: 'failed', stage: 'criterion', summary: `story ${context.story.id} lacks executable criterion evidence` }
@@ -200,8 +204,13 @@ export async function runStoryWorker(input: StoryWorkerInput): Promise<StoryWork
     return finalResult(input, { ...baseResult(input, evidence, preflight.summary), kind: 'mechanical-failure', stage: 'quality' })
   }
   let implementation: AgentResult
+  let verified: GateSnapshot<MechanicalGateResult> | undefined
+  let failure: LoopFailure | undefined
   try {
-    implementation = await runWorkerImplementation(input, context, evidence)
+    const outcome = await runWorkerImplementation(input, context, evidence)
+    implementation = outcome.result
+    verified = outcome.gates
+    failure = outcome.failure
   } catch (error) {
     return finalResult(input, {
       ...baseResult(input, evidence, `worker implementation failed: ${errorMessage(error)}`),
@@ -211,108 +220,143 @@ export async function runStoryWorker(input: StoryWorkerInput): Promise<StoryWork
   }
   if (implementation.tokens) input.reporter?.addTokens(implementation.tokens)
   if (implementation.infrastructureFailure) implementation.routing?.recordOutcome(false, 'infrastructure')
-  if (implementation.infrastructureFailure || implementation.routing?.blocked) return finalResult(input, { ...baseResult(input, evidence, implementation.summary), kind: "mechanical-failure", stage: "implementation" })
+  if (implementation.infrastructureFailure || implementation.routing?.blocked) return finalResult(input, { ...baseResult(input, evidence, implementation.summary), kind: "mechanical-failure", stage: "implementation", ...(failure ? { failure } : {}) })
 
-  const afterImplementationCancellation = cancellationReason(input.cancellation)
-  if (afterImplementationCancellation) {
-    return finalResult(input, { ...baseResult(input, evidence, afterImplementationCancellation), kind: 'cancelled' })
-  }
-  const decision = input.beforeGates?.(context)
-  if (decision) {
-    return finalResult(input, { ...baseResult(input, evidence, decision), kind: 'paused', reason: 'decision' })
-  }
+  try {
+    const afterImplementationCancellation = cancellationReason(input.cancellation)
+    if (afterImplementationCancellation) {
+      implementation.routing?.recordOutcome(false, 'infrastructure')
+      return finalResult(input, { ...baseResult(input, evidence, afterImplementationCancellation), kind: 'cancelled' })
+    }
+    const ambiguity = consumeAmbiguity(context.targetDir)
+    if (ambiguity) {
+      implementation.routing?.recordOutcome(false, 'infrastructure')
+      return finalResult(input, {
+        ...baseResult(input, evidence, `story ${context.story.id} stopped: ambiguous acceptance criteria — ${ambiguity}`),
+        kind: 'paused', reason: 'ambiguity',
+      })
+    }
+    const decision = input.beforeGates?.(context)
+    if (decision) {
+      implementation.routing?.recordOutcome(false, 'infrastructure')
+      return finalResult(input, { ...baseResult(input, evidence, decision), kind: 'paused', reason: 'decision' })
+    }
+    if (input.pause?.()) {
+      implementation.routing?.recordOutcome(false, 'infrastructure')
+      return finalResult(input, { ...baseResult(input, evidence, 'worker paused before acceptance checks'), kind: 'paused' })
+    }
 
-  const gates = runMechanicalGates(input, context, evidence)
-  if (gates.kind === 'cancelled') {
-    return finalResult(input, { ...baseResult(input, evidence, gates.summary), kind: 'cancelled' })
-  }
-  if (gates.kind === 'failed') {
-    implementation.routing?.recordOutcome(false)
-    return finalResult(input, { ...baseResult(input, evidence, gates.summary), kind: 'mechanical-failure', stage: gates.stage })
-  }
+    const gates = reuseGates(context.targetDir, context.story, verified) ?? runMechanicalGates(input, context, evidence)
+    if (gates.kind === 'cancelled') {
+      implementation.routing?.recordOutcome(false, 'infrastructure')
+      return finalResult(input, { ...baseResult(input, evidence, gates.summary), kind: 'cancelled' })
+    }
+    if (gates.kind === 'failed') {
+      implementation.routing?.recordOutcome(false)
+      const observed = input.failureRoot ? observeFailure({ root: input.failureRoot, scope: input.failureScope, directory: context.targetDir, story: context.story, stage: gates.stage, summary: gates.summary }) : undefined
+      return finalResult(input, { ...baseResult(input, evidence, observed?.feedback ?? gates.summary), kind: 'mechanical-failure', stage: gates.stage, ...(observed ? { failure: observed.failure } : {}) })
+    }
 
-  const summary = implementation.success
-    ? implementation.summary
-    : `${implementation.summary} (runner exited non-zero but verify is green)`
-  if (!qualityEnabled && !input.review) {
-    return finalResult(input, {
-      ...baseResult(input, evidence, summary),
-      kind: 'candidate',
-      routing: { outcome: 'pending-integration', ...(implementation.routing ? { recordOutcome: implementation.routing.recordOutcome } : {}) },
-      ...(implementation.tokens ? { tokens: implementation.tokens } : {}),
+    const summary = implementation.success
+      ? implementation.summary
+      : `${implementation.summary} (runner exited non-zero but verify is green)`
+    if (!qualityEnabled && !input.review) {
+      return finalResult(input, {
+        ...baseResult(input, evidence, summary),
+        kind: 'candidate',
+        routing: { outcome: 'pending-integration', ...(implementation.routing ? { recordOutcome: implementation.routing.recordOutcome } : {}) },
+        ...(implementation.tokens ? { tokens: implementation.tokens } : {}),
+      })
+    }
+
+    const beforeQualityCancellation = cancellationReason(input.cancellation)
+    if (beforeQualityCancellation) {
+      implementation.routing?.recordOutcome(false, 'infrastructure')
+      return finalResult(input, { ...baseResult(input, evidence, beforeQualityCancellation), kind: 'cancelled' })
+    }
+
+    const qualityStage = qualityEnabled ? input.qualityStage : undefined
+    const review = input.review
+    let qualityFailure: LoopFailure | undefined
+    const quality = runQualityRepairLoop({
+      ...(qualityStage
+        ? { quality: (round: number) => {
+          input.reporter?.phase('comparing')
+          return qualityStage(context, round)
+        } }
+        : {}),
+      ...(review
+        ? { review: () => {
+          input.reporter?.phase('reviewing')
+          return reviewOutcome(review(context))
+        } }
+        : {}),
+      repair: request => {
+        if (!input.repair) return { kind: 'blocked', summary: 'repair callback is not configured' }
+        input.reporter?.phase('repairing')
+        const observed = input.failureRoot ? observeFailure({ root: input.failureRoot, scope: input.failureScope, directory: context.targetDir, story: context.story, stage: 'quality', summary: JSON.stringify(request.finding) }) : undefined
+        if (observed?.action === 'blocked') { qualityFailure = observed.failure; return { kind: 'blocked', summary: observed.feedback } }
+        const targetedRequest = observed?.action === 'diagnose' ? { ...request, finding: { ...request.finding, message: observed.feedback } } : request
+        const repair = input.repair(context, targetedRequest)
+        return repair.success ? { kind: 'repaired' } : { kind: 'blocked', summary: repair.summary }
+      },
+      rerunGates: () => {
+        const rerun = runMechanicalGates(input, context, evidence)
+        if (rerun.kind === 'passed') return { kind: 'passed' }
+        if (rerun.kind === 'cancelled') return rerun
+        return { kind: 'failed', stage: rerun.stage, summary: rerun.summary }
+      },
+      ...(input.repairLimits ? { limits: input.repairLimits } : {}),
+      pause: input.pause,
+      onStatus: status => {
+        const metadata = input.qualityMetadata?.(context)
+        input.reporter?.quality({ ...status, ...(metadata ?? { policy: 'blocking' }) })
+      },
     })
+    evidence.quality = quality
+    const afterQualityCancellation = cancellationReason(input.cancellation)
+    if (afterQualityCancellation) {
+      implementation.routing?.recordOutcome(false, 'infrastructure')
+      return finalResult(input, { ...baseResult(input, evidence, afterQualityCancellation), kind: 'cancelled' })
+    }
+    const result = { ...resultFromQuality(input, evidence, summary, quality), ...(qualityFailure ? { failure: qualityFailure } : {}) }
+    if (result.kind === 'paused' || result.kind === 'cancelled' || result.kind === 'review-failure' || result.kind === 'quality-failure') implementation.routing?.recordOutcome(false, 'infrastructure')
+    else if (result.kind !== 'candidate') implementation.routing?.recordOutcome(false)
+    if (result.kind === 'candidate') {
+      return finalResult(input, {
+        ...result,
+        routing: { outcome: 'pending-integration', ...(implementation.routing ? { recordOutcome: implementation.routing.recordOutcome } : {}) },
+        ...(implementation.tokens ? { tokens: implementation.tokens } : {}),
+      })
+    }
+    return finalResult(input, result)
+  } catch (error) {
+    implementation.routing?.recordOutcome(false, 'infrastructure')
+    throw error
   }
-
-  const beforeQualityCancellation = cancellationReason(input.cancellation)
-  if (beforeQualityCancellation) {
-    return finalResult(input, { ...baseResult(input, evidence, beforeQualityCancellation), kind: 'cancelled' })
-  }
-
-  const qualityStage = qualityEnabled ? input.qualityStage : undefined
-  const review = input.review
-  const quality = runQualityRepairLoop({
-    ...(qualityStage
-      ? { quality: (round: number) => {
-        input.reporter?.phase('comparing')
-        return qualityStage(context, round)
-      } }
-      : {}),
-    ...(review
-      ? { review: () => {
-        input.reporter?.phase('reviewing')
-        return reviewOutcome(review(context))
-      } }
-      : {}),
-    repair: request => {
-      if (!input.repair) return { kind: 'blocked', summary: 'repair callback is not configured' }
-      input.reporter?.phase('repairing')
-      const repair = input.repair(context, request)
-      return repair.success ? { kind: 'repaired' } : { kind: 'blocked', summary: repair.summary }
-    },
-    rerunGates: () => {
-      const rerun = runMechanicalGates(input, context, evidence)
-      if (rerun.kind === 'passed') return { kind: 'passed' }
-      if (rerun.kind === 'cancelled') return rerun
-      return { kind: 'failed', stage: rerun.stage, summary: rerun.summary }
-    },
-    ...(input.repairLimits ? { limits: input.repairLimits } : {}),
-    pause: input.pause,
-    onStatus: status => {
-      const metadata = input.qualityMetadata?.(context)
-      input.reporter?.quality({ ...status, ...(metadata ?? { policy: 'blocking' }) })
-    },
-  })
-  evidence.quality = quality
-  const afterQualityCancellation = cancellationReason(input.cancellation)
-  if (afterQualityCancellation) {
-    return finalResult(input, { ...baseResult(input, evidence, afterQualityCancellation), kind: 'cancelled' })
-  }
-  const result = resultFromQuality(input, evidence, summary, quality)
-  if (result.kind !== 'candidate' && result.kind !== 'paused') implementation.routing?.recordOutcome(false)
-  if (result.kind === 'candidate') {
-    return finalResult(input, {
-      ...result,
-      routing: { outcome: 'pending-integration', ...(implementation.routing ? { recordOutcome: implementation.routing.recordOutcome } : {}) },
-      ...(implementation.tokens ? { tokens: implementation.tokens } : {}),
-    })
-  }
-  return finalResult(input, result)
 }
 
-async function runWorkerImplementation(input: StoryWorkerInput, context: AgentContext, evidence: MutableWorkerEvidence): Promise<AgentResult> {
-  let feedback: string | undefined
+async function runWorkerImplementation(input: StoryWorkerInput, context: AgentContext, evidence: MutableWorkerEvidence): Promise<{ result: AgentResult; gates?: GateSnapshot<MechanicalGateResult>; failure?: LoopFailure }> {
+  let feedback: string | undefined = input.feedback
   for (let attempt = 0; ; attempt++) {
     const result = await input.runner({ ...context, feedback })
-    if (!result.routing?.canRetry || result.routing.blocked || attempt >= 7 || cancellationReason(input.cancellation) || input.pause?.()) return result
-    if (["decision-request.yaml", "ambiguity.md", "loop.pause"].some(name => existsSync(join(context.targetDir, ".yoke", name))) || acceptanceProtectionProblem(context.targetDir)) return result
-    const gates = runMechanicalGates(input, context, evidence)
-    if (gates.kind !== "failed") return result
+    if (!result.routing?.canRetry || result.routing.blocked || attempt >= 7 || cancellationReason(input.cancellation) || input.pause?.()) return { result }
+    if (["decision-request.yaml", "ambiguity.md", "loop.pause"].some(name => existsSync(join(context.targetDir, ".yoke", name))) || acceptanceProtectionProblem(context.targetDir)) return { result }
+    const before = gateIdentity(context.targetDir, context.story)
+    let gates: MechanicalGateResult
+    try { gates = runMechanicalGates(input, context, evidence) }
+    catch (error) { result.routing.recordOutcome(false, 'infrastructure'); throw error }
+    if (gates.kind !== 'failed') {
+      return { result, ...(gates.kind === 'passed' ? { gates: snapshotGates(context.targetDir, context.story, before, gates) } : {}) }
+    }
     if (knownInfrastructureFailure(gates.summary)) {
       result.routing.recordOutcome(false, 'infrastructure')
-      return { ...result, success: false, infrastructureFailure: true, summary: gates.summary, routing: { ...result.routing, blocked: true, canRetry: false } }
+      return { result: { ...result, success: false, infrastructureFailure: true, summary: gates.summary, routing: { ...result.routing, blocked: true, canRetry: false } } }
     }
     result.routing.recordOutcome(false)
+    const observed = input.failureRoot ? observeFailure({ root: input.failureRoot, scope: input.failureScope, directory: context.targetDir, story: context.story, stage: gates.stage, summary: gates.summary }) : undefined
+    if (observed?.action === 'blocked') return { result: { ...result, success: false, summary: observed.feedback, routing: { ...result.routing, blocked: true, canRetry: false } }, failure: observed.failure }
     if (result.tokens) input.reporter?.addTokens(result.tokens)
-    feedback = gates.summary
+    feedback = observed?.feedback ?? gates.summary
   }
 }

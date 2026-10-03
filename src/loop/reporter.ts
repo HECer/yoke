@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { appendEvent } from '../observability/events.js'
 import { estimateDurations, validDuration } from '../estimation/durations.js'
+import { recordActiveRoutingUsage, markActiveRoutingUsageIncomplete } from '../routing/attempts.js'
 
 export const LOG_CAP_BYTES = 256 * 1024
 
@@ -112,6 +113,9 @@ function appendDuration(dir: string, d: StoryDuration): void {
 // Cumulative runner token usage across the run (claude stream-json runners only).
 // model is the last-seen model id from the stream (absent if the CLI never reported one).
 export interface ModelCallUsage {
+  callId?: string
+  routingAttemptId?: string
+  costMeasurementComplete?: boolean
   usageAvailable?: boolean
   role: 'orchestrator' | 'worker' | 'parent'
   provider: string
@@ -131,6 +135,8 @@ export interface ModelCallUsage {
 }
 
 export interface TokenUsage {
+  callId?: string
+  routingAttemptId?: string
   storyId?: string
   provider?: string
   role?: string
@@ -150,6 +156,7 @@ export interface TokenUsage {
 }
 
 export interface LoopStatus {
+  failure?: import('./failure.js').LoopFailure
   supervision?: import('../agents/supervision.js').SupervisionState[]
   routingDecisions?: Record<string, { profile: string; provider: string; providerModel?: string; model?: string; reasoningEffort?: string; variant?: string; reason: string; next: string; assessment?: import("../routing/assessment.js").TaskAssessment }>
 
@@ -207,7 +214,7 @@ export interface LoopReporter {
   /** A story landed (verified + committed): record its duration and refresh the estimate. */
   storyDone(story: StoryRef, progress: Progress): void
   phase(phase: LoopPhase, reason?: string, progress?: Progress): void
-  blocked(reason: string): void
+  blocked(reason: string, failure?: import('./failure.js').LoopFailure): void
   complete(progress: Progress): void
   capReached(progress: Progress): void
   paused(progress: Progress, reason?: string): void
@@ -365,16 +372,16 @@ export function makeReporter(
       const base = phase === 'exploring' || phase === 'waiting-exploration' || phase === 'waiting-recovery'
         ? (({ story: _story, storyTitle: _storyTitle, ...withoutStory }) => withoutStory)(status)
         : status
-      persist({ ...base, state: 'running', phase, ...(progress ? { progress } : {}), ...(reason ? { reason } : { reason: undefined }), updatedAt: now().toISOString() }, phase, `  · ${phase}…`)
+      persist({ ...base, state: 'running', phase, failure: undefined, ...(progress ? { progress } : {}), ...(reason ? { reason } : { reason: undefined }), updatedAt: now().toISOString() }, phase, `  · ${phase}…`)
     },
-    blocked(reason) {
+    blocked(reason, failure) {
       const base = current ?? emptyStatus(now().toISOString())
-      persist({ ...withoutParallel(base), state: 'blocked', reason, updatedAt: now().toISOString() },
+      persist({ ...withoutParallel(base), state: 'blocked', reason, failure, updatedAt: now().toISOString() },
         'blocked', `■ blocked on ${base.story ?? '?'}: ${reason}`)
     },
     complete(progress) {
       persist({ ...withoutParallel(current ?? emptyStatus(now().toISOString())), state: 'complete', phase: undefined,
-        progress, reason: undefined, updatedAt: now().toISOString() },
+        progress, reason: undefined, failure: undefined, updatedAt: now().toISOString() },
         'complete', `✔ loop complete — ${progress.passed}/${progress.total}`)
     },
     capReached(progress) {
@@ -484,6 +491,16 @@ export function makeReporter(
       for (const key of ['cachedInputTokens', 'cacheWriteInputTokens', 'reasoningOutputTokens', 'totalCostUsd'] as const) {
         const value = usage[key]
         if (value !== undefined && (!Number.isFinite(value) || value < 0)) delete usage[key]
+      }
+      if (!usage.calls?.length && !usage.callId) usage.callId = randomUUID()
+      const costRole = usage.role && ['reviewer', 'critic', 'repair', 'quality-critic', 'quality-repair', 'candidate-selection'].includes(usage.role)
+      if (usage.storyId && (usage.routingAttemptId || (costRole && !usage.calls?.length))) {
+        try { recordActiveRoutingUsage(dir, usage.storyId, usage) }
+        catch {
+          // Accounting failures must disqualify economic evidence without losing
+          // the independent event below or interrupting a useful implementation.
+          try { markActiveRoutingUsageIncomplete(dir, usage.storyId) } catch { /* Router finalization also fails closed on corrupt accounting. */ }
+        }
       }
       const calls = usage.calls?.length ? usage.calls : [{ usageAvailable: usage.measurementComplete !== false, totalCostUsd: usage.totalCostUsd }]
       measuredCalls += calls.filter(call => call.usageAvailable !== false).length

@@ -71,11 +71,11 @@ function productionAdapters(targetDir: string, identity: CommitIdentity | undefi
         return { path, baseCommit }
       },
       cleanupProcess: cleanupProviderProcesses,
-      retain: (input, reason) => {
+      retain: (input, reason, phase = 'integration') => {
         const file = recoveryPath(targetDir, input.story.id)
         // Preserve the path's original ownership identity when a retry is rejected again.
         const ownerToken = ownershipTokens.get(input.worktree.path) ?? input.ownerToken
-        retainParallelWorktree(targetDir, file, { storyId: input.story.id, worktree: input.worktree.path, baseCommit: input.worktree.baseCommit, prdHash: acceptanceDigests.get(input.story.id)!, ownerToken, reason })
+        retainParallelWorktree(targetDir, file, { storyId: input.story.id, worktree: input.worktree.path, baseCommit: input.worktree.baseCommit, prdHash: acceptanceDigests.get(input.story.id)!, ownerToken, reason, phase })
       },
       remove: input => {
         removeOwnedWorktree(targetDir, input, owned, removed, realGitOps)
@@ -89,7 +89,7 @@ function productionAdapters(targetDir: string, identity: CommitIdentity | undefi
       commit: input => realGitOps.commitAll(input.worktree.path, `yoke: complete ${input.story.id} ${input.story.title}`, identity),
       integrate: (input, expectedHead) => integrateCandidate(targetDir, input, expectedHead),
     },
-    candidates: primary => makeCandidateLifecycle(targetDir, primary, owned, removed, realGitOps, ownershipTokens),
+    candidates: primary => makeCandidateLifecycle(targetDir, primary, owned, removed, realGitOps, ownershipTokens, acceptanceDigests.get(primary.story.id)),
   }
 }
 
@@ -104,7 +104,9 @@ function makeCandidateLifecycle(
   removed: Set<string>,
   git: Pick<GitOps, 'addWorktree' | 'removeWorktree'>,
   ownershipTokens?: Map<string, string>,
+  acceptanceDigest?: string,
 ): CandidateLifecycle {
+  const retainedRecords = new Map<string, string>()
   return {
     reserve: input => {
       const worktree = input.candidateId === 'candidate-1'
@@ -129,6 +131,23 @@ function makeCandidateLifecycle(
     reap: ownership => {
       reapProviderProcesses(ownership.worktree.path, isPidAlive, isProviderTreeAlive, killProcessTreeForCleanup)
     },
+    ...(ownershipTokens && acceptanceDigest ? {
+      retain: (ownership: CandidateOwnership, reason: string, phase: 'implementation' | 'integration') => {
+        // The first retained candidate resumes through the existing dispatcher recovery path.
+        // Additional alternatives remain inspectable without creating a second scheduler.
+        const ownerToken = ownershipTokens.get(ownership.worktree.path) ?? ownership.ownerToken
+        const suffix = createHash('sha256').update(ownerToken).digest('hex').slice(0, 24)
+        const file = retainedRecords.get(ownership.worktree.path) ?? (retainedRecords.size === 0
+          ? recoveryPath(targetDir, ownership.storyId)
+          : statePath(targetDir, 'integration-recovery', `${storyPathSegment(ownership.storyId)}-candidate-${suffix}.json`))
+        retainedRecords.set(ownership.worktree.path, file)
+        retainParallelWorktree(targetDir, file, {
+          storyId: ownership.storyId, worktree: ownership.worktree.path, baseCommit: ownership.worktree.baseCommit,
+          prdHash: acceptanceDigest, ownerToken, reason, phase,
+        })
+        writeCandidateStatus(targetDir, ownership, ownership.worktree.path, 'retained', reason)
+      },
+    } : {}),
     remove: ownership => {
       removeOwnedWorktree(targetDir, ownership, owned, removed, git)
       writeCandidateStatus(targetDir, ownership, ownership.worktree.path, 'removed')
@@ -177,7 +196,7 @@ function writeCandidateStatus(
   targetDir: string,
   input: Pick<CandidateOwnership, 'storyId' | 'candidateId'>,
   worktree: string,
-  state: 'reserved' | 'materialized' | 'cleaning' | 'removed',
+  state: 'reserved' | 'materialized' | 'cleaning' | 'removed' | 'retained',
   reason?: string,
 ): void {
   const file = join(targetDir, '.yoke', 'proof', storyPathSegment(input.storyId), 'candidates', input.candidateId, 'status.json')

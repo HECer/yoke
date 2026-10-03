@@ -1,4 +1,5 @@
 import { existsSync, rmSync } from 'node:fs'
+import { observeFailure, clearFailureProgress } from './failure.js'
 import { acceptanceProtectionProblem } from '../check/command.js'
 import type { Agent, YokeConfig } from '../retrofit/config.js'
 import { makeAsyncAdaptiveRunner } from '../routing/router.js'
@@ -21,6 +22,7 @@ import type { Verifier } from './verify.js'
 import type { QualityCommandHooks } from '../quality/command.js'
 import type { ProviderProcessResult } from '../agents/process.js'
 import { acquireSharedWorker, sharedPoolStatus } from './resource-pool.js'
+import { providerTelemetryUsage } from '../observability/usage.js'
 
 export type ParallelCommandInput = {
   readonly targetDir: string
@@ -49,6 +51,9 @@ export type ParallelCommandInput = {
   readonly quality?: QualityCommandHooks
   readonly candidateCount?: number
   readonly routing?: YokeConfig['routing']
+  /** Supplied only for native roles with complete, unambiguous usage attribution. */
+  readonly accountingScope?: 'execution-attempt'
+  readonly executionPolicyKey?: string
   readonly planning?: YokeConfig['planning']
   readonly isAvailable?: (agent: Agent) => boolean
   readonly onCriticalDecision?: (decision: DecisionRequest) => void
@@ -133,6 +138,8 @@ export async function runParallelLoopCommand(input: ParallelCommandInput): Promi
         baseCommit: workerInput.worktree.baseCommit,
         provider: workerInput.provider,
         runner,
+        feedback: workerInput.worktree.recovery?.feedback,
+        failureRoot: input.targetDir,
         verify: input.verify,
         design: input.design,
         verifyCriterion: input.verifyCriterion,
@@ -162,16 +169,26 @@ export async function runParallelLoopCommand(input: ParallelCommandInput): Promi
   const result = await dispatcher.run()
   const finalProgress = progress(loadPrd(input.prdPath))
   if (result.status === 'complete' && input.completion) {
-    const gate = input.completion(input.targetDir)
-    if (!gate.passed) {
-      input.reporter.blocked(gate.summary)
+    const previous = process.env.YOKE_PHASE
+    process.env.YOKE_PHASE = 'completion'
+    let reason: string | undefined
+    try {
+      const gate = input.completion(input.targetDir)
+      if (!gate.passed) reason = `integrated system did not verify: ${gate.summary}`
+    } catch (error) { reason = `integrated completion gate failed: ${error instanceof Error ? error.message : String(error)}` }
+    finally { if (previous === undefined) delete process.env.YOKE_PHASE; else process.env.YOKE_PHASE = previous }
+    if (reason) {
+      const observed = observeFailure({ root: input.targetDir, directory: input.targetDir, stage: 'completion', summary: reason })
+      input.reporter.blocked(observed.action === 'retry' ? reason : observed.feedback, observed.failure)
       return 1
     }
+    clearFailureProgress(input.targetDir)
   }
+
   if (result.status === 'complete') input.reporter.complete(finalProgress)
   else if (result.status === 'paused') input.reporter.paused(finalProgress)
   else if (result.status === 'cap-reached') input.reporter.capReached(finalProgress)
-  else input.reporter.blocked(result.reason ?? `parallel dispatcher ${result.status}`)
+  else input.reporter.blocked(result.reason ?? `parallel dispatcher ${result.status}`, result.failure)
   return result.status === 'complete' ? 0 : result.status === 'paused' ? 3 : 1
 }
 
@@ -220,6 +237,8 @@ function candidateDefinitions(input: ParallelCommandInput, worker: DispatcherWor
       worker: {
         provider: worker.provider,
         runner,
+        failureRoot: input.targetDir,
+        failureScope: candidateId,
         verify: input.verify,
         design: input.design,
         verifyCriterion: input.verifyCriterion,
@@ -325,6 +344,9 @@ function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider,
       strategy: input.routing.strategy,
       maxCandidates: input.routing.maxCandidates,
       maxAttempts: input.routing.maxAttempts,
+      optimization: input.routing.optimization,
+      accountingScope: input.accountingScope,
+      executionPolicyKey: input.executionPolicyKey,
       planner: resolvePlanner({ planning: input.planning }, input.runnerAgent, input.selection),
       assessmentPolicy: input.routing.assessmentPolicy,
       fallback: input.routing.fallback,
@@ -372,7 +394,7 @@ function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider,
 }
 
 export function providerProcessResultToAgentResult(agent: Agent, storyId: string, result: ProviderProcessResult): AgentResult {
-  const tokens = result.telemetry.tokens
+  const tokens = providerTelemetryUsage(result.telemetry)
   const telemetry = tokens ? { tokens } : {}
   switch (result.kind) {
     case 'succeeded': return { success: true, summary: `${agent} implemented ${storyId}`, ...telemetry }
