@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -17,7 +17,8 @@ const candidate = (input: DispatcherWorkerInput): Extract<StoryWorkerResult, { k
 })
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'yoke-worker-recovery-'))
+  // Match the canonical ownership paths persisted by recovery on Windows too.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'yoke-worker-recovery-')))
   const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim()
   const story: Story = { id: 'A', title: 'recover incomplete work', priority: 1, acceptance: ['legacy'], passes: false }
   mkdirSync(join(root, '.yoke'), { recursive: true })

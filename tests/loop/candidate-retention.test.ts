@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -9,7 +9,8 @@ import { storyPathSegment, type Story } from '../../src/loop/prd.js'
 import { recoverParallelWorktree } from '../../src/loop/recovery.js'
 
 function fixture(scenario: 'red' | 'pause' | 'cancel' | 'evidence-error' | 'winner') {
-  const root = mkdtempSync(join(tmpdir(), 'yoke-candidate-retention-'))
+  // Recovery stores canonical paths; Windows TEMP may use a DOS short-name alias.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'yoke-candidate-retention-')))
   const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim()
   const story: Story = { id: 'S1', title: 'retain useful candidates', priority: 1, acceptance: ['legacy'], passes: false }
   mkdirSync(join(root, '.yoke'), { recursive: true })

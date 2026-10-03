@@ -33,6 +33,12 @@ tie ordering, so wall-clock timing could leave an older observation in its
 fixture. The test now establishes eviction deterministically and still verifies
 that the independent durable attempt account remains exhausted.
 
+The first GitHub matrix passed both Linux jobs and exposed a Windows-only fixture
+issue in the new recovery tests. Windows TEMP can use a DOS short-name alias while
+recovery intentionally persists canonical paths. Both fixtures now canonicalize
+their temporary project root before asserting exact ownership paths; production
+recovery validation remains unchanged. The full matrix is rerun on that correction.
+
 ## Regressions covered
 
 - Durable implementation admission across restarts, registry write failures and
