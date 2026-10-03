@@ -25,3 +25,18 @@ See the [Goals/resource audit](GOALS-RESOURCE-AUDIT-2026-09-29.md) for implement
 Reproduce with `bench/compare-codex.mjs`, then `bench/analyze-codex-comparison.mjs`. Use fresh, short output roots on Windows. The new summary tests verify median arithmetic, cache subtraction, unknown usage, incompatible policies and invalid measurements.
 
 Provenance: this report is disclosed as AI-assisted. Read-only text scans cannot establish human authorship or verify proprietary keyed watermarks; cryptographic verification and signer trust remain unknown without the corresponding verifier and trust policy.
+
+## Later tooling update — 1.22.0
+
+The measurements above remain the historical 1.19.0 results. The current analyzer
+reads their aggregate JSON as legacy/unverified because those runs did not record
+the new complete comparison manifest. It preserves the reported values and does
+not manufacture missing provenance or reinterpret them as 1.22.0 measurements.
+
+New runs record source/build, fixture, acceptance and submitted-input digests,
+requested and reported model identities, and explicit startup conditions.
+The historical direct-arm ignore-rules difference is now an expressly declared
+workflow variable. Undeclared cross-arm differences, missing provenance and
+failed acceptance do not produce performance comparison groups.
+See [benchmark manifests](BENCHMARK-MANIFEST.md) for the contract and limitations.
+This is a tooling change; no new authenticated comparison was performed for it.
