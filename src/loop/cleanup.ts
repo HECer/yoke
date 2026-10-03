@@ -11,6 +11,7 @@ import { killProcessForCleanup, killProcessTreeForCleanup } from './watchdog.js'
 import { cleanupClaims } from './claims.js'
 import { clearStatus } from './reporter.js'
 import { discardParallelRecoveryRecords } from './recovery.js'
+import { listProjects } from '../dashboard/registry.js'
 
 export interface CleanupOptions {
   git?: (args: string[], cwd: string) => void
@@ -241,3 +242,113 @@ function markCandidateWorktreeRemoved(targetDir: string, worktree: string): void
     }
   }
 }
+
+export interface PruneWorktreesResult {
+  targetDir: string
+  removed: string[]
+  failed: string[]
+}
+
+export function pruneWorktrees(targetDir: string, opts: { force?: boolean } = {}): PruneWorktreesResult {
+  const result: PruneWorktreesResult = { targetDir, removed: [], failed: [] }
+  const wtDir = join(targetDir, '.yoke', 'worktrees')
+
+  const candidates = new Set<string>()
+  if (existsSync(wtDir)) {
+    try {
+      for (const entry of readdirSync(wtDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) candidates.add(join(wtDir, entry.name))
+      }
+    } catch { /* ignore read errors */ }
+  }
+
+  try {
+    const raw = execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: targetDir, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' })
+    const lines = raw.split(/\r?\n/)
+    for (const line of lines) {
+      if (line.startsWith('worktree ')) {
+        const wtPath = line.slice(9).trim()
+        if (wtPath.includes('.yoke/worktrees') || wtPath.includes('.yoke\\worktrees') || wtPath.includes('/.worktrees/') || wtPath.includes('\\.worktrees\\') || wtPath.includes('-story')) {
+          candidates.add(wtPath)
+        }
+      }
+    }
+  } catch { /* not a git repo or git error */ }
+
+  for (const wtPath of candidates) {
+    try {
+      try {
+        execFileSync('git', ['worktree', 'remove', '--force', wtPath], { cwd: targetDir, stdio: ['ignore', 'pipe', 'pipe'] })
+      } catch {
+        if (existsSync(wtPath)) {
+          rmSync(wtPath, { recursive: true, force: true })
+        }
+      }
+      markCandidateWorktreeRemoved(targetDir, wtPath)
+      result.removed.push(wtPath)
+    } catch (e) {
+      result.failed.push(`${wtPath}: ${(e as Error).message}`)
+    }
+  }
+
+  try {
+    execFileSync('git', ['worktree', 'prune'], { cwd: targetDir, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch { /* best-effort */ }
+
+  return result
+}
+
+export function listWorktrees(targetDir: string): string[] {
+  const wtDir = join(targetDir, '.yoke', 'worktrees')
+  const candidates = new Set<string>()
+  if (existsSync(wtDir)) {
+    try {
+      for (const entry of readdirSync(wtDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) candidates.add(join(wtDir, entry.name))
+      }
+    } catch { /* ignore read errors */ }
+  }
+
+  try {
+    const raw = execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: targetDir, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' })
+    const lines = raw.split(/\r?\n/)
+    for (const line of lines) {
+      if (line.startsWith('worktree ')) {
+        const wtPath = line.slice(9).trim()
+        if (wtPath.includes('.yoke/worktrees') || wtPath.includes('.yoke\\worktrees') || wtPath.includes('/.worktrees/') || wtPath.includes('\\.worktrees\\') || wtPath.includes('-story')) {
+          candidates.add(wtPath)
+        }
+      }
+    }
+  } catch { /* not a git repo or git error */ }
+
+  return [...candidates]
+}
+
+export function listFleetWorktrees(): Record<string, string[]> {
+  const projects = listProjects()
+  const results: Record<string, string[]> = {}
+
+  for (const proj of projects) {
+    if (proj.root && !proj.error && existsSync(proj.root)) {
+      const list = listWorktrees(proj.root)
+      if (list.length > 0) {
+        results[proj.name || proj.root] = list
+      }
+    }
+  }
+  return results
+}
+
+export function pruneFleetWorktrees(opts: { force?: boolean } = {}): Record<string, PruneWorktreesResult> {
+  const projects = listProjects()
+  const fleetResults: Record<string, PruneWorktreesResult> = {}
+
+  for (const proj of projects) {
+    if (proj.root && !proj.error && existsSync(proj.root)) {
+      fleetResults[proj.name || proj.root] = pruneWorktrees(proj.root, opts)
+    }
+  }
+  return fleetResults
+}
+

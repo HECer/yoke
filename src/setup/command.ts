@@ -17,6 +17,12 @@ export interface SetupOptions {
   codeIntelligence?: CodeIntelligenceMode
   loop?: boolean
   runner?: Agent
+  runnerModel?: string
+  runnerReasoning?: string
+  agentModels?: Record<string, string>
+  agentReasoning?: Record<string, string>
+  configureModels?: boolean
+  cleanWorktrees?: boolean
   decisionPolicy?: DecisionPolicy
   routing?: boolean
   routingStrategy?: import('../retrofit/config.js').RoutingStrategy
@@ -73,7 +79,8 @@ function parseAgents(value: string, fallback: Agent[]): Agent[] {
   return parsed.length > 0 ? [...new Set(parsed)] : fallback
 }
 
-function yes(value: string, fallback: boolean): boolean {
+function yes(value: string | undefined | null, fallback: boolean): boolean {
+  if (!value) return fallback
   const normalized = value.trim().toLowerCase()
   if (['y', 'yes', 'j', 'ja', 'true', '1'].includes(normalized)) return true
   if (['n', 'no', 'nein', 'false', '0'].includes(normalized)) return false
@@ -119,6 +126,11 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
     let runner = defaultRunner
     let decisionPolicy = defaultPolicy
     let routing = defaultRouting
+    let runnerModel = opts.runnerModel ?? existing?.runner?.model
+    let runnerReasoning = opts.runnerReasoning ?? existing?.runner?.reasoningEffort
+    const agentModels: Record<string, string> = { ...(opts.agentModels ?? {}) }
+    const agentReasoning: Record<string, string> = { ...(opts.agentReasoning ?? {}) }
+
     if (interactive && ask) {
       agents = parseAgents(await ask(`Agents [${defaultAgents.join(',')}] (${SUPPORTED_AGENTS.join(',')}|all): `), defaultAgents)
       const graphAnswer = (await ask(`Code graph [${defaultGraph}] (graphify|serena): `)).trim().toLowerCase()
@@ -129,11 +141,26 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
       const policyAnswer = (await ask(`Decision mode [${decisionPolicy}] (auto|critical): `)).trim().toLowerCase()
       if (policyAnswer === 'auto' || policyAnswer === 'critical') decisionPolicy = policyAnswer
       routing = yes(await ask(`Enable adaptive multi-model routing? [${defaultRouting ? 'yes' : 'no'}]: `), defaultRouting)
+      if (opts.configureModels) {
+        const configureModels = yes(await ask(`Configure model & reasoning effort per agent? [no]: `), false)
+        if (configureModels) {
+          const rm = (await ask(`Runner model [${runnerModel ?? 'default'}]: `)).trim()
+          if (rm) runnerModel = rm
+          const rr = (await ask(`Runner reasoning effort (none|low|medium|high|xhigh) [${runnerReasoning ?? 'default'}]: `)).trim()
+          if (rr) runnerReasoning = rr
+          for (const a of agents) {
+            const am = (await ask(`Model for agent "${a}" [${agentModels[a] ?? 'default'}]: `)).trim()
+            if (am) agentModels[a] = am
+            const ar = (await ask(`Reasoning effort for agent "${a}" (none|low|medium|high|xhigh) [${agentReasoning[a] ?? 'default'}]: `)).trim()
+            if (ar) agentReasoning[a] = ar
+          }
+        }
+      }
     }
 
     if (modelProviders.length && !agents.includes('qwen')) agents = [...agents, 'qwen']
     if (!agents.includes(runner)) agents = [...agents, runner]
-    const code = runRetrofit(targetDir, { loop, agents, codeGraph, codeIntelligence, host })
+    const code = runRetrofit(targetDir, { loop, agents, codeGraph, codeIntelligence, host, cleanWorktrees: opts.cleanWorktrees, runnerModel, runnerReasoning, agentModels, agentReasoning })
     if (code !== 0) return code
     applyActions(presetActions, targetDir, { backupDir: join(targetDir, '.yoke', 'backups', `model-presets-${Date.now()}`) })
     const config = loadConfig(targetDir)
@@ -142,10 +169,20 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
     const priorRunner = existing?.runner?.agent ?? existing?.agents[0]
     const selectPresetModel = presetWorkers.length > 0 && runner === 'qwen' && (!existing || (priorRunner !== undefined && priorRunner !== runner))
     if (selectPresetModel && priorRunner !== 'qwen') config.runner = { permissions: config.runner?.permissions }
-    config.runner = { ...config.runner, agent: runner, ...(selectPresetModel && !config.runner?.model ? { model: presetWorkers[0]!.model } : {}) }
+    config.runner = {
+      ...config.runner,
+      agent: runner,
+      ...(runnerModel ? { model: runnerModel } : selectPresetModel && !config.runner?.model ? { model: presetWorkers[0]!.model } : {}),
+      ...(runnerReasoning ? { reasoningEffort: runnerReasoning } : {}),
+    }
     const existingWorkers = config.routing?.workers ?? []
     const baseWorkers = existingWorkers.length > 0 && !opts.routingPreset ? existingWorkers : defaultRoutingWorkers(agents).filter(worker => !modelProviders.length || worker.agent !== 'qwen')
-    const workers = [...baseWorkers, ...presetWorkers.filter(worker => !baseWorkers.some(existing => existing.id === worker.id))]
+    const rawWorkers = [...baseWorkers, ...presetWorkers.filter(worker => !baseWorkers.some(existing => existing.id === worker.id))]
+    const workers = rawWorkers.map(w => {
+      const model = agentModels[w.agent] ?? w.model
+      const reasoningEffort = agentReasoning[w.agent] ?? w.reasoningEffort
+      return { ...w, ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}) }
+    })
     config.routing = {
       ...config.routing,
       enabled: routing,
@@ -158,7 +195,7 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
     }
     YokeConfigSchema.parse(config)
     saveConfig(targetDir, config)
-    console.log(`Yoke setup complete: agents=${agents.join(',')} · runner=${runner} · loop=${loop ? 'on' : 'off'} · routing=${routing ? 'on' : 'off'} · decisions=${decisionPolicy}`)
+    console.log(`Yoke setup complete: agents=${agents.join(',')} · runner=${runner}${runnerModel ? ` (${runnerModel})` : ''}${runnerReasoning ? ` [${runnerReasoning}]` : ''} · loop=${loop ? 'on' : 'off'} · routing=${routing ? 'on' : 'off'} · decisions=${decisionPolicy}`)
     return 0
   } finally {
     close?.()

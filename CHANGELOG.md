@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.21.0 — 2026-10-03
+
+### Added
+- Add first-class git worktree management commands: `yoke worktrees list [dir] [--all]` and `yoke worktrees prune [dir] [--all] [--force]` to discover, unregister, and safely prune orphaned, dead, or retained worktrees across a single repository or the entire registered fleet.
+- Add `--clean-worktrees` flag to `yoke retrofit` and `yoke setup` to automatically prune dead story worktrees during project updates.
+- Add user-configurable, per-agent model and reasoning effort selection in `yoke retrofit` and `yoke setup` (`--runner-model=<model>`, `--runner-reasoning=<effort>`, `--model=<agent>:<model>`, `--reasoning=<agent>:<effort>`, and interactive `--configure-models`). Reasoning effort is never forced or hardcoded during a retrofit unless explicitly chosen.
+- Add compact zero-token loop status mode (`yoke loop status [dir] --compact`) returning a single-line summary (`state=... story=... progress=... phase=... updated=...`) to avoid burning thousands of replay tokens when agents check loop progress.
+- Add native Windows RTK hook detection (`rtk.exe` on PATH or `%USERPROFILE%\.local\bin\rtk.exe`) in Claude retrofit planner without requiring WSL.
+
+### Fixed
+- Prevent exponential worktree accumulation in `.yoke/worktrees` and git metadata from consuming system disk space and causing IDE/runner OOM crashes.
+- Make interactive question parser null-safe against empty inputs or aborted prompts.
+
 ## 1.20.0 — 2026-09-30
 
 ### Added

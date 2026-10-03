@@ -8,10 +8,31 @@ import { ensureGitignore } from './gitignore.js'
 import { loadConfig, saveConfig, defaultConfig, type Agent, type YokeConfig, type CodeGraph, type CodeIntelligenceMode } from './config.js'
 import { loadManifest } from '../canon/manifest.js'
 import { detectHostAgent } from '../agents/host.js'
+import { pruneWorktrees } from '../loop/cleanup.js'
 
-export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: Agent[]; codeGraph?: CodeGraph; codeIntelligence?: CodeIntelligenceMode; host?: Agent }): number {
+export interface RetrofitOptions {
+  loop: boolean
+  agents?: Agent[]
+  codeGraph?: CodeGraph
+  codeIntelligence?: CodeIntelligenceMode
+  host?: Agent
+  cleanWorktrees?: boolean
+  runnerModel?: string
+  runnerReasoning?: string
+  agentModels?: Record<string, string>
+  agentReasoning?: Record<string, string>
+}
+
+export function runRetrofit(targetDir: string, opts: RetrofitOptions): number {
   const canonDir = resolveCanonDir()
   const canonVersion = loadManifest(join(canonDir, 'manifest.yaml')).version
+
+  if (opts.cleanWorktrees) {
+    const pruneRes = pruneWorktrees(targetDir)
+    if (pruneRes.removed.length > 0) {
+      console.log(`Pruned ${pruneRes.removed.length} orphaned worktree(s).`)
+    }
+  }
 
   const detection = detectProject(targetDir)
   const agents: Agent[] = opts.agents && opts.agents.length > 0
@@ -32,6 +53,20 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: A
 
   const priorAgents = existing?.agents ?? []
   const mergedAgents = [...new Set([...priorAgents, ...agents])]
+
+  const runnerConfig = { ...(existing?.runner ?? {}) }
+  if (opts.runnerModel !== undefined) runnerConfig.model = opts.runnerModel
+  if (opts.runnerReasoning !== undefined) runnerConfig.reasoningEffort = opts.runnerReasoning
+
+  let updatedWorkers = existing?.routing?.workers
+  if (updatedWorkers && (opts.agentModels || opts.agentReasoning)) {
+    updatedWorkers = updatedWorkers.map(w => {
+      const model = opts.agentModels?.[w.agent] ?? w.model
+      const reasoningEffort = opts.agentReasoning?.[w.agent] ?? w.reasoningEffort
+      return { ...w, ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}) }
+    })
+  }
+
   const config: YokeConfig = {
     ...(existing ?? defaultConfig(canonVersion)),
     canonVersion,
@@ -39,6 +74,8 @@ export function runRetrofit(targetDir: string, opts: { loop: boolean; agents?: A
     loop: { ...existing?.loop, enabled: opts.loop },
     codeGraph,
     codeIntelligence: { ...(existing?.codeIntelligence ?? {}), mode: codeIntelligence },
+    ...(Object.keys(runnerConfig).length > 0 ? { runner: runnerConfig } : {}),
+    ...(existing?.routing && updatedWorkers ? { routing: { ...existing.routing, workers: updatedWorkers } } : {}),
     ...(existing?.design
       ? { design: existing.design }
       : detection.ui.detected ? { design: { mode: 'auto' as const, max: 4 } } : {}),

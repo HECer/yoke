@@ -62,7 +62,7 @@ export function setLoopEnabled(targetDir: string, enabled: boolean): void {
   saveConfig(targetDir, config)
 }
 
-export function loopStatus(targetDir: string, now: () => Date = () => new Date()): string {
+export function loopStatus(targetDir: string, now: () => Date = () => new Date(), opts?: { compact?: boolean }): string {
   const config = loadConfig(targetDir)
   const enabled = config?.loop.enabled ?? false
   const path = prdPath(targetDir)
@@ -71,13 +71,17 @@ export function loopStatus(targetDir: string, now: () => Date = () => new Date()
     const p = progress(loadPrd(path))
     prog = `${p.passed}/${p.total} stories pass`
   }
+  const st = readStatus(targetDir)
+  if (opts?.compact) {
+    if (!st) return `state=${enabled ? 'enabled' : 'disabled'} prd="${prog}"`
+    return `state=${st.state} story=${st.story ?? 'none'} progress=${st.progress.passed}/${st.progress.total} phase=${st.phase} updated=${relativeTime(st.updatedAt, now())}`
+  }
   const sharedPoolLine = (): string => {
     try {
       const pool = sharedPoolStatus()
       return `Shared pool: ${pool.activeUnits}/${pool.limit} units · ${pool.activeByRole.implementation} implementation · ${pool.activeByRole.integration} integration · ${pool.waitingWorkers} waiting${pool.oldestWaitMs ? ` · oldest wait ${fmtDuration(pool.oldestWaitMs)}` : ''}`
     } catch (error) { return `Shared pool unavailable: ${(error as Error).message}` }
   }
-  const st = readStatus(targetDir)
   if (!st) return `Loop: ${enabled ? 'enabled' : 'disabled'}\nPRD: ${prog}\n${sharedPoolLine()}`
   const head = `Loop: ${st.state.toUpperCase()}${st.story ? ` on ${st.story}${st.storyTitle ? ` "${st.storyTitle}"` : ''}` : ''}`
   const pct = st.percent !== undefined ? ` (${st.percent}%)` : ''

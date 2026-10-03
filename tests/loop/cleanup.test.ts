@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { reapProviderProcesses, reapRecordedRunners, runLoopCleanup } from '../../src/loop/cleanup.js'
+import { reapProviderProcesses, reapRecordedRunners, runLoopCleanup, listWorktrees, pruneWorktrees } from '../../src/loop/cleanup.js'
 import { lockPath, takeoverLockPath, takeoverRecoveryPath } from '../../src/loop/lock.js'
 
 let dir: string
@@ -420,3 +420,21 @@ describe('runLoopCleanup', () => {
     expect(existsSync(takeoverRecoveryPath(dir))).toBe(true)
   })
 })
+
+describe('pruneWorktrees and listWorktrees', () => {
+  it('lists candidates in .yoke/worktrees', () => {
+    mkdirSync(join(dir, '.yoke', 'worktrees', 'STORY-1'), { recursive: true })
+    mkdirSync(join(dir, '.yoke', 'worktrees', 'STORY-2'), { recursive: true })
+    const list = listWorktrees(dir)
+    expect(list).toHaveLength(2)
+  })
+
+  it('prunes worktrees and removes directories', () => {
+    const wt = join(dir, '.yoke', 'worktrees', 'STORY-1')
+    mkdirSync(wt, { recursive: true })
+    const res = pruneWorktrees(dir)
+    expect(res.removed).toContain(wt)
+    expect(existsSync(wt)).toBe(false)
+  })
+})
+

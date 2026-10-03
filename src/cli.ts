@@ -18,7 +18,7 @@ import { runNew } from './new/command.js'
 import { runPrdDraft, runPrdCheck } from './prd/command.js'
 import { runPrdAssess } from './prd/assess.js'
 import { runPrdDecompose } from './prd/decompose.js'
-import { runLoopCleanup } from './loop/cleanup.js'
+import { runLoopCleanup, pruneWorktrees, pruneFleetWorktrees, listWorktrees, listFleetWorktrees } from './loop/cleanup.js'
 import { runFlowSmoke } from './smoke/command.js'
 import { maybeNotifyUpdate, currentYokeVersion } from './update/check.js'
 import { runUpgrade } from './update/upgrade.js'
@@ -61,6 +61,22 @@ export function runDesignScan(targetDir: string, opts: { max: number; report: bo
   if (score > opts.max) { console.log(`${label} — ✗ over budget`); return 1 }
   console.log(`${label} — ✓`)
   return 0
+}
+
+export function parseKeyValueFlags(args: readonly string[], flagName: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const arg of args) {
+    if (arg.startsWith(`--${flagName}=`)) {
+      const raw = arg.slice(flagName.length + 3)
+      const eqIdx = raw.indexOf(':')
+      if (eqIdx > 0) {
+        const key = raw.slice(0, eqIdx).trim()
+        const val = raw.slice(eqIdx + 1).trim()
+        if (key && val) result[key] = val
+      }
+    }
+  }
+  return result
 }
 
 export type ParsedQualityFlags = {
@@ -166,9 +182,16 @@ export function main(argv: string[]): number | Promise<number> {
       const modelProviderArg = rest.find(a => a.startsWith('--model-provider='))?.slice('--model-provider='.length)
       const modelProviders = modelProviderArg?.split(',').map(value => value.trim())
       if (modelProviders?.some(value => !MODEL_PROVIDERS.includes(value as ModelProvider))) { console.error('Invalid --model-provider (expected deepseek,kimi)'); return 1 }
+      const runnerModel = rest.find(a => a.startsWith('--runner-model='))?.slice('--runner-model='.length)
+      const runnerReasoning = rest.find(a => a.startsWith('--runner-reasoning='))?.slice('--runner-reasoning='.length)
+      const agentModels = parseKeyValueFlags(rest, 'model')
+      const agentReasoning = parseKeyValueFlags(rest, 'reasoning')
+      const cleanWorktrees = rest.includes('--clean-worktrees')
       return runSetup(targetDir, {
         modelProviders: modelProviders as ModelProvider[] | undefined,
         host: hostArg as Agent | undefined, agents, runner: runnerArg as Agent | undefined,
+        runnerModel, runnerReasoning, agentModels, agentReasoning, cleanWorktrees,
+        configureModels: rest.includes('--configure-models'),
         codeGraph: graphArg as 'graphify' | 'serena' | undefined,
         codeIntelligence: intelligenceArg as CodeIntelligenceMode | undefined,
         loop, routing, decisionPolicy: policyArg as DecisionPolicy | undefined,
@@ -185,6 +208,45 @@ export function main(argv: string[]): number | Promise<number> {
         if (sub === 'remove') { console.log(unregisterProject(rest[1] ?? '') ? 'Project unregistered' : 'Project not registered'); return 0 }
         throw new Error('Use projects add [dir]|list|remove <id>')
       } catch (error) { console.error((error as Error).message); return 2 }
+    }
+    case 'worktrees': {
+      const sub = rest[0] ?? 'list'
+      const targetDir = rest.slice(1).find(a => !a.startsWith('-')) ?? '.'
+      const all = rest.includes('--all')
+      const force = rest.includes('--force')
+      if (sub === 'list') {
+        if (all) {
+          const fleet = listFleetWorktrees()
+          for (const [name, list] of Object.entries(fleet)) {
+            console.log(`[${name}] ${list.length} worktree(s):`)
+            for (const wt of list) console.log(`  ${wt}`)
+          }
+          return 0
+        }
+        const list = listWorktrees(targetDir)
+        console.log(`Worktrees in ${targetDir} (${list.length}):`)
+        for (const wt of list) console.log(`  ${wt}`)
+        return 0
+      }
+      if (sub === 'prune') {
+        if (all) {
+          const fleet = pruneFleetWorktrees({ force })
+          let totalRemoved = 0
+          for (const [name, res] of Object.entries(fleet)) {
+            if (res.removed.length > 0 || res.failed.length > 0) {
+              console.log(`[${name}] Removed: ${res.removed.length}, Failed: ${res.failed.length}`)
+              totalRemoved += res.removed.length
+            }
+          }
+          console.log(`Fleet prune complete: ${totalRemoved} worktree(s) removed.`)
+          return 0
+        }
+        const res = pruneWorktrees(targetDir, { force })
+        console.log(`Pruned ${res.removed.length} worktree(s) in ${targetDir}${res.failed.length > 0 ? ` (${res.failed.length} failed)` : ''}.`)
+        return res.failed.length === 0 ? 0 : 1
+      }
+      console.log('usage: yoke worktrees <list|prune> [dir] [--all] [--force]')
+      return 1
     }
     case 'dashboard': {
       const port = rest.find(a => a.startsWith('--port='))?.slice('--port='.length)
@@ -249,6 +311,11 @@ export function main(argv: string[]): number | Promise<number> {
     case 'retrofit': {
       const targetDir = rest.find(a => !a.startsWith('-')) ?? '.'
       const loop = rest.includes('--loop')
+      const cleanWorktrees = rest.includes('--clean-worktrees')
+      const runnerModel = rest.find(a => a.startsWith('--runner-model='))?.slice('--runner-model='.length)
+      const runnerReasoning = rest.find(a => a.startsWith('--runner-reasoning='))?.slice('--runner-reasoning='.length)
+      const agentModels = parseKeyValueFlags(rest, 'model')
+      const agentReasoning = parseKeyValueFlags(rest, 'reasoning')
       const agentArg = rest.find(a => a.startsWith('--agent='))?.slice('--agent='.length)
       const all: Agent[] = [...SUPPORTED_AGENTS]
       const agents = !agentArg || agentArg === 'all'
@@ -265,7 +332,7 @@ export function main(argv: string[]): number | Promise<number> {
       }
       const ciArg = rest.find(a => a.startsWith('--code-intelligence='))?.slice('--code-intelligence='.length)
       if (ciArg && !['off', 'shadow', 'active'].includes(ciArg)) { console.error(`Invalid --code-intelligence value: ${ciArg} (expected off|shadow|active)`); return 1 }
-      return runRetrofit(targetDir, { loop, agents, codeGraph, codeIntelligence: ciArg as CodeIntelligenceMode | undefined })
+      return runRetrofit(targetDir, { loop, agents, codeGraph, codeIntelligence: ciArg as CodeIntelligenceMode | undefined, cleanWorktrees, runnerModel, runnerReasoning, agentModels, agentReasoning })
     }
     case 'change': {
       const sub = rest[0]
@@ -303,7 +370,7 @@ export function main(argv: string[]): number | Promise<number> {
       const targetDir = rest.slice(1).find(a => !a.startsWith('-')) ?? '.'
       if (sub === 'on') { setLoopEnabled(targetDir, true); console.log('Loop enabled.'); return 0 }
       if (sub === 'off') { setLoopEnabled(targetDir, false); console.log('Loop disabled.'); return 0 }
-      if (sub === 'status') { console.log(loopStatus(targetDir)); return 0 }
+      if (sub === 'status') { console.log(loopStatus(targetDir, undefined, { compact: rest.includes('--compact') })); return 0 }
       if (sub === 'pause') { requestLoopPause(targetDir); console.log('Pause requested at the next safe story or exploration boundary.'); return 0 }
       if (sub === 'cleanup') return runLoopCleanup(targetDir, {
         removeWorktrees: rest.includes('--remove-worktrees'),
@@ -476,7 +543,7 @@ export function main(argv: string[]): number | Promise<number> {
         }
         return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, resumeWorktree: rest.includes('--resume-worktree'), parallel, parallelAuto: parallelArg === '--parallel=auto', reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions, ...(explore ? { explore: true } : {}), ...(exploreIntervalMinutes !== undefined ? { exploreIntervalMinutes } : {}), ...(exploreLimit.milliseconds !== undefined ? { exploreLimitMs: exploreLimit.milliseconds } : {}), ...qualityFlags.options })
       }
-      console.log(`usage: yoke loop <on|off|status|pause|decision|answer|resume [--discard] [--explore] [--explore-interval=<minutes>] [--explore-limit=<Nh|Nd|Nw>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--explore] [--explore-interval=<minutes>] [--explore-limit=<Nh|Nd|Nw>] [--parallel=<auto|N>] [--runner=<${AGENT_LIST}>] [--reviewer=<${AGENT_LIST}>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate|--no-isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]`)
+      console.log(`usage: yoke loop <on|off|status [--compact]|pause|decision|answer|resume [--discard] [--explore] [--explore-interval=<minutes>] [--explore-limit=<Nh|Nd|Nw>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--explore] [--explore-interval=<minutes>] [--explore-limit=<Nh|Nd|Nw>] [--parallel=<auto|N>] [--runner=<${AGENT_LIST}>] [--reviewer=<${AGENT_LIST}>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate|--no-isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]`)
       return 1
     }
     case 'new': {
@@ -601,7 +668,7 @@ export function main(argv: string[]): number | Promise<number> {
       return runUpgrade()
     default:
       console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
-      console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--code-intelligence=off|shadow|active] [--loop] | change <add|status> [dir] | code-intelligence-server --workspace=<dir> --mode=<mode> | prd <draft|check|assess|decompose> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] | design-scan [dir] | flow-smoke [dir] | upgrade>`)
+      console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--code-intelligence=off|shadow|active] [--clean-worktrees] [--runner-model=<model>] [--runner-reasoning=<effort>] [--model=<agent>:<model>] [--reasoning=<agent>:<effort>] [--loop] | worktrees <list|prune> [dir] [--all] [--force] | change <add|status> [dir] | code-intelligence-server --workspace=<dir> --mode=<mode> | prd <draft|check|assess|decompose> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] | design-scan [dir] | flow-smoke [dir] | upgrade>`)
       return cmd ? 1 : 0
   }
 }

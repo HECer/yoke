@@ -4,7 +4,7 @@ import { loadManifest } from '../../canon/manifest.js'
 import type { Action } from '../plan.js'
 import type { CodeGraph, CodeIntelligenceMode } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
-import { hasWsl } from '../wsl.js'
+import { hasWsl, hasRtk } from '../wsl.js'
 import { detectGstack } from '../gstack.js'
 import { PRESERVE_SCAFFOLD } from '../preserve.js'
 import { skillPackageActions } from '../skill-actions.js'
@@ -34,6 +34,7 @@ export function planClaude(
   codeGraph: CodeGraph = 'graphify',
   gstackDetected: boolean = detectGstack(targetDir),
   codeIntelligence: CodeIntelligenceMode = 'off',
+  rtkAvailable: boolean = hasRtk(),
 ): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const actions: Action[] = []
@@ -49,8 +50,8 @@ export function planClaude(
     reason: 'baseline instructions',
   })
 
-  // rtk: PreToolUse hook needs WSL on Windows; otherwise fall back to instruction mode.
-  const rtkHookable = wslAvailable
+  // rtk: PreToolUse hook works natively if rtk is available, or via WSL on Windows, or on non-Windows.
+  const rtkHookable = process.platform !== 'win32' || wslAvailable || rtkAvailable
   actions.push({
     kind: 'write',
     target: 'CLAUDE.md',
