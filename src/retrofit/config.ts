@@ -25,7 +25,20 @@ const CodeIntelligenceSchema = z.object({
   limits: z.object({ tokenBudget: z.number().int().min(128).max(16000).default(2400), timeoutMs: z.number().int().min(100).max(600000).default(10000), maxBytes: z.number().int().positive().max(10_000_000).default(2_000_000), maxBackends: z.number().int().min(1).max(3).default(3) }).optional(),
 })
 
-const SmokeFlowSchema = z.object({ name: z.string().min(1), path: z.string().min(1), landmark: z.string().optional() })
+const SmokeStepTimeout = z.number().int().min(1).max(30000).optional()
+const SmokeSelector = z.string().min(1).max(4096)
+const SmokeStepSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('click'), selector: SmokeSelector, timeoutMs: SmokeStepTimeout }).strict(),
+  z.object({ action: z.literal('fill'), selector: SmokeSelector, value: z.string().max(8192).optional(), valueEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u).optional(), timeoutMs: SmokeStepTimeout }).strict(),
+  z.object({ action: z.literal('press'), selector: SmokeSelector, key: z.string().min(1).max(128), timeoutMs: SmokeStepTimeout }).strict(),
+  z.object({ action: z.literal('expect-visible'), selector: SmokeSelector, timeoutMs: SmokeStepTimeout }).strict(),
+  z.object({ action: z.literal('expect-text'), selector: SmokeSelector, text: z.string().max(8192), exact: z.boolean().optional(), timeoutMs: SmokeStepTimeout }).strict(),
+  z.object({ action: z.literal('expect-url'), url: z.string().min(1).max(4096), timeoutMs: SmokeStepTimeout }).strict(),
+  z.object({ action: z.literal('reload'), timeoutMs: SmokeStepTimeout }).strict(),
+]).superRefine((step, context) => {
+  if (step.action === 'fill' && (step.value === undefined) === (step.valueEnv === undefined)) context.addIssue({ code: 'custom', message: 'A fill step needs exactly one of value or valueEnv' })
+})
+const SmokeFlowSchema = z.object({ name: z.string().min(1), path: z.string().min(1), landmark: z.string().optional(), timeoutMs: z.number().int().min(1).max(120000).optional(), steps: z.array(SmokeStepSchema).min(1).max(50).optional() })
 const SmokeSchema = z.object({ baseUrl: z.string().min(1), flows: z.array(SmokeFlowSchema).min(1) })
 const OutputPolicySchema = z.object({
   previewBytes: z.number().int().positive().optional(),
@@ -163,7 +176,8 @@ export const YokeConfigSchema = z.object({
   update: z.object({ auto: z.boolean() }).optional(),
 })
 
-export interface SmokeFlow { name: string; path: string; landmark?: string }
+export type SmokeStep = z.infer<typeof SmokeStepSchema>
+export interface SmokeFlow { name: string; path: string; landmark?: string; timeoutMs?: number; steps?: SmokeStep[] }
 export interface SmokeConfig { baseUrl: string; flows: SmokeFlow[] }
 export interface RoutingWorker {
   id: string
