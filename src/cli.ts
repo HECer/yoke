@@ -5,7 +5,7 @@ import { realpathSync } from 'node:fs'
 import { checkProject, checkExitCode, protectAcceptance } from './check/command.js'
 import { registerProject, listProjects, unregisterProject } from './dashboard/registry.js'
 import { startDashboard } from './dashboard/server.js'
-import { createProjectGoal, readProjectGoal, runProjectGoal, pauseProjectGoal, goalHandoff, budgetProjectGoal, bindProjectGoal } from './goals/command.js'
+import { createProjectGoal, readProjectGoal, runProjectGoal, pauseProjectGoal, goalHandoff, budgetProjectGoal, bindProjectGoal, assessProjectGoal } from './goals/command.js'
 import { validateCanon } from './canon/validate.js'
 import type { Agent, CodeIntelligenceMode, DecisionPolicy } from './retrofit/config.js'
 import { runRetrofit } from './retrofit/command.js'
@@ -279,6 +279,13 @@ export function main(argv: string[]): number | Promise<number> {
         }
         if (sub === 'handoff') { console.log(goalHandoff(targetDir)); return 0 }
         if (sub === 'pause') { pauseProjectGoal(targetDir); console.log('Pause requested at next safe boundary'); return 0 }
+        if (sub === 'assess') {
+          const provider = value('runner')
+          if (provider && !SUPPORTED_AGENTS.includes(provider as Agent)) throw new Error('Unknown runner')
+          return assessProjectGoal(targetDir, { provider: provider as Agent | undefined, selection: { model: value('model'), reasoningEffort: value('effort'), bare: rest.includes('--bare') ? true : undefined } }).then(result => {
+            console.log(JSON.stringify(result)); return result.assessed ? 0 : 1
+          }).catch(error => { console.error(`Goal assessment: ${(error as Error).message}`); return 2 })
+        }
         if (sub === 'run' || sub === 'resume') {
           const provider = value('runner')
           if (provider && !SUPPORTED_AGENTS.includes(provider as Agent)) throw new Error('Unknown runner')
@@ -286,7 +293,7 @@ export function main(argv: string[]): number | Promise<number> {
             console.log(JSON.stringify(goal)); return goal.status === 'complete' ? 0 : 1
           }).catch(error => { console.error(`Goal: ${(error as Error).message}`); return 2 })
         }
-        throw new Error('Use goal set|bind|status|run|resume|pause|handoff|budget')
+        throw new Error('Use goal set|bind|assess|status|run|resume|pause|handoff|budget')
       } catch (error) { console.error(`Goal: ${(error as Error).message}`); return 2 }
     }
     case 'check': {
@@ -667,7 +674,7 @@ export function main(argv: string[]): number | Promise<number> {
     case 'upgrade':
       return runUpgrade()
     default:
-      console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
+      console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|bind|assess|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
       console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--code-intelligence=off|shadow|active] [--clean-worktrees] [--runner-model=<model>] [--runner-reasoning=<effort>] [--model=<agent>:<model>] [--reasoning=<agent>:<effort>] [--loop] | worktrees <list|prune> [dir] [--all] [--force] | change <add|status> [dir] | code-intelligence-server --workspace=<dir> --mode=<mode> | prd <draft|check|assess|decompose> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] | design-scan [dir] | flow-smoke [dir] | upgrade>`)
       return cmd ? 1 : 0
   }

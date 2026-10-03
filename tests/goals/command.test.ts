@@ -2,7 +2,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, symlinkSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createProjectGoal, runProjectGoal, readProjectGoal, goalHandoff, pauseProjectGoal } from '../../src/goals/command.js'
+import { createProjectGoal, runProjectGoal, readProjectGoal, goalHandoff, pauseProjectGoal, goalRoutingStory } from '../../src/goals/command.js'
+import { loadAcceptance } from '../../src/check/command.js'
 import { saveConfig } from '../../src/retrofit/config.js'
 import { saveAssessment } from '../../src/routing/capability.js'
 import { defaultRoutingWorkers } from '../../src/setup/command.js'
@@ -20,7 +21,7 @@ it('uses a cached goal assessment to choose a smaller model and retains independ
   writeFileSync(join(root, 'test.mjs'), 'import {existsSync} from "node:fs"; process.exit(existsSync("implemented.txt") ? 0 : 1)')
   const goal = createProjectGoal(root, 'Expected outcome', { acceptanceIds: ['outcome'] })
   saveConfig(root, { canonVersion: 'test', agents: ['codex'], loop: { enabled: true }, routing: { enabled: true, strategy: 'capability', maxCandidates: 3, workers: defaultRoutingWorkers(['codex']) } })
-  saveAssessment(root, { id: goal.id, title: goal.objective, priority: 1, passes: false, agent: 'codex', acceptance: ['Expected outcome'] }, { taskClass: 'implementation', difficulty: 'medium', uncertainty: 'low', risk: 'low', scope: 'low', testability: 'high', reason: 'Known implementation', approach: 'Implement and run node test.mjs' }, { provider: 'codex', model: 'gpt-6-astra' })
+  saveAssessment(root, goalRoutingStory(goal, loadAcceptance(root)!, 'codex'), { taskClass: 'implementation', difficulty: 'medium', uncertainty: 'low', risk: 'low', scope: 'low', testability: 'high', reason: 'Known implementation', approach: 'Implement and run node test.mjs' }, { provider: 'codex', model: 'gpt-6-astra' })
   const result = await runProjectGoal(root, { provider: 'codex', selection: { model: 'gpt-6-astra' }, execute: async input => {
     expect(input.selection.model).toBe('gpt-5.6-terra')
     expect(input.prompt).toContain('Implement and run node test.mjs')
