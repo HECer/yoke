@@ -30,11 +30,11 @@ ${PRESERVE_SCAFFOLD}
 export function planClaude(
   canonDir: string,
   targetDir: string,
-  wslAvailable: boolean = hasWsl(),
+  wslAvailable: boolean = (hasWsl() || hasRtk()),
   codeGraph: CodeGraph = 'graphify',
   gstackDetected: boolean = detectGstack(targetDir),
   codeIntelligence: CodeIntelligenceMode = 'off',
-  rtkAvailable: boolean = hasRtk(),
+  rtkAvailable?: boolean,
 ): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const actions: Action[] = []
@@ -50,8 +50,8 @@ export function planClaude(
     reason: 'baseline instructions',
   })
 
-  // rtk: PreToolUse hook works natively if rtk is available, or via WSL on Windows, or on non-Windows.
-  const rtkHookable = process.platform !== 'win32' || wslAvailable || rtkAvailable
+  // rtk: PreToolUse hook works natively if rtk is available, or via WSL on Windows.
+  const rtkHookable = rtkAvailable !== undefined ? (wslAvailable || rtkAvailable) : wslAvailable
   actions.push({
     kind: 'write',
     target: 'CLAUDE.md',

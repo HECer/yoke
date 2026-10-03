@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.21.1 — 2026-10-03
+
+### Fixed
+- Fix runner model and reasoning effort inheritance in `yoke setup` when switching runners: changing from Codex to another agent no longer leaks stale model or reasoning effort.
+- Fix RTK hook planning condition in Claude retrofit planner on non-Windows/WSL environments.
+
 ## 1.21.0 — 2026-10-03
 
 ### Added

@@ -160,13 +160,18 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
 
     if (modelProviders.length && !agents.includes('qwen')) agents = [...agents, 'qwen']
     if (!agents.includes(runner)) agents = [...agents, runner]
+    const priorRunner = existing?.runner?.agent ?? existing?.agents[0]
+    const runnerChanged = priorRunner !== undefined && priorRunner !== runner
+    if (runnerChanged) {
+      if (opts.runnerModel === undefined) runnerModel = undefined
+      if (opts.runnerReasoning === undefined) runnerReasoning = undefined
+    }
     const code = runRetrofit(targetDir, { loop, agents, codeGraph, codeIntelligence, host, cleanWorktrees: opts.cleanWorktrees, runnerModel, runnerReasoning, agentModels, agentReasoning })
     if (code !== 0) return code
     applyActions(presetActions, targetDir, { backupDir: join(targetDir, '.yoke', 'backups', `model-presets-${Date.now()}`) })
     const config = loadConfig(targetDir)
     if (!config) return 1
     config.loop = { parallel: 'auto', isolate: true, ...config.loop, enabled: loop, decisionPolicy }
-    const priorRunner = existing?.runner?.agent ?? existing?.agents[0]
     const selectPresetModel = presetWorkers.length > 0 && runner === 'qwen' && (!existing || (priorRunner !== undefined && priorRunner !== runner))
     if (selectPresetModel && priorRunner !== 'qwen') config.runner = { permissions: config.runner?.permissions }
     config.runner = {
