@@ -44,7 +44,7 @@ describe('code intelligence coordinator', () => {
   it('runs structural context before optional architecture context and preserves provenance', async () => {
     const calls: string[] = []; const ci = new CodeIntelligenceCoordinator(root(), { adapters: { graft: adapter('graft', 'src/index.ts:1 answer', calls), graphify: adapter('graphify', 'Architecture: src/index.ts:1', calls) } })
     const response = await ci.dispatch('code_context', { workspace_id: ci.workspace_id, query: 'answer', include_docs: true })
-    expect(calls).toEqual(['graft:context', 'graphify:context']); expect(response.status).toBe('success'); expect(response.provenance.map(item => item.backend)).toEqual(['graft', 'graphify']); await ci.close()
+    expect(calls).toEqual(['graft:context', 'graphify:context']); expect(response.status).toBe('partial'); expect(response.provenance.map(item => item.backend)).toEqual(['graft', 'graphify']); expect(response.coverage.structural).toBe('partial'); expect(response.coverage.documents).toBe('partial'); await ci.close()
   })
 
   it('reports partial coverage when one backend is unavailable', async () => {

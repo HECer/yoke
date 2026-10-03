@@ -6,6 +6,13 @@ import type { Snapshot } from './snapshots.js'
 import { assertSafePath } from './snapshots.js'
 
 export interface EvidenceOptions { root: string; snapshot: Snapshot; adapter: BackendAdapter; origin?: Provenance['origin']; maxChars?: number }
+interface Normalization { provenance: Provenance[]; warnings: string[] }
+
+/** Truncate only between Unicode code points, including at normalizer limits. */
+export function shorten(value: string, maxChars: number): string {
+  const clipped = value.slice(0, Math.max(0, maxChars))
+  return /[\uD800-\uDBFF]$/u.test(clipped) ? clipped.slice(0, -1) : clipped
+}
 
 function hash(value: string): string { return createHash('sha256').update(value).digest('hex') }
 function textOf(raw: unknown): string {
@@ -18,61 +25,96 @@ function locate(text: string, root: string): { path: string | null; line: number
   try { return { path: assertSafePath(root, match[1]!), line: Number(match[2]) } } catch { return { path: null, line: null } }
 }
 
-export function makeProvenance(options: EvidenceOptions, text: string, resolution: Provenance['resolution'] = 'resolved'): Provenance {
+export function makeProvenance(options: EvidenceOptions, text: string, resolution: Provenance['resolution'] = 'unresolved'): Provenance {
   const location = locate(text, options.root)
-  const file = location.path ? options.snapshot.files.find(item => item.path === location.path) : undefined
   return {
-    backend: options.adapter.name, version: options.adapter.version, source_path: location.path, content_hash: file?.hash ?? null,
-    byte_range: null, origin: options.origin ?? (options.adapter.semantic ? 'lsp' : 'parser'), resolution, freshness: 'current',
+    backend: options.adapter.name, version: options.adapter.version, source_path: location.path, content_hash: null,
+    // A current workspace snapshot does not prove that a backend index read it.
+    // None of the supported backend wire contracts supplies a validated index
+    // snapshot binding. Do not trust raw `freshness` or attach a newer file hash.
+    byte_range: null, origin: options.origin ?? (options.adapter.semantic ? 'lsp' : 'parser'), resolution, freshness: 'unknown',
   }
 }
 
 export function evidenceId(provenance: Provenance, excerpt: string): string {
-  return `evidence-${hash(JSON.stringify({ provenance, excerpt })).slice(0, 24)}`
+  const { evidence_id: _id, ...fields } = provenance
+  return `evidence-${hash(JSON.stringify({ provenance: fields, excerpt })).slice(0, 24)}`
 }
 
-export function normalizeItems(raw: unknown, options: EvidenceOptions, kind: Item['kind'] = 'code', limit = 100): { items: Item[]; provenance: Provenance[] } {
-  const full = textOf(raw)
-  const chunks = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' && Array.isArray((raw as any).results) ? (raw as any).results : [raw])
-  const provenance: Provenance[] = []; const items: Item[] = []; const maxChars = options.maxChars ?? 12000
+function candidates(raw: unknown): unknown[] | null {
+  if (Array.isArray(raw)) return raw
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { results?: unknown }).results)) return (raw as { results: unknown[] }).results
+  return null
+}
+
+export function normalizeItems(raw: unknown, options: EvidenceOptions, kind: Item['kind'] = 'code', limit = 100): Normalization & { items: Item[] } {
+  const chunks = candidates(raw) ?? (raw === null || raw === undefined || raw === '' ? [] : [raw])
+  const provenance: Provenance[] = []; const items: Item[] = []; const warnings: string[] = []; const maxChars = Math.min(12000, options.maxChars ?? 12000)
+  if (chunks.length > limit) warnings.push('backend result list truncated')
   for (const candidate of chunks.slice(0, limit)) {
-    const excerpt = textOf(candidate).slice(0, maxChars)
+    const text = textOf(candidate); const excerpt = shorten(text, maxChars)
+    if (excerpt !== text) warnings.push('backend result excerpt truncated')
     if (!excerpt) continue
-    const p = makeProvenance(options, excerpt, excerpt.toLowerCase().includes('ambiguous') ? 'ambiguous' : 'resolved')
-    if (candidate && typeof candidate === 'object' && typeof candidate.relative_path === 'string') {
+    const p = makeProvenance(options, excerpt)
+    if (candidate && typeof candidate === 'object' && 'relative_path' in candidate && typeof candidate.relative_path === 'string') {
       try {
         p.source_path = assertSafePath(options.root, candidate.relative_path)
-        p.content_hash = options.snapshot.files.find(file => file.path === p.source_path)?.hash ?? null
       } catch { p.source_path = null; p.content_hash = null; p.resolution = 'unresolved' }
     }
-    const id = evidenceId(p, excerpt); provenance.push(p)
+    const id = evidenceId(p, excerpt); p.evidence_id = id; provenance.push(p)
     items.push({ item_id: `item-${hash(excerpt).slice(0, 24)}`, kind, path: p.source_path, excerpt, evidence_ids: [id], rank: items.length })
   }
-  if (items.length === 0 && full) {
-    const excerpt = full.slice(0, maxChars); const p = makeProvenance(options, excerpt, 'unresolved'); const id = evidenceId(p, excerpt); provenance.push(p)
-    items.push({ item_id: `item-${hash(excerpt).slice(0, 24)}`, kind, path: p.source_path, excerpt, evidence_ids: [id], rank: 0 })
+  return { items, provenance, warnings: [...new Set(warnings)] }
+}
+
+export function serenaSymbolId(namePath: string, relativePath: string): string {
+  return `serena:${encodeURIComponent(JSON.stringify({ name_path: namePath, relative_path: relativePath }))}`
+}
+
+export function normalizeSymbols(raw: unknown, options: EvidenceOptions): Normalization & { symbols: Symbol[]; references: Reference[]; diagnostics: Diagnostic[] } {
+  const list = candidates(raw); const symbols: Symbol[] = []; const provenance: Provenance[] = []; const warnings: string[] = []
+  if (!list) {
+    const normalized = normalizeItems(raw, options, 'symbol')
+    return { symbols, references: [], diagnostics: [], provenance: normalized.provenance, warnings: [...normalized.warnings, 'unrecognized semantic symbol response'] }
   }
-  return { items, provenance }
+  if (list.length > 100) warnings.push('semantic symbol result list truncated')
+  for (const value of list.slice(0, 100)) {
+    const normalized = normalizeItems([value], options, 'symbol', 1)
+    warnings.push(...normalized.warnings)
+    const item = normalized.items[0]; const p = normalized.provenance[0]
+    if (!item || !p) continue
+    const candidate = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+    const namePath = typeof candidate.name_path === 'string' ? candidate.name_path.trim() : ''
+    if (!options.adapter.semantic || !namePath || !item.path || !options.snapshot.files.some(file => file.path === item.path)) {
+      provenance.push(p); warnings.push('unresolved semantic symbol record'); continue
+    }
+    p.resolution = 'resolved'; p.evidence_id = evidenceId(p, item.excerpt); provenance.push(p)
+    symbols.push({ symbol_id: serenaSymbolId(namePath, item.path), name: typeof candidate.name === 'string' && candidate.name ? candidate.name : namePath.split('/').at(-1) || namePath,
+      path: item.path, kind: typeof candidate.kind === 'string' ? candidate.kind : 'unknown', signature: shorten(item.excerpt, 500), evidence_ids: [p.evidence_id] })
+  }
+  return { symbols, references: [], diagnostics: [], provenance, warnings: [...new Set(warnings)] }
 }
 
-export function normalizeSymbols(raw: unknown, options: EvidenceOptions): { symbols: Symbol[]; references: Reference[]; diagnostics: Diagnostic[]; provenance: Provenance[] } {
-  const normalized = normalizeItems(raw, options, 'symbol');
-  const candidates = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' && Array.isArray((raw as any).results) ? (raw as any).results : [])
-  const symbols: Symbol[] = normalized.items.map((item, index) => {
-    const candidate = candidates[index] && typeof candidates[index] === 'object' ? candidates[index] as any : {}
-    const namePath = String(candidate.name_path ?? candidate.namePath ?? candidate.name ?? item.excerpt.split(/\s|\(|\{/u)[0] ?? 'unknown')
-    const path = typeof candidate.relative_path === 'string' ? candidate.relative_path : item.path
-    const stableId = `serena:${encodeURIComponent(JSON.stringify({ name_path: namePath, relative_path: path ?? '' }))}`
-    return { symbol_id: stableId, name: String(candidate.name ?? namePath.split('/').at(-1) ?? namePath), path, kind: String(candidate.kind ?? 'unknown'), signature: item.excerpt.slice(0, 500), evidence_ids: item.evidence_ids }
-  })
-  return { symbols, references: [], diagnostics: [], provenance: normalized.provenance }
+/** Graft prose/search hits are candidates, not an ordered graph path. */
+export function normalizeEdges(raw: unknown, options: EvidenceOptions, _relation: Edge['relation']): Normalization & { nodes: TraceNode[]; edges: Edge[] } {
+  const normalized = normalizeItems(raw, options, 'code')
+  const nodes = normalized.items.map(item => ({ id: item.item_id, label: shorten(item.excerpt, 160), path: item.path, evidence_ids: item.evidence_ids }))
+  return { nodes, edges: [], provenance: normalized.provenance, warnings: [...normalized.warnings, 'structural trace response has no validated edge contract'] }
 }
 
-export function normalizeEdges(raw: unknown, options: EvidenceOptions, relation: Edge['relation']): { nodes: TraceNode[]; edges: Edge[]; provenance: Provenance[] } {
-  const normalized = normalizeItems(raw, options, 'code');
-  const nodes = normalized.items.map(item => ({ id: item.item_id, label: item.excerpt.slice(0, 160), path: item.path, evidence_ids: item.evidence_ids }))
-  const edges = nodes.slice(1).map((node, index) => ({ from: nodes[index]!.id, to: node.id, relation, evidence_ids: node.evidence_ids }))
-  return { nodes, edges, provenance: normalized.provenance }
+export function normalizeReferenceEdges(raw: unknown, options: EvidenceOptions, target: { symbol_id: string; name_path: string; relative_path: string }, relation: 'references' | 'implements' = 'references'): Normalization & { nodes: TraceNode[]; edges: Edge[] } {
+  const normalized = normalizeSymbols(raw, options)
+  const nodes: TraceNode[] = normalized.symbols.map(symbol => ({ id: symbol.symbol_id, label: symbol.name, path: symbol.path, evidence_ids: symbol.evidence_ids }))
+  let targetPath: string
+  try {
+    targetPath = assertSafePath(options.root, target.relative_path)
+    if (!options.snapshot.files.some(file => file.path === targetPath)) throw new Error('target is absent from snapshot')
+  } catch {
+    return { nodes, edges: [], provenance: normalized.provenance, warnings: [...normalized.warnings, 'reference target is unresolved'] }
+  }
+  const targetNode = { id: target.symbol_id, label: target.name_path, path: targetPath, evidence_ids: [] as string[] }
+  const edges = nodes.map(node => ({ from: node.id, to: targetNode.id, relation, evidence_ids: node.evidence_ids }))
+  return { nodes: [targetNode, ...nodes], edges, provenance: normalized.provenance, warnings: normalized.warnings }
 }
 
 export interface TraceNode { id: string; label: string; path: string | null; evidence_ids: string[] }

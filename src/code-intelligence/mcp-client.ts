@@ -17,8 +17,11 @@ export class McpStdioClient {
   constructor(private readonly command: string, private readonly args: string[], private readonly cwd: string, private readonly framing: McpFraming = 'content-length', private readonly maxBytes = 2_000_000) {}
 
   async call(tool: string, arguments_: Record<string, unknown>, timeoutMs: number): Promise<McpCallResult> {
+    const deadline = Date.now() + timeoutMs
     await this.start(timeoutMs)
-    return this.request('tools/call', { name: tool, arguments: arguments_ }, timeoutMs) as Promise<McpCallResult>
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) { void this.close(); throw new Error('MCP call deadline exceeded during initialization') }
+    return this.request('tools/call', { name: tool, arguments: arguments_ }, remaining) as Promise<McpCallResult>
   }
 
   async close(): Promise<void> {
@@ -29,7 +32,7 @@ export class McpStdioClient {
     this.pending.clear()
     child.kill('SIGTERM')
     await new Promise<void>(resolve => {
-      const timer = setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); resolve() }, 500)
+      const timer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); resolve() }, 500)
       child.once('close', () => { clearTimeout(timer); resolve() })
     })
   }
@@ -53,6 +56,7 @@ export class McpStdioClient {
   }
 
   private request(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
+    if (timeoutMs <= 0) return Promise.reject(new Error(`MCP request deadline exceeded: ${method}`))
     if (!this.child) return Promise.reject(new Error('MCP process is not running'))
     const id = this.nextId++
     this.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }))

@@ -11,6 +11,7 @@ export const ResolutionSchema = z.enum(['resolved', 'unresolved', 'ambiguous', '
 export const FreshnessSchema = z.enum(['current', 'stale', 'unknown'])
 
 export const ProvenanceSchema = z.object({
+  evidence_id: z.string().min(1).optional(),
   backend: BackendNameSchema,
   version: z.string().min(1),
   source_path: z.string().nullable(),
@@ -36,6 +37,7 @@ export const MetricsSchema = z.object({
   latency_ms: z.number().nonnegative(),
   result_tokens: z.number().int().nonnegative(),
   token_count_kind: z.enum(['exact', 'estimated']),
+  token_count_method: z.literal('utf8_bytes_conservative').optional(),
   returned_bytes: z.number().int().nonnegative(),
 })
 export type Metrics = z.infer<typeof MetricsSchema>
@@ -160,7 +162,7 @@ export type Operation = z.infer<typeof OperationSchema>
 export interface CodeIntelligenceResponse<T> extends ResponseBase { data: T }
 export interface ContextData { items: z.infer<typeof ItemSchema>[]; next_cursor: string | null }
 export interface SymbolData { symbols: z.infer<typeof SymbolSchema>[]; references: z.infer<typeof ReferenceSchema>[]; diagnostics: z.infer<typeof DiagnosticSchema>[] }
-export interface TraceData { nodes: Array<{ id: string; label: string; path: string | null; evidence_ids: string[] }>; edges: z.infer<typeof EdgeSchema>[]; frontier_remaining: number }
+export interface TraceData { nodes: Array<{ id: string; label: string; path: string | null; evidence_ids: string[] }>; edges: z.infer<typeof EdgeSchema>[]; frontier_remaining: number; traversal_complete?: boolean }
 export interface ImpactData { semantic_findings: z.infer<typeof ItemSchema>[]; structural_candidates: z.infer<typeof ItemSchema>[]; documents: z.infer<typeof ItemSchema>[]; suggested_test_paths: string[]; unresolved: string[] }
 export interface PreviewData { plan_id: string; plan_hash: string; diff_uri: string; changed_paths: string[]; validation: 'passed' | 'failed' | 'incomplete'; approval_required: true; expires_at: string }
 export interface ApplyData { plan_id: string; transaction_id: string; changed_paths: string[]; new_snapshot_id: string; validation: 'passed' | 'failed' | 'incomplete'; committed: false; merged: false }

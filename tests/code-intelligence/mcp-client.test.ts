@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -28,6 +28,19 @@ process.stdin.on('data', chunk => {
 `
 
 describe('MCP stdio client', () => {
+  it('shares the call deadline with initialization instead of resetting the timeout', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'yoke-ci-mcp-deadline-')); const file = join(root, 'server.mjs')
+    writeFileSync(file, `import { createInterface } from 'node:readline';
+createInterface({ input: process.stdin }).on('line', line => {
+ const message = JSON.parse(line); if (message.id === undefined) return;
+ const delay = message.method === 'initialize' ? 100 : 250;
+ setTimeout(() => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: { content: [{ type: 'text', text: 'too late' }] } }) + '\\n'), delay);
+});`)
+    const client = new McpStdioClient(process.execPath, [file], root, 'line')
+    try { await expect(client.call('read', {}, 300)).rejects.toThrow(/timed out|deadline/i) }
+    finally { await client.close(); rmSync(root, { recursive: true, force: true }) }
+  })
+
   it('speaks newline JSON-RPC for Graft', async () => {
     const root = mkdtempSync(join(tmpdir(), 'yoke-ci-mcp-')); const file = join(root, 'server.mjs'); writeFileSync(file, fakeServer)
     const client = new McpStdioClient(process.execPath, [file], root, 'line'); const result = await client.call('graft_find_code', { query: 'answer' }, 2000)
