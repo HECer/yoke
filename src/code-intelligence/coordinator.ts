@@ -15,6 +15,7 @@ import { createEditPlan, loadEditPlan, type EditPlan } from './edit-plans.js'
 
 export interface BackendProcess { command?: string; args?: string[] }
 export interface CodeIntelligenceCoordinatorOptions {
+  workspaceId?: string
   mode?: 'off' | 'shadow' | 'active'
   policy?: SnapshotPolicy
   limits?: { tokenBudget?: number; timeoutMs?: number; maxBytes?: number; maxBackends?: number }
@@ -62,7 +63,7 @@ export class CodeIntelligenceCoordinator {
   private readonly adapters: Record<'graft' | 'graphify' | 'serena-lsp', BackendAdapter>
 
   constructor(root: string, options: CodeIntelligenceCoordinatorOptions = {}) {
-    this.root = root; this.workspace_id = workspaceId(root); this.options = options
+    this.root = root; this.workspace_id = options.workspaceId ?? workspaceId(root); this.options = options
     this.adapters = {
       graft: options.adapters?.graft ?? createGraftAdapter(root, options.graft),
       graphify: options.adapters?.graphify ?? createGraphifyAdapter(root, options.graphify),
@@ -131,6 +132,7 @@ export class CodeIntelligenceCoordinator {
     const candidate = input && typeof input === 'object' ? input as any : {}
     if (candidate.workspace_id && candidate.workspace_id !== this.workspace_id) throw new Error('workspace is not permitted')
     const snapshot = candidate.snapshot_id ? loadSnapshot(this.root, candidate.snapshot_id) : createSnapshot(this.root, this.options.policy, this.workspace_id)
+    if (snapshot.workspace_id !== this.workspace_id) throw new Error('snapshot workspace identifier differs from the configured workspace; create a new snapshot')
     if (candidate.snapshot_id) assertSnapshotCurrent(this.root, snapshot, this.options.policy)
     return snapshot
   }

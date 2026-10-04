@@ -13,6 +13,7 @@ export class McpStdioClient {
   private readonly pending = new Map<number, Pending>()
   private nextId = 1
   private stderrBytes = 0
+  private closing: Promise<void> | undefined
 
   constructor(private readonly command: string, private readonly args: string[], private readonly cwd: string, private readonly framing: McpFraming = 'content-length', private readonly maxBytes = 2_000_000) {}
 
@@ -24,17 +25,27 @@ export class McpStdioClient {
     return this.request('tools/call', { name: tool, arguments: arguments_ }, remaining) as Promise<McpCallResult>
   }
 
+  async listTools(timeoutMs: number): Promise<string[]> {
+    const deadline = Date.now() + timeoutMs
+    await this.start(timeoutMs)
+    const result = await this.request('tools/list', {}, deadline - Date.now()) as { tools?: Array<{ name?: unknown }> }
+    if (!Array.isArray(result.tools)) throw new Error('MCP backend did not advertise tools')
+    return result.tools.map(tool => tool.name).filter((name): name is string => typeof name === 'string')
+  }
+
   async close(): Promise<void> {
-    if (!this.child) return
+    if (!this.child) return this.closing
     const child = this.child
     this.child = undefined
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('MCP process closed')) }
     this.pending.clear()
-    child.kill('SIGTERM')
-    await new Promise<void>(resolve => {
-      const timer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); resolve() }, 500)
+    this.closing = new Promise<void>(resolve => {
+      const timer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL') }, 500)
       child.once('close', () => { clearTimeout(timer); resolve() })
     })
+    child.kill('SIGTERM')
+    await this.closing
+    this.closing = undefined
   }
 
   private async start(timeoutMs: number): Promise<void> {
