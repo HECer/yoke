@@ -2,6 +2,7 @@
 import { CodeIntelligenceCoordinator } from './coordinator.js'
 import { TOOL_DEFINITIONS } from './contracts.js'
 import { loadConfig } from '../retrofit/config.js'
+import { workspaceId } from './snapshots.js'
 
 const INPUT_SCHEMAS: Record<string, object> = {
   code_context: { type: 'object', required: ['workspace_id', 'query'], properties: { workspace_id: { type: 'string' }, query: { type: 'string' }, snapshot_id: { type: 'string' }, mode: { type: 'string', enum: ['orient', 'locate', 'explain'] }, paths: { type: 'array', items: { type: 'string' } }, include_docs: { type: 'boolean' }, token_budget: { type: 'integer' }, timeout_ms: { type: 'integer' } } },
@@ -20,8 +21,10 @@ export interface CodeIntelligenceServerIo { stdin: NodeJS.ReadableStream; stdout
 export async function runCodeIntelligenceServer(argv = process.argv.slice(2), io: CodeIntelligenceServerIo = process): Promise<void> {
   const workspace = arg('workspace', argv) ?? process.cwd(); const configured = loadConfig(workspace)?.codeIntelligence
   const mode = (arg('mode', argv) as 'off' | 'shadow' | 'active' | undefined) ?? configured?.mode ?? 'active'
+  const workspaceIdentifier = configured?.workspaceId ?? workspaceId(workspace)
   const coordinator = new CodeIntelligenceCoordinator(workspace, {
     mode,
+    workspaceId: workspaceIdentifier,
     policy: { excludePatterns: configured?.policy?.excludePatterns, maxFileBytes: configured?.policy?.maxFileBytes },
     limits: configured?.limits,
     graft: configured?.graft, graphify: configured?.graphify, serena: configured?.serena,
@@ -35,7 +38,7 @@ export async function runCodeIntelligenceServer(argv = process.argv.slice(2), io
   const handle = async (message: any) => {
     if (message.method === 'notifications/initialized' || message.method?.startsWith('notifications/')) return
     if (message.method === 'initialize') { send({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'yoke-code-intelligence', version: '0.1.0' } } }); return }
-    if (message.method === 'tools/list') { send({ jsonrpc: '2.0', id: message.id, result: { tools: TOOL_DEFINITIONS.map(tool => ({ ...tool, inputSchema: INPUT_SCHEMAS[tool.name] })) } }); return }
+    if (message.method === 'tools/list') { send({ jsonrpc: '2.0', id: message.id, result: { tools: TOOL_DEFINITIONS.map(tool => ({ ...tool, inputSchema: { ...INPUT_SCHEMAS[tool.name], properties: { ...(INPUT_SCHEMAS[tool.name] as any).properties, workspace_id: { type: 'string', const: workspaceIdentifier, description: 'Accepted identifier for this configured workspace.' } } } })) } }); return }
     if (message.method === 'tools/call') {
       const name = message.params?.name; const response = await coordinator.dispatch(name, message.params?.arguments ?? {})
       send({ jsonrpc: '2.0', id: message.id, result: { content: [{ type: 'text', text: summary(response) }], structuredContent: response, isError: response.status === 'error' || response.status === 'blocked' } }); return

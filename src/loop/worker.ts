@@ -1,3 +1,4 @@
+import { cacheIsolationProblem } from './cache-isolation.js'
 import { knownInfrastructureFailure } from "../routing/capability.js"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
@@ -79,6 +80,8 @@ function reviewOutcome(result: AgentResult): ReviewOutcome {
 
 function runMechanicalGates(input: StoryWorkerInput, context: AgentContext, evidence: MutableWorkerEvidence): MechanicalGateResult {
   evidence.criteria = []
+  const cacheProblem = input.failureRoot && input.failureRoot !== context.targetDir ? cacheIsolationProblem(context.targetDir) : undefined
+  if (cacheProblem) return { kind: 'failed', stage: 'verify', summary: cacheProblem }
   const criteria = context.story.acceptance.filter(isAcceptanceCriterion)
   if (criteria.length === 0) {
     if (input.requireCriterionEvidence) return { kind: 'failed', stage: 'criterion', summary: `story ${context.story.id} lacks executable criterion evidence` }
@@ -340,6 +343,8 @@ async function runWorkerImplementation(input: StoryWorkerInput, context: AgentCo
   let feedback: string | undefined = input.feedback
   for (let attempt = 0; ; attempt++) {
     const result = await input.runner({ ...context, feedback })
+    const cacheProblem = input.failureRoot && input.failureRoot !== context.targetDir ? cacheIsolationProblem(context.targetDir) : undefined
+    if (cacheProblem) return { result: { ...result, success: false, infrastructureFailure: true, summary: cacheProblem } }
     if (!result.routing?.canRetry || result.routing.blocked || attempt >= 7 || cancellationReason(input.cancellation) || input.pause?.()) return { result }
     if (["decision-request.yaml", "ambiguity.md", "loop.pause"].some(name => existsSync(join(context.targetDir, ".yoke", name))) || acceptanceProtectionProblem(context.targetDir)) return { result }
     const before = gateIdentity(context.targetDir, context.story)

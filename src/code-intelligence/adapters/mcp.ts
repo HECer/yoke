@@ -41,5 +41,6 @@ export class McpBackendAdapter implements BackendAdapter {
     const tool = this.aliases[request.tool] ?? request.tool
     return valueFromResult(await this.client.call(tool, request.arguments, timeoutMs))
   }
+  probe(timeoutMs: number): Promise<string[]> { return this.client.listTools(timeoutMs) }
   close(): Promise<void> { return this.client.close() }
 }

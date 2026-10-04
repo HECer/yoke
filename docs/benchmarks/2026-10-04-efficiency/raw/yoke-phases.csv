@@ -1,0 +1,10 @@
+phase,count,seconds
+resource-wait-implementation,8,0.038000000000000006
+waiting-resource,14,97.92699999999999
+implementing,8,3868.892
+verifying,9,74.024
+integration-queue,7,0.019000000000000003
+resource-wait-integration,7,0.017
+committing,8,2.701
+integration,7,99.979
+design,4,14.082

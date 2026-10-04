@@ -84,7 +84,12 @@ export function loopStatus(targetDir: string, now: () => Date = () => new Date()
   const st = readStatus(targetDir)
   if (opts?.compact) {
     if (!st) return `state=${enabled ? 'enabled' : 'disabled'} prd="${prog}"`
-    return `state=${st.state} story=${st.story ?? 'none'} progress=${st.progress.passed}/${st.progress.total} phase=${st.phase} updated=${relativeTime(st.updatedAt, now())}`
+    const workers = [...(st.parallel?.workers ?? [])].sort((a, b) => a.story.localeCompare(b.story))
+    const work = (worker: typeof workers[number]) => `${encodeURIComponent(worker.story)}:${worker.phase ?? 'working'}`
+    const integrator = st.parallel?.integrator
+    const story = st.story ?? integrator?.story ?? workers[0]?.story ?? 'none'
+    const parallel = st.parallel ? ` workers=${workers.map(work).join(',') || 'none'} integrator=${integrator ? work(integrator) : 'none'} waiting=${st.parallel.waitingWorkers ?? 0} queued=${st.parallel.queuedIntegrations ?? st.parallel.queuedCandidates}` : ''
+    return `state=${st.state} story=${encodeURIComponent(story)} progress=${st.progress.passed}/${st.progress.total} phase=${st.phase ?? (st.parallel ? 'parallel' : st.state)}${parallel} updated=${relativeTime(st.updatedAt, now())}`
   }
   const sharedPoolLine = (): string => {
     try {

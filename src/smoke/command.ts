@@ -48,19 +48,31 @@ const CONFIG_GUIDANCE = [
 ].join('\n')
 
 export async function launchPlaywright(targetDir: string): Promise<SmokeBrowser | null> {
+  const req = createRequire(join(resolve(targetDir), 'package.json'))
   try {
-    // createRequire needs an absolute anchor — a relative targetDir (the CLI
-    // default '.') would throw and masquerade as "playwright not found".
-    // Playwright is CJS, so load it with native require() rather than a
-    // file:// dynamic import — the URL round-trip breaks under Windows 8.3
-    // short paths (e.g. RUNNER~1 on CI) and test-runner import interception.
-    const req = createRequire(join(resolve(targetDir), 'package.json'))
+    req.resolve('playwright')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') return null
+    throw Object.assign(new Error(`Playwright resolution failed: ${String(error)}`, { cause: error }), { code: 'browser-package-failed' })
+  }
+  // Native CJS loading also preserves Windows short-path compatibility.
+  let chromium: { launch(o: object): Promise<SmokeBrowser> } | undefined
+  try {
     const pw = req('playwright') as { chromium?: { launch(o: object): Promise<SmokeBrowser> }; default?: { chromium: { launch(o: object): Promise<SmokeBrowser> } } }
-    const chromium = pw.chromium ?? pw.default?.chromium
-    if (!chromium) return null
+    chromium = pw.chromium ?? pw.default?.chromium
+  } catch (error) {
+    throw Object.assign(new Error(`Playwright package could not load: ${String(error)}`, { cause: error }), { code: 'browser-package-failed' })
+  }
+  if (!chromium) throw Object.assign(new Error('Installed Playwright package has no chromium export'), { code: 'browser-export-missing' })
+  try {
     return await chromium.launch({ headless: true, timeout: 30_000 })
-  } catch {
-    return null
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    const code = /executable doesn't exist|executable does not exist/i.test(detail) ? 'browser-binary-missing'
+      : /no usable sandbox|running as root without --no-sandbox/i.test(detail) ? 'browser-sandbox-failed'
+      : /\bEPERM\b|\bEACCES\b|permission denied|operation not permitted/i.test(detail) ? 'browser-permission-denied'
+      : 'browser-launch-failed'
+    throw Object.assign(new Error(detail, { cause: error }), { code })
   }
 }
 
@@ -92,6 +104,8 @@ export interface SmokeFlowReport {
   failureVideo?: string
 }
 export interface FlowSmokeReport {
+  /** Source fingerprint covers local files; served-source identity is separate. */
+  serverIdentity: 'verified' | 'unverified' | 'failed'
   version: 1
   startedAt: string
   generatedAt: string
@@ -103,7 +117,27 @@ export interface FlowSmokeReport {
   configDigest: string
   environment: { platform: string; architecture: string; nodeVersion: string; driver: 'injected' | 'playwright-chromium'; browserVersion?: string; baseOrigin: string; viewport: { width: number; height: number } }
   flows: SmokeFlowReport[]
-  failure?: 'source-changed-or-unavailable' | 'browser-cleanup-failed'
+  failure?: 'source-changed-or-unavailable' | 'browser-cleanup-failed' | 'server-identity-failed'
+}
+
+async function verifyServedSource(baseUrl: string, identity: { path: string; sha256: string }): Promise<boolean> {
+  const origin = new URL(baseUrl)
+  const url = new URL(identity.path, origin)
+  if (!['http:', 'https:'].includes(url.protocol) || url.origin !== origin.origin) return false
+  const response = await fetch(url, { signal: AbortSignal.timeout(5000), redirect: 'error' })
+  if (!response.ok || !response.body) return false
+  const reader = response.body.getReader(), hash = createHash('sha256')
+  let bytes = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.byteLength
+      if (bytes > 1024 * 1024) return false
+      hash.update(value)
+    }
+    return hash.digest('hex') === identity.sha256
+  } finally { await reader.cancel().catch(() => {}) }
 }
 class SmokeFailure extends Error {
   constructor(readonly code: SmokeFailureCode) { super(code) }
@@ -279,9 +313,27 @@ export async function runFlowSmoke(targetDir: string, opts: FlowSmokeOptions = {
   const redact = (text: string) => [...fillValues.values()].filter((value): value is string => !!value).sort((a, b) => b.length - a.length).reduce((current, value) => current.split(value).join('[redacted]'), text)
 
   const launch = opts.launch ?? launchPlaywright
+  if (!opts.launch && !smoke.sourceIdentity) {
+    console.error('Smoke sourceIdentity is required for a production browser run: configure a served path and expected SHA-256 for this source build; previous evidence was preserved.')
+    return 2
+  }
+  if (smoke.sourceIdentity) {
+    let matched = false
+    try { matched = await verifyServedSource(baseUrl, smoke.sourceIdentity) } catch { /* Unavailable identity cannot pass. */ }
+    if (!matched) { console.error('Smoke served-source identity could not be verified; previous evidence was preserved.'); return 2 }
+  }
   let browser: SmokeBrowser | null
   try { browser = await bounded(() => launch(targetDir), 30_000) }
-  catch { console.error('Smoke browser could not start; previous evidence was preserved.'); return 2 }
+  catch (error) {
+    const rawCode = (error as { code?: unknown })?.code
+    const code = typeof rawCode === 'string' && ['browser-package-failed', 'browser-export-missing', 'browser-binary-missing', 'browser-sandbox-failed', 'browser-permission-denied'].includes(rawCode) ? rawCode : 'browser-launch-failed'
+    const detail = redact(error instanceof Error ? error.message : String(error))
+      .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[redacted]@')
+      .replace(/\b((?:access_|refresh_|id_)?token|password|secret|api[_-]?key)=([^\s&]+)/gi, '$1=[redacted]')
+      .replace(/\b(authorization\s*:\s*(?:bearer|basic)\s+)[^\s,;]+/gi, '$1[redacted]')
+    console.error(`Smoke browser could not start (${code}): ${detail.slice(0, 2000)}; previous evidence was preserved.`)
+    return 2
+  }
   if (!browser) {
     console.error(`Playwright not found in ${targetDir}. Install it: npm i -D playwright && npx playwright install chromium`)
     return 2
@@ -301,6 +353,7 @@ export async function runFlowSmoke(targetDir: string, opts: FlowSmokeOptions = {
   try { baseOrigin = new URL(baseUrl).origin } catch { /* Navigation reports the invalid address. */ }
   try { const version = browser.version?.(); if (version) browserVersion = redact(version.slice(0, 120)) } catch { /* Optional runtime metadata. */ }
   const report: FlowSmokeReport = {
+    serverIdentity: smoke.sourceIdentity ? 'verified' : 'unverified',
     version: 1, startedAt: new Date(started).toISOString(), generatedAt: '', durationMs: 0, status: 'failed',
     sourceFingerprint, afterSourceFingerprint: null, sourceStable: false, configDigest,
     environment: { platform: process.platform, architecture: process.arch, nodeVersion: process.version, driver: opts.launch ? 'injected' : 'playwright-chromium', ...(browserVersion ? { browserVersion } : {}), baseOrigin: redact(baseOrigin), viewport: { width: 1280, height: 720 } },
@@ -327,6 +380,11 @@ export async function runFlowSmoke(targetDir: string, opts: FlowSmokeOptions = {
     rmSync(videoTmp, { recursive: true, force: true })
   }
   try { report.afterSourceFingerprint = workspaceFingerprint(targetDir) } catch { /* Missing identity prevents a pass. */ }
+  if (smoke.sourceIdentity) {
+    let matched = false
+    try { matched = await verifyServedSource(baseUrl, smoke.sourceIdentity) } catch { /* Fail closed. */ }
+    if (!matched) { report.serverIdentity = 'failed'; report.failure ??= 'server-identity-failed' }
+  }
   report.sourceStable = report.sourceFingerprint === report.afterSourceFingerprint
   if (!report.sourceStable) report.failure ??= 'source-changed-or-unavailable'
   const green = report.flows.filter(flow => flow.status === 'passed').length

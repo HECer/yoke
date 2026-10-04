@@ -1,13 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { createServer } from 'node:http'
+import { createHash } from 'node:crypto'
 import { runFlowSmoke, launchPlaywright, safeLabel, type SmokeBrowser, type SmokePage } from '../../src/smoke/command.js'
 import { saveConfig, defaultConfig, type SmokeConfig } from '../../src/retrofit/config.js'
 
 let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-smoke-')) })
 afterEach(() => {
+  vi.restoreAllMocks()
   rmSync(dir, { recursive: true, force: true })
   delete process.env.YOKE_STORY
 })
@@ -64,6 +67,42 @@ function fakeLaunch(behavior: FakeBehavior): (targetDir: string) => Promise<Smok
 const HOME = { name: 'home', path: '/', landmark: 'main h1' }
 
 describe('runFlowSmoke', () => {
+  it('requires served-source identity before a production browser launch', async () => {
+    withSmoke({ baseUrl: 'http://x', flows: [HOME] })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await runFlowSmoke(dir)).toBe(2)
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('sourceIdentity is required'))
+  })
+  it('rejects a foreign server before browser launch and preserves old proofs', async () => {
+    const server = createServer((_req, res) => res.end('other-worktree'))
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address() as { port: number }
+    const launch = vi.fn(fakeLaunch({}))
+    try {
+      withSmoke({ baseUrl: `http://127.0.0.1:${address.port}`, flows: [HOME],
+        sourceIdentity: { path: '/source-id', sha256: createHash('sha256').update('expected-source').digest('hex') } })
+      const proof = join(dir, '.yoke', 'proof', 'latest')
+      mkdirSync(proof, { recursive: true })
+      writeFileSync(join(proof, 'home.png'), 'previous evidence')
+      expect(await runFlowSmoke(dir, { launch })).toBe(2)
+      expect(launch).not.toHaveBeenCalled()
+      expect(readFileSync(join(proof, 'home.png'), 'utf8')).toBe('previous evidence')
+    } finally { await new Promise<void>(resolve => server.close(() => resolve())) }
+  })
+  it('records verified served-source identity and rechecks it after the flows', async () => {
+    let requests = 0
+    const server = createServer((_req, res) => { requests++; res.end('expected-source') })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address() as { port: number }
+    try {
+      withSmoke({ baseUrl: `http://127.0.0.1:${address.port}`, flows: [HOME],
+        sourceIdentity: { path: '/source-id', sha256: createHash('sha256').update('expected-source').digest('hex') } })
+      expect(await runFlowSmoke(dir, { launch: fakeLaunch({}) })).toBe(0)
+      const report = JSON.parse(readFileSync(join(dir, '.yoke', 'proof', 'latest', 'report.json'), 'utf8'))
+      expect(report.serverIdentity).toBe('verified')
+      expect(requests).toBe(2)
+    } finally { await new Promise<void>(resolve => server.close(() => resolve())) }
+  })
   it('exits 2 with guidance when there is no smoke config', async () => {
     saveConfig(dir, defaultConfig('1.0.0'))
     expect(await runFlowSmoke(dir, { launch: fakeLaunch({}) })).toBe(2)
@@ -203,6 +242,38 @@ describe('safeLabel', () => {
 })
 
 describe('launchPlaywright', () => {
+  it.each([
+    ['Executable does not exist at /browser/chromium', 'browser-binary-missing'],
+    ['spawn EPERM', 'browser-permission-denied'],
+    ['unexpected driver failure', 'browser-launch-failed'],
+  ])('keeps installed-package launch failure %s distinct from missing Playwright', async (message, code) => {
+    const pkgDir = join(dir, 'node_modules', 'playwright')
+    mkdirSync(pkgDir, { recursive: true })
+    writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: 'playwright', main: 'index.js' }))
+    writeFileSync(join(pkgDir, 'index.js'), `module.exports = { chromium: { launch: async () => { throw new Error(${JSON.stringify(message)}) } } };`)
+    await expect(launchPlaywright(dir)).rejects.toMatchObject({ code, message: expect.stringContaining(message) })
+  })
+  it('reports a redacted launch cause while preserving old evidence', async () => {
+    withSmoke({ baseUrl: 'http://x', flows: [{ ...HOME, steps: [{ action: 'fill', selector: 'input', value: 'testing-password' }] }] })
+    const proof = join(dir, '.yoke', 'proof', 'latest')
+    mkdirSync(proof, { recursive: true })
+    writeFileSync(join(proof, 'home.png'), 'previous evidence')
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await runFlowSmoke(dir, { launch: async () => { throw new Error('driver refused testing-password') } })).toBe(2)
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('driver refused [redacted]'))
+    expect(error.mock.calls.flat().join(' ')).not.toContain('testing-password')
+    expect(readFileSync(join(proof, 'home.png'), 'utf8')).toBe('previous evidence')
+  })
+  it('redacts OAuth and Authorization credentials in launch diagnostics', async () => {
+    withSmoke({ baseUrl: 'http://x', flows: [HOME] })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await runFlowSmoke(dir, { launch: async () => { throw new Error('access_token=private-access refresh_token=private-refresh Authorization: Bearer private-bearer') } })).toBe(2)
+    const text = error.mock.calls.flat().join(' ')
+    expect(text).not.toContain('private-access')
+    expect(text).not.toContain('private-refresh')
+    expect(text).not.toContain('private-bearer')
+    expect(text).toContain('[redacted]')
+  })
   it('resolves playwright from a RELATIVE targetDir (the CLI default ".")', async () => {
     // stub playwright package: chromium.launch returns a minimal browser object
     const pkgDir = join(dir, 'node_modules', 'playwright')
@@ -222,12 +293,12 @@ describe('launchPlaywright', () => {
     }
   })
 
-  it('returns null when the resolved module has no chromium export', async () => {
+  it('reports an invalid package when the resolved module has no chromium export', async () => {
     const pkgDir = join(dir, 'node_modules', 'playwright')
     mkdirSync(pkgDir, { recursive: true })
     writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: 'playwright', version: '0.0.0', main: 'index.js' }))
     writeFileSync(join(pkgDir, 'index.js'), 'module.exports = {};\n')
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'target', version: '0.0.0' }))
-    expect(await launchPlaywright(dir)).toBeNull()
+    await expect(launchPlaywright(dir)).rejects.toMatchObject({ code: 'browser-export-missing' })
   })
 })

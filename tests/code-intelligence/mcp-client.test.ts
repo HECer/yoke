@@ -28,6 +28,21 @@ process.stdin.on('data', chunk => {
 `
 
 describe('MCP stdio client', () => {
+  it('discovers advertised capabilities using tools/list without invoking backend code queries', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'yoke-ci-mcp-list-'))
+    const file = join(root, 'server.mjs')
+    writeFileSync(file, `import {createInterface} from 'node:readline'; createInterface({input:process.stdin}).on('line',line=>{
+ const m=JSON.parse(line); if(m.id===undefined)return;
+ if(!['initialize','tools/list'].includes(m.method))process.exit(2);
+ const result=m.method==='initialize'?{protocolVersion:'2025-11-25'}:{tools:[{name:'find_symbol'}]};
+ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');
+});`)
+    const client = new McpStdioClient(process.execPath, [file], root, 'line')
+    try {
+      expect((client as any).listTools).toBeTypeOf('function')
+      expect(await (client as any).listTools(2000)).toEqual(['find_symbol'])
+    } finally { await client.close(); rmSync(root, { recursive: true, force: true }) }
+  })
   it('shares the call deadline with initialization instead of resetting the timeout', async () => {
     const root = mkdtempSync(join(tmpdir(), 'yoke-ci-mcp-deadline-')); const file = join(root, 'server.mjs')
     writeFileSync(file, `import { createInterface } from 'node:readline';

@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.23.0 — 2026-10-04
+
+### Added
+- Add read-only `yoke tools-preflight` and bounded local `yoke usage` reports. Separate configured tools from available capabilities, recorded usage from unknown coverage, and overlapping worker time from summed process durations.
+- Retain immutable hashed runtime proofs before isolated candidate cleanup, with source, configuration and environment bindings. Preserve candidates when transfer or validation fails.
+- Add optional `smoke.sourceIdentity: { path, sha256 }` configuration; production browser smoke now requires it and verifies served bytes before launch and after journeys.
+
+### Fixed
+- Make setup/retrofit help read-only and reject unknown or contradictory mutating flags before dispatch while preserving recovery options.
+- Ignore supervision runtime files, diagnose already tracked copies, render actual parallel workers and integration states, and stop reporting success merely when an integrator becomes idle.
+- Preserve redacted browser launch causes instead of reporting every failure as a missing package. Keep OAuth, authorization and configured form secrets out of diagnostics.
+- Migrate Yoke-owned Codex RTK hooks to the native protocol without deleting foreign hooks; honor configured Code Intelligence workspace identifiers and await MCP shutdown before temporary directory cleanup.
+- Validate actual candidate writes and sibling collisions before and after integration gates. Reject shared writable worktree runtime caches and completion commands that change source or final assets.
+- Preserve partial/missing usage markers through routing and include recorded serial implementation durations without counting parent/child usage twice.
+
+### Migration and validation limits
+- Existing browser smoke projects must pin an app-specific served source path and its lowercase SHA-256. Update the pin intentionally after source changes; a static byte pin establishes response identity, not an independent deployment attestation.
+- Shared package download stores remain allowed. Worktrees need their own `node_modules` root and writable `.vite-temp`, `.vite` and `.cache` directories. The guard covers these conventional roots, not arbitrary application-defined cache paths or concurrent changes after inspection.
+- No dependency installer or retry policy was added: Yoke does not own one. Full-product model speed/cost and genuine npm/provider cold/warm cache comparisons remain unmeasured. The paired help experiment is a local regression check only.
+- See the [analysis](docs/benchmarks/2026-10-04-efficiency/ANALYSE.md) and [validation record](docs/RELEASE-VALIDATION-1.23.0.md). Version metadata is prepared locally; publication requires independent review and release gates, followed by verified CI/npm evidence.
+
 ## 1.22.0 — 2026-10-03
 
 ### Added

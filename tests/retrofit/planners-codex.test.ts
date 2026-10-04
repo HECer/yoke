@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { planCodex } from '../../src/retrofit/planners/codex.js'
+import { applyActions } from '../../src/retrofit/apply.js'
 
 let canon: string
 beforeEach(() => {
@@ -44,7 +45,24 @@ describe('planCodex', () => {
     ]))
     expect(targets).toContain('RTK.md')
     expect(actions.find(a => a.target === 'AGENTS.md')!.content).toContain('@RTK.md')
-    expect(actions.find(a => a.target === '.codex/hooks.json')!.content).toContain('.codex/hooks/rtk.mjs')
+    expect(actions.find(a => a.target === '.codex/hooks.json')!.content).toContain('rtk hook codex')
+  })
+
+  it('migrates only Yoke legacy hooks and preserves foreign hooks idempotently', () => {
+    const target = mkdtempSync(join(tmpdir(), 'yoke-codex-hooks-'))
+    const foreign = { matcher: '^Bash$', hooks: [{ type: 'command', command: 'company-check' }] }
+    const legacy = JSON.parse(String(planCodex(canon, target).find(a => a.target === '.codex/hooks.json')!.content))
+    legacy.hooks.PreToolUse = [foreign, { matcher: '^Bash$', hooks: [{ type: 'command', command: 'node "$(git rev-parse --show-toplevel)/.codex/hooks/rtk.mjs"', timeout: 5, statusMessage: 'Compressing command output with RTK' }] }]
+    mkdirSync(join(target, '.codex'), { recursive: true })
+    writeFileSync(join(target, '.codex/hooks.json'), JSON.stringify(legacy))
+    try {
+      const apply = () => applyActions(planCodex(canon, target).filter(a => a.target === '.codex/hooks.json'), target, { backupDir: join(target, 'backups') })
+      apply()
+      const bytes = readFileSync(join(target, '.codex/hooks.json'), 'utf8')
+      expect(JSON.parse(bytes).hooks.PreToolUse).toEqual([foreign, { matcher: 'Bash', hooks: [{ type: 'command', command: 'rtk hook codex' }] }])
+      apply()
+      expect(readFileSync(join(target, '.codex/hooks.json'), 'utf8')).toBe(bytes)
+    } finally { rmSync(target, { recursive: true, force: true }) }
   })
 
   it('copies complete skill packages and emits matching invocation policy', () => {

@@ -1,0 +1,31 @@
+{
+  "captured_at": "2026-10-04T09:25:22.622378+00:00",
+  "yoke": "1.22.0",
+  "codex": "codex-cli 0.160.0",
+  "rtk": "rtk 0.51.0",
+  "packages": {
+    "react": "19.3.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.2",
+    "vitest": "5.0.3",
+    "playwright": "1.63.0"
+  },
+  "code_intelligence": {
+    "mode": "active",
+    "facade_handshake": "passed",
+    "semantic_backends": "graft, graphify, serena unavailable",
+    "semantic_benefit_measured": false
+  },
+  "runner": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium"
+  },
+  "rtk_hook": "native Codex integration plus explicit commands",
+  "continuous_exploration": false,
+  "app_url": "http://127.0.0.1:6317",
+  "viewport_checks": {
+    "desktop": "1440x900",
+    "mobile": "390x844"
+  },
+  "lint": "not configured"
+}

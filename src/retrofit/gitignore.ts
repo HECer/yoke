@@ -1,7 +1,9 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 
 export const YOKE_IGNORE_LINES = [
+  '.yoke/supervision/',
   '.yoke/worktrees/',
   '.yoke/integration-recovery/',
   '.yoke/failure-progress/',
@@ -45,6 +47,12 @@ const HEADER = '# Yoke runtime artifacts (managed by yoke retrofit)'
 // lines not already present (matched verbatim, line-wise). Preserves existing
 // content. Returns true if the file changed.
 export function ensureGitignore(targetDir: string): boolean {
+  if (existsSync(join(targetDir, '.yoke', 'supervision'))) {
+    try {
+      const tracked = execFileSync('git', ['ls-files', '--', '.yoke/supervision/'], { cwd: targetDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+      if (tracked) console.warn('Yoke supervision files are already tracked; ignore rules preserve their index entries. Review and explicitly untrack these runtime files before the next loop.')
+    } catch { /* A retrofit may precede git initialization. */ }
+  }
   const file = join(targetDir, '.gitignore')
   const current = existsSync(file) ? readFileSync(file, 'utf8') : ''
   const present = new Set(current.split(/\r?\n/).map((l) => l.trim()))

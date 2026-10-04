@@ -14,5 +14,7 @@ export function providerTelemetryUsage(telemetry: ProviderTelemetry): TokenUsage
     outputTokens: known.outputTokens ?? 0,
     measurementComplete: telemetry.usageAvailable,
     costMeasurementComplete: typeof telemetry.tokens?.totalCostUsd === 'number',
+    usageMissingFields: ['inputTokens', 'cachedInputTokens', 'outputTokens', 'reasoningOutputTokens', 'totalCostUsd'].filter(field => typeof known[field as keyof typeof known] !== 'number'),
+    usagePartialFields: Object.keys(telemetry.partialUsage ?? {}).filter(field => typeof telemetry.tokens?.[field as keyof NonNullable<ProviderTelemetry['tokens']>] !== 'number' && typeof known[field as keyof typeof known] === 'number'),
   }
 }

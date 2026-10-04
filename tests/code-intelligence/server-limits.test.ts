@@ -18,13 +18,15 @@ it('boots the facade with all configured limits and advertises request controls'
   const root = mkdtempSync(join(tmpdir(), 'yoke-ci-server-limits-'))
   const stdin = new PassThrough(); const stdout = new PassThrough(); const messages: any[] = []
   stdout.on('data', chunk => messages.push(JSON.parse(chunk.toString())))
-  saveConfig(root, { ...defaultConfig('test'), codeIntelligence: { mode: 'shadow', limits: { tokenBudget: 1300, timeoutMs: 750, maxBytes: 1400, maxBackends: 2 } } })
+  saveConfig(root, { ...defaultConfig('test'), codeIntelligence: { mode: 'shadow', workspaceId: 'configured-project', limits: { tokenBudget: 1300, timeoutMs: 750, maxBytes: 1400, maxBackends: 2 } } })
   const server = runCodeIntelligenceServer([`--workspace=${root}`], { stdin, stdout })
   try {
     expect(constructed).toHaveBeenLastCalledWith(root, expect.objectContaining({ limits: { tokenBudget: 1300, timeoutMs: 750, maxBytes: 1400, maxBackends: 2 } }))
+    expect(constructed).toHaveBeenLastCalledWith(root, expect.objectContaining({ workspaceId: 'configured-project' }))
     stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) + '\n')
     await vi.waitFor(() => expect(messages).toHaveLength(1))
     const tools = new Map(messages[0].result.tools.map((tool: any) => [tool.name, tool.inputSchema.properties]))
+    expect((tools.get('code_context') as any).workspace_id.const).toBe('configured-project')
     expect((tools.get('code_symbol') as any).token_budget).toBeDefined()
     expect((tools.get('code_trace') as any).require_resolved).toBeDefined()
     expect((tools.get('code_trace') as any).timeout_ms).toBeDefined()

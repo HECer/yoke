@@ -1,0 +1,104 @@
+{
+  "method": "3 paired fresh/repeated target help calls per version, alternating order; each call starts a new Node process",
+  "limits": "Not OS/provider/npm cold/warm cache measurements; no LLM, guardian, approval or full-product speed/cost inference. File reads for snapshots are outside timed calls.",
+  "baseline": "G:\\NN-Developed\\Worktrees\\yoke-1.22-efficiency-baseline",
+  "candidate": "G:\\NN-Developed\\Worktrees\\yoke-1.23-efficiency",
+  "runs": [
+    {
+      "pair": 1,
+      "condition": "fresh-target",
+      "version": "baseline",
+      "milliseconds": 376.805,
+      "changedFiles": 97,
+      "exitCode": 0
+    },
+    {
+      "pair": 1,
+      "condition": "fresh-target",
+      "version": "candidate",
+      "milliseconds": 303.768,
+      "changedFiles": 0,
+      "exitCode": 0
+    },
+    {
+      "pair": 1,
+      "condition": "repeat-target",
+      "version": "baseline",
+      "milliseconds": 390.249,
+      "changedFiles": 1,
+      "exitCode": 0
+    },
+    {
+      "pair": 1,
+      "condition": "repeat-target",
+      "version": "candidate",
+      "milliseconds": 283.96,
+      "changedFiles": 0,
+      "exitCode": 0
+    },
+    {
+      "pair": 2,
+      "condition": "fresh-target",
+      "version": "candidate",
+      "milliseconds": 283.469,
+      "changedFiles": 0,
+      "exitCode": 0
+    },
+    {
+      "pair": 2,
+      "condition": "fresh-target",
+      "version": "baseline",
+      "milliseconds": 396.285,
+      "changedFiles": 97,
+      "exitCode": 0
+    },
+    {
+      "pair": 2,
+      "condition": "repeat-target",
+      "version": "candidate",
+      "milliseconds": 276.348,
+      "changedFiles": 0,
+      "exitCode": 0
+    },
+    {
+      "pair": 2,
+      "condition": "repeat-target",
+      "version": "baseline",
+      "milliseconds": 345.871,
+      "changedFiles": 1,
+      "exitCode": 0
+    },
+    {
+      "pair": 3,
+      "condition": "fresh-target",
+      "version": "baseline",
+      "milliseconds": 396.646,
+      "changedFiles": 97,
+      "exitCode": 0
+    },
+    {
+      "pair": 3,
+      "condition": "fresh-target",
+      "version": "candidate",
+      "milliseconds": 277.688,
+      "changedFiles": 0,
+      "exitCode": 0
+    },
+    {
+      "pair": 3,
+      "condition": "repeat-target",
+      "version": "baseline",
+      "milliseconds": 364.275,
+      "changedFiles": 1,
+      "exitCode": 0
+    },
+    {
+      "pair": 3,
+      "condition": "repeat-target",
+      "version": "candidate",
+      "milliseconds": 282.323,
+      "changedFiles": 0,
+      "exitCode": 0
+    }
+  ]
+}

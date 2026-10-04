@@ -90,7 +90,7 @@ export function maybeNotifyUpdate(currentVersion: string, opts: NotifyOpts = {})
   const env = opts.env ?? process.env
   if (env.YOKE_NO_UPDATE_CHECK || env.CI) return
   const argv = opts.argv ?? process.argv
-  if (argv.includes('--json')) return
+  if (argv.some(arg => ['--json', '--help', '-h'].includes(arg))) return
   const tty = opts.tty ?? process.stderr.isTTY === true
   if (!tty) return
   const cache = readCache(opts.cacheFile)

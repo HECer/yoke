@@ -1,0 +1,469 @@
+{
+  "cutoff_utc": "2026-10-04T09:27:32.214737+00:00",
+  "stories": [
+    {
+      "story": "STORY-1",
+      "title": "Scaffold runnable typed NEXUS foundation and test infrastructure",
+      "passes": true,
+      "implementation_attempts": 1,
+      "implementation_seconds": 565.898,
+      "verification_seconds": 3.058,
+      "integration_seconds": 6.301,
+      "queue_wait_seconds": 0.007,
+      "input_tokens": 1435585,
+      "cached_input_tokens": 1314176,
+      "output_tokens": 12725,
+      "measured_provider_calls": 1
+    },
+    {
+      "story": "STORY-2",
+      "title": "Implement deterministic telemetry, incidents and operator machine actions",
+      "passes": true,
+      "implementation_attempts": 1,
+      "implementation_seconds": 367.382,
+      "verification_seconds": 2.816,
+      "integration_seconds": 8.723,
+      "queue_wait_seconds": 0.011,
+      "input_tokens": 698268,
+      "cached_input_tokens": 643968,
+      "output_tokens": 8663,
+      "measured_provider_calls": 1
+    },
+    {
+      "story": "STORY-3",
+      "title": "Create visually distinctive interactive digital twin topology",
+      "passes": true,
+      "implementation_attempts": 1,
+      "implementation_seconds": 696.314,
+      "verification_seconds": 5.19,
+      "integration_seconds": 9.183,
+      "queue_wait_seconds": 0.007,
+      "input_tokens": 2080455,
+      "cached_input_tokens": 1994752,
+      "output_tokens": 15192,
+      "measured_provider_calls": 1
+    },
+    {
+      "story": "STORY-4",
+      "title": "Build detailed machine inspector, Fleet and operational events/KPIs",
+      "passes": true,
+      "implementation_attempts": 1,
+      "implementation_seconds": 505.759,
+      "verification_seconds": 4.124,
+      "integration_seconds": 11.815,
+      "queue_wait_seconds": 0.004,
+      "input_tokens": 921789,
+      "cached_input_tokens": 857088,
+      "output_tokens": 12190,
+      "measured_provider_calls": 1
+    },
+    {
+      "story": "STORY-5",
+      "title": "Integrate complete operations interface and searchable keyboard command palette",
+      "passes": true,
+      "implementation_attempts": 2,
+      "implementation_seconds": 566.104,
+      "verification_seconds": 11.58,
+      "integration_seconds": 35.665,
+      "queue_wait_seconds": 0.014,
+      "input_tokens": 1347301,
+      "cached_input_tokens": 1245568,
+      "output_tokens": 11899,
+      "measured_provider_calls": 2
+    },
+    {
+      "story": "STORY-6",
+      "title": "Verify integrated benchmark in browser, repair defects and save all visual proofs",
+      "passes": true,
+      "implementation_attempts": 1,
+      "implementation_seconds": 683.215,
+      "verification_seconds": 28.821,
+      "integration_seconds": 28.292,
+      "queue_wait_seconds": 0.005,
+      "input_tokens": 2950211,
+      "cached_input_tokens": 2853888,
+      "output_tokens": 13068,
+      "measured_provider_calls": 1
+    },
+    {
+      "story": "STORY-7",
+      "title": "Repair verified desktop containment and mobile priority; refresh visual proof",
+      "passes": true,
+      "implementation_attempts": 1,
+      "implementation_seconds": 484.22,
+      "verification_seconds": 18.435,
+      "integration_seconds": 0,
+      "queue_wait_seconds": 0.007,
+      "input_tokens": 1800983,
+      "cached_input_tokens": 1712512,
+      "output_tokens": 8456,
+      "measured_provider_calls": 1
+    }
+  ],
+  "roles": {
+    "guardian": {
+      "sessions": 7,
+      "measured_sessions": 7,
+      "model_calls": 48,
+      "input_tokens": 1281675,
+      "cached_input_tokens": 1073152,
+      "output_tokens": 5404,
+      "tool_output_bytes": 0,
+      "uncached_input_tokens": 208523,
+      "unknown_sessions": 0
+    },
+    "implementation": {
+      "sessions": 8,
+      "measured_sessions": 8,
+      "model_calls": 189,
+      "input_tokens": 11234592,
+      "cached_input_tokens": 10621952,
+      "output_tokens": 82193,
+      "tool_output_bytes": 6175737,
+      "uncached_input_tokens": 612640,
+      "unknown_sessions": 0
+    },
+    "coordinator": {
+      "sessions": 1,
+      "measured_sessions": 1,
+      "model_calls": 127,
+      "input_tokens": 15525113,
+      "cached_input_tokens": 15139456,
+      "output_tokens": 107118,
+      "tool_output_bytes": 2971077,
+      "uncached_input_tokens": 385657,
+      "unknown_sessions": 0
+    },
+    "planner_or_review": {
+      "sessions": 2,
+      "measured_sessions": 2,
+      "model_calls": 2,
+      "input_tokens": 52718,
+      "cached_input_tokens": 14336,
+      "output_tokens": 1215,
+      "tool_output_bytes": 0,
+      "uncached_input_tokens": 38382,
+      "unknown_sessions": 0
+    }
+  },
+  "yoke_phases": {
+    "resource-wait-implementation": {
+      "count": 8,
+      "seconds": 0.038000000000000006
+    },
+    "waiting-resource": {
+      "count": 14,
+      "seconds": 97.92699999999999
+    },
+    "implementing": {
+      "count": 8,
+      "seconds": 3868.892
+    },
+    "verifying": {
+      "count": 9,
+      "seconds": 74.024
+    },
+    "integration-queue": {
+      "count": 7,
+      "seconds": 0.019000000000000003
+    },
+    "resource-wait-integration": {
+      "count": 7,
+      "seconds": 0.017
+    },
+    "committing": {
+      "count": 8,
+      "seconds": 2.701
+    },
+    "integration": {
+      "count": 7,
+      "seconds": 99.979
+    },
+    "design": {
+      "count": 4,
+      "seconds": 14.082
+    }
+  },
+  "parallelism": {
+    "implementation_workers_sampled": 2,
+    "shared_units_sampled": 2,
+    "sample_count": 530,
+    "sampling_seconds": 10
+  },
+  "summed_implementation_seconds": 3868.8920000000003,
+  "implementation_interval_union_seconds": 3184.729,
+  "observed_overlapped_worker_seconds": 684.163,
+  "recorded_loop_process_seconds": 3384.74,
+  "loop_invocations_finished": 4,
+  "loop_invocations_failed": 2,
+  "shell_categories": {
+    "discovery": {
+      "count": 73,
+      "failed_or_cancelled": 12,
+      "process_lifetime_seconds": 32.161418747,
+      "output_bytes": 452893
+    },
+    "dependency_setup": {
+      "count": 10,
+      "failed_or_cancelled": 5,
+      "process_lifetime_seconds": 114.452577168,
+      "output_bytes": 6349
+    },
+    "checks": {
+      "count": 92,
+      "failed_or_cancelled": 25,
+      "process_lifetime_seconds": 461.32378954399996,
+      "output_bytes": 420588
+    },
+    "browser_validation": {
+      "count": 23,
+      "failed_or_cancelled": 9,
+      "process_lifetime_seconds": 103.279605002,
+      "output_bytes": 109393
+    },
+    "dev_server_or_mixed": {
+      "count": 12,
+      "failed_or_cancelled": 12,
+      "process_lifetime_seconds": 677.7817032089998,
+      "output_bytes": 4534
+    },
+    "other": {
+      "count": 17,
+      "failed_or_cancelled": 3,
+      "process_lifetime_seconds": 86.670873458,
+      "output_bytes": 4748
+    },
+    "file_editing": {
+      "count": 1,
+      "failed_or_cancelled": 0,
+      "process_lifetime_seconds": 0.268871041,
+      "output_bytes": 0
+    }
+  },
+  "cost_usd": null,
+  "measurement_scope": "Provider-reported cumulative usage through cutoff; final response and future calls excluded; Yoke and native session totals are alternate views, never added together",
+  "observer_elapsed_seconds": 5504.813512,
+  "observer_command_phases": {
+    "environment": {
+      "commands": 4,
+      "failed": 1,
+      "wall_seconds": 0.9144000000000001,
+      "child_cpu_seconds": 0.6464
+    },
+    "code-intelligence": {
+      "commands": 3,
+      "failed": 0,
+      "wall_seconds": 1.9868000000000001,
+      "child_cpu_seconds": 1.2511999999999999
+    },
+    "planning": {
+      "commands": 5,
+      "failed": 1,
+      "wall_seconds": 61.429300000000005,
+      "child_cpu_seconds": 11.0399
+    },
+    "dependency-setup": {
+      "commands": 2,
+      "failed": 1,
+      "wall_seconds": 10.0491,
+      "child_cpu_seconds": 6.7957
+    },
+    "yoke-smoke": {
+      "commands": 1,
+      "failed": 1,
+      "wall_seconds": 0.4226,
+      "child_cpu_seconds": 0.2707
+    },
+    "execution": {
+      "commands": 4,
+      "failed": 2,
+      "wall_seconds": 3384.74,
+      "child_cpu_seconds": 1277.8591999999999
+    },
+    "recovery": {
+      "commands": 1,
+      "failed": 0,
+      "wall_seconds": 0.5313,
+      "child_cpu_seconds": 0.3452
+    },
+    "dev-server": {
+      "commands": 1,
+      "failed": 1,
+      "wall_seconds": 0.8258,
+      "child_cpu_seconds": 0.5059
+    },
+    "browser-inspection": {
+      "commands": 2,
+      "failed": 0,
+      "wall_seconds": 14.34,
+      "child_cpu_seconds": 5.4323
+    },
+    "final-validation": {
+      "commands": 1,
+      "failed": 0,
+      "wall_seconds": 19.997,
+      "child_cpu_seconds": 30.0019
+    },
+    "final-yoke-smoke": {
+      "commands": 2,
+      "failed": 2,
+      "wall_seconds": 5.5131,
+      "child_cpu_seconds": 4.1831
+    }
+  },
+  "model_purpose_hints": {
+    "guardian/unknown": {
+      "usage_events": 48,
+      "input_tokens": 1281675,
+      "cached_input_tokens": 1073152,
+      "output_tokens": 5404
+    },
+    "implementation/discovery": {
+      "usage_events": 35,
+      "input_tokens": 2015491,
+      "cached_input_tokens": 1824896,
+      "output_tokens": 6669
+    },
+    "implementation/checks": {
+      "usage_events": 63,
+      "input_tokens": 3377368,
+      "cached_input_tokens": 3130624,
+      "output_tokens": 44163
+    },
+    "implementation/code_intelligence": {
+      "usage_events": 6,
+      "input_tokens": 263056,
+      "cached_input_tokens": 252160,
+      "output_tokens": 785
+    },
+    "implementation/dependency_setup": {
+      "usage_events": 6,
+      "input_tokens": 270273,
+      "cached_input_tokens": 244480,
+      "output_tokens": 2947
+    },
+    "implementation/dev_server_or_mixed": {
+      "usage_events": 12,
+      "input_tokens": 809495,
+      "cached_input_tokens": 797184,
+      "output_tokens": 4029
+    },
+    "implementation/waiting_or_polling": {
+      "usage_events": 26,
+      "input_tokens": 1668311,
+      "cached_input_tokens": 1642752,
+      "output_tokens": 1869
+    },
+    "implementation/browser_validation": {
+      "usage_events": 41,
+      "input_tokens": 2830598,
+      "cached_input_tokens": 2729856,
+      "output_tokens": 21731
+    },
+    "coordinator/discovery": {
+      "usage_events": 26,
+      "input_tokens": 2839894,
+      "cached_input_tokens": 2756096,
+      "output_tokens": 14891
+    },
+    "coordinator/browser_validation": {
+      "usage_events": 24,
+      "input_tokens": 3122621,
+      "cached_input_tokens": 3013248,
+      "output_tokens": 27865
+    },
+    "coordinator/checks": {
+      "usage_events": 11,
+      "input_tokens": 1031473,
+      "cached_input_tokens": 1002752,
+      "output_tokens": 5642
+    },
+    "coordinator/code_intelligence": {
+      "usage_events": 4,
+      "input_tokens": 295093,
+      "cached_input_tokens": 281344,
+      "output_tokens": 3248
+    },
+    "coordinator/dev_server_or_mixed": {
+      "usage_events": 5,
+      "input_tokens": 696003,
+      "cached_input_tokens": 682752,
+      "output_tokens": 10074
+    },
+    "coordinator/waiting_or_polling": {
+      "usage_events": 35,
+      "input_tokens": 4593089,
+      "cached_input_tokens": 4546688,
+      "output_tokens": 31499
+    },
+    "coordinator/other": {
+      "usage_events": 14,
+      "input_tokens": 1765447,
+      "cached_input_tokens": 1753856,
+      "output_tokens": 468
+    },
+    "coordinator/file_editing": {
+      "usage_events": 7,
+      "input_tokens": 1080599,
+      "cached_input_tokens": 1003392,
+      "output_tokens": 11569
+    },
+    "coordinator/dependency_setup": {
+      "usage_events": 1,
+      "input_tokens": 100894,
+      "cached_input_tokens": 99328,
+      "output_tokens": 1862
+    },
+    "planner_or_review/unknown": {
+      "usage_events": 2,
+      "input_tokens": 52718,
+      "cached_input_tokens": 14336,
+      "output_tokens": 1215
+    }
+  },
+  "rtk_estimates": {
+    "commands": 42,
+    "input": 13752,
+    "output": 11635,
+    "saved": 2117,
+    "execution_ms": 341296
+  },
+  "environment": {
+    "captured_at": "2026-10-04T09:25:22.622378+00:00",
+    "yoke": "1.22.0",
+    "codex": "codex-cli 0.160.0",
+    "rtk": "rtk 0.51.0",
+    "packages": {
+      "react": "19.3.0",
+      "typescript": "7.0.2",
+      "vite": "8.3.2",
+      "vitest": "5.0.3",
+      "playwright": "1.63.0"
+    },
+    "code_intelligence": {
+      "mode": "active",
+      "facade_handshake": "passed",
+      "semantic_backends": "graft, graphify, serena unavailable",
+      "semantic_benefit_measured": false
+    },
+    "runner": {
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "medium"
+    },
+    "rtk_hook": "native Codex integration plus explicit commands",
+    "continuous_exploration": false,
+    "app_url": "http://127.0.0.1:6317",
+    "viewport_checks": {
+      "desktop": "1440x900",
+      "mobile": "390x844"
+    },
+    "lint": "not configured"
+  },
+  "native_usage_totals": {
+    "input_tokens": 28094098,
+    "cached_input_tokens": 26848896,
+    "uncached_input_tokens": 1245202,
+    "output_tokens": 195930,
+    "model_calls": 366
+  }
+}

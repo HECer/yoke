@@ -1,0 +1,90 @@
+{
+  "answers": {
+    "located": "NO",
+    "scan_complete": "YES",
+    "trusted": "UNKNOWN",
+    "verified": "UNKNOWN"
+  },
+  "asset": "G:\\NN-Developed\\Worktrees\\yoke-1.23-efficiency\\docs\\benchmarks\\2026-10-04-efficiency\\ANALYSE.md",
+  "asset_sha256": "4b7ca4bbfd2387463f9e000f5491d706b551eed9fa104a1b7d740986d025c2be",
+  "components": [
+    {
+      "detail": "No C2PA structure was found. The text mentions Content Credentials, which is not evidence and does not warrant verification.",
+      "ran": true,
+      "skill": "inspect-content-provenance",
+      "summary": "presence=ABSENT"
+    },
+    {
+      "detail": "No verifier was supplied; cryptographic questions cannot be answered.",
+      "ran": false,
+      "skill": "verify-content-credentials",
+      "summary": "not run"
+    },
+    {
+      "detail": "Format TEXT has no supported metadata parser in this build, so no privacy conclusion can be drawn.",
+      "ran": true,
+      "skill": "audit-metadata-privacy",
+      "summary": "risk=UNKNOWN"
+    },
+    {
+      "detail": null,
+      "ran": true,
+      "skill": "detect-text-watermark",
+      "summary": "status=NO_SIGNAL_OBSERVED"
+    }
+  ],
+  "evidence": {
+    "integrity": "UNKNOWN",
+    "manifest": {
+      "actions": [],
+      "assertion_labels": [],
+      "claim_generator": null,
+      "format": null,
+      "ingredient_count": 0,
+      "signature_alg": null,
+      "signature_issuer": null,
+      "signature_time": null,
+      "title": null
+    },
+    "manifest_presence": "ABSENT",
+    "markers": [],
+    "signer_trust": "UNKNOWN"
+  },
+  "format": "TEXT",
+  "limitations": [
+    "This is a composition of the underlying analyzers; it performs no new analysis.",
+    "No answer here is an authorship classification.",
+    "A trust answer is only meaningful relative to the named trust policy."
+  ],
+  "privacy_risk": "UNKNOWN",
+  "reason": null,
+  "schema_version": "2.0",
+  "text_signals": {
+    "did_not_run": [
+      "anthropic-official",
+      "kgw-research",
+      "synthid-text"
+    ],
+    "scan_complete": true,
+    "status": "NO_SIGNAL_OBSERVED"
+  },
+  "tool": "audit-provenance",
+  "trust_policy": null,
+  "unknowns": [
+    {
+      "next_step": "Re-run with --c2patool pointing at c2patool 0.20.0 or newer.",
+      "question": "verified",
+      "why": "No conforming verifier was supplied."
+    },
+    {
+      "next_step": "Re-run with --c2patool pointing at c2patool 0.20.0 or newer.",
+      "question": "trusted",
+      "why": "No conforming verifier was supplied."
+    },
+    {
+      "next_step": "None available. Do not infer authorship from this.",
+      "question": "text_watermark",
+      "why": "Keyed model-level watermarks cannot be checked without the provider's key."
+    }
+  ]
+}

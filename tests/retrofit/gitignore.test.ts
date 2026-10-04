@@ -1,15 +1,43 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { ensureGitignore, YOKE_IGNORE_LINES } from '../../src/retrofit/gitignore.js'
 
 let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'yoke-gi-')) })
-afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+afterEach(() => { vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }) })
 const gi = () => join(dir, '.gitignore')
 
 describe('ensureGitignore', () => {
+  it('ignores actual supervision files while preserving user dirtiness', () => {
+    execFileSync('git', ['init', '-q'], { cwd: dir })
+    ensureGitignore(dir)
+    execFileSync('git', ['add', '.gitignore'], { cwd: dir })
+    mkdirSync(join(dir, '.yoke', 'supervision'), { recursive: true })
+    writeFileSync(join(dir, '.yoke', 'supervision', 'assessment.json'), '{}')
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' })).not.toContain('supervision')
+    writeFileSync(join(dir, 'user.txt'), 'user change')
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' })).toContain('user.txt')
+  })
+  it('diagnoses already tracked supervision without removing it from the index', () => {
+    execFileSync('git', ['init', '-q'], { cwd: dir })
+    mkdirSync(join(dir, '.yoke', 'supervision'), { recursive: true })
+    writeFileSync(join(dir, '.yoke', 'supervision', 'assessment.json'), '{}')
+    execFileSync('git', ['add', '.yoke/supervision/assessment.json'], { cwd: dir })
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ensureGitignore(dir)
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('already tracked'))
+    expect(execFileSync('git', ['ls-files'], { cwd: dir, encoding: 'utf8' })).toContain('.yoke/supervision/assessment.json')
+  })
+  it('ignores provider supervision files idempotently', () => {
+    ensureGitignore(dir)
+    const first = readFileSync(gi(), 'utf8')
+    expect(first).toContain('.yoke/supervision/')
+    ensureGitignore(dir)
+    expect(readFileSync(gi(), 'utf8')).toBe(first)
+  })
   it('ignores the live change inbox', () => {
     ensureGitignore(dir)
     expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toContain('.yoke/changes/')

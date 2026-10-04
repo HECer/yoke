@@ -15,6 +15,43 @@ beforeEach(() => {
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('loopStatus with a status file', () => {
+  it('renders compact parallel work and integration without undefined top-level fields', () => {
+    writeStatus(dir, {
+      state: 'running', iteration: 2, progress: { passed: 0, total: 3 },
+      startedAt: '2026-06-29T10:00:00.000Z', updatedAt: '2026-06-29T10:00:00.000Z',
+      parallel: {
+        dispatcherId: 'd', maxConcurrency: 3, activeWorkers: 2, waitingWorkers: 1,
+        queuedCandidates: 1, integrated: 0, reopened: 0,
+        workers: [
+          { story: 'S2', storyTitle: 'two', provider: 'codex', phase: 'verifying' },
+          { story: 'S1', storyTitle: 'one', provider: 'codex', phase: 'implementing' },
+        ],
+        integrator: { story: 'S3', storyTitle: 'three', provider: 'codex', phase: 'committing' },
+      },
+    })
+    const out = loopStatus(dir, () => new Date('2026-06-29T10:01:00.000Z'), { compact: true })
+    expect(out).toContain('workers=S1:implementing,S2:verifying')
+    expect(out).toContain('integrator=S3:committing')
+    expect(out).toContain('waiting=1')
+    expect(out).not.toContain('undefined')
+    expect(out).not.toContain('\n')
+  })
+  it('uses the terminal state when compact status has no active phase', () => {
+    writeStatus(dir, { state: 'complete', iteration: 1, progress: { passed: 1, total: 1 },
+      startedAt: '2026-06-29T10:00:00.000Z', updatedAt: '2026-06-29T10:00:00.000Z' })
+    expect(loopStatus(dir, undefined, { compact: true })).toContain('phase=complete')
+  })
+  it.each([false, true])('renders an empty pool with integration-only=%s', integrating => {
+    writeStatus(dir, { state: 'running', iteration: 1, progress: { passed: 0, total: 1 },
+      startedAt: '2026-06-29T10:00:00.000Z', updatedAt: '2026-06-29T10:00:00.000Z',
+      parallel: { dispatcherId: 'd', maxConcurrency: 1, activeWorkers: 0, queuedCandidates: 0, integrated: 0, reopened: 0, workers: [],
+        ...(integrating ? { integrator: { story: 'S1', storyTitle: 'one', provider: 'codex', phase: 'verifying' as const } } : {}) },
+    })
+    const out = loopStatus(dir, undefined, { compact: true })
+    expect(out).toContain('workers=none')
+    expect(out).toContain(`integrator=${integrating ? 'S1:verifying' : 'none'}`)
+    expect(out).not.toContain('undefined')
+  })
   it('renders state, story and reason when blocked', () => {
     writeStatus(dir, { state: 'blocked', story: 'S5', storyTitle: 'Schemas', reason: 'verify failed',
       iteration: 19, progress: { passed: 18, total: 45 },

@@ -29,6 +29,17 @@ function adapter(name: 'graft' | 'graphify' | 'serena-lsp', result: unknown, cal
 }
 
 describe('code intelligence coordinator', () => {
+  it('honors a configured workspace identifier and denies foreign identifiers before backend access', async () => {
+    const calls: string[] = []; const project = root()
+    const ci = new CodeIntelligenceCoordinator(project, { workspaceId: 'customer-project', adapters: { graft: adapter('graft', 'src/index.ts:1 answer', calls) } })
+    try {
+      const denied = await ci.dispatch('code_context', { workspace_id: 'foreign', query: 'answer' })
+      expect(denied.error?.code).toBe('WORKSPACE_DENIED'); expect(calls).toEqual([])
+      const response = await ci.dispatch('code_context', { workspace_id: 'customer-project', query: 'answer' })
+      expect(response.workspace_id).toBe('customer-project'); expect(response.error).toBeNull()
+      expect(JSON.parse(readFileSync(join(project, '.yoke/code-intelligence/snapshots', `${response.snapshot_id}.json`), 'utf8')).workspace_id).toBe('customer-project')
+    } finally { await ci.close() }
+  })
   it('does not invent a symbol from Graft prose search output', async () => {
     const calls: string[] = []
     const ci = new CodeIntelligenceCoordinator(root(), { adapters: {

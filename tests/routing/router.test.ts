@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildRoutingPrompt, makeAdaptiveRunner, makeAsyncAdaptiveRunner, parseRouteDecision, rankWorkers } from '../../src/routing/router.js'
 import type { RoutingWorker } from '../../src/retrofit/config.js'
+import { providerTelemetryUsage } from '../../src/observability/usage.js'
+import { summarizeUsageEvents } from '../../src/observability/local-report.js'
 
 const workers: RoutingWorker[] = [
   { id: 'claude-fast', agent: 'claude', model: 'haiku', costTier: 'low', capabilities: ['tests'] },
@@ -61,6 +63,23 @@ describe('routing control prompt', () => {
 })
 
 describe('adaptive runner', () => {
+  it('preserves partial provider measurements in routed per-call report evidence', () => {
+    const run = makeAdaptiveRunner({ parent: 'codex', workers, strategy: 'cost', maxCandidates: 1,
+      rules: [{ storyId: 'S1', worker: 'claude-fast' }],
+      makeWorker: () => () => ({ success: true, summary: 'done', tokens: providerTelemetryUsage({ usageAvailable: false, partialUsage: { inputTokens: 7 } }) }),
+    })
+    const result = run({ targetDir: registry, story })
+    expect(result.tokens?.calls?.[0]).toMatchObject({ usageMissingFields: expect.arrayContaining(['outputTokens']), usagePartialFields: ['inputTokens'] })
+    const report = summarizeUsageEvents([{ id: 'routed', schemaVersion: 1, runId: 'run', timestamp: '2026-10-04T12:00:02Z', type: 'tokens', data: { ...result.tokens } }])
+    expect(report.calls[0]).toMatchObject({ inputTokens: 7, outputTokens: null, fieldCoverage: { inputTokens: 'partial', outputTokens: 'unknown' } })
+  })
+  it('marks absent routed measurements unknown despite compatible numeric fillers', () => {
+    const run = makeAdaptiveRunner({ parent: 'codex', workers, strategy: 'cost', maxCandidates: 1,
+      rules: [{ storyId: 'S1', worker: 'claude-fast' }], makeWorker: () => () => ({ success: true, summary: 'done' }),
+    })
+    const result = run({ targetDir: registry, story })
+    expect(result.tokens?.calls?.[0].usageMissingFields).toEqual(expect.arrayContaining(['inputTokens', 'outputTokens']))
+  })
   it('allows concurrent asynchronous workers without serializing model calls', async () => {
     let active = 0, peak = 0
     const runner = makeAsyncAdaptiveRunner({ parent: 'codex', workers, strategy: 'cost', maxCandidates: 1,

@@ -75,6 +75,7 @@ export function buildClaudePrompt(story: Story, context: string, onAmbiguity: Am
     'Do NOT commit — the loop commits on your behalf after verifying.',
     '',
     'Working rules:',
+    '- Use worktree-local writable dependency/runtime caches. Do not link node_modules to a target checkout when tools write .vite-temp or other caches there. Shared package download caches are allowed; preserve the configured sandbox. Report offline cache misses and network failures explicitly instead of blindly retrying.',
     '- Add nothing beyond what the story requires: no extra features, abstractions, comments, or defensive code for cases that cannot happen.',
     '- Do not create summary, plan, or analysis documents — only files the story itself needs.',
     '- If a check fails, fix the root cause; never bypass it (e.g. --no-verify) or pass by weakening tests.',

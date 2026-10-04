@@ -1,10 +1,25 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadManifest } from '../../canon/manifest.js'
 import type { Action } from '../plan.js'
 import type { CodeGraph, CodeIntelligenceMode } from '../config.js'
 import { mcpServers, rtkInstruction } from '../tools.js'
 import { skillPackageActions } from '../skill-actions.js'
+import { mergeJson } from '../merge-json.js'
+
+function codexHooks(targetDir: string): string {
+  const path = join(targetDir, '.codex/hooks.json')
+  const current = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {}
+  // Remove only the exact Yoke adapter command; keep other hooks in its block.
+  if (Array.isArray(current.hooks?.PreToolUse)) {
+    current.hooks.PreToolUse = current.hooks.PreToolUse.flatMap((block: any) => {
+      if (!Array.isArray(block.hooks)) return [block]
+      const hooks = block.hooks.filter((hook: any) => hook.command !== 'node "$(git rev-parse --show-toplevel)/.codex/hooks/rtk.mjs"')
+      return hooks.length ? [{ ...block, hooks }] : []
+    })
+  }
+  return JSON.stringify(mergeJson(current, { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'rtk hook codex' }] }] } }), null, 2) + '\n'
+}
 
 function tomlMcp(codeGraph: CodeGraph, codeIntelligence: CodeIntelligenceMode, targetDir: string): string {
   const servers = mcpServers(codeGraph, codeIntelligence, targetDir)
@@ -46,23 +61,8 @@ export function planCodex(canonDir: string, targetDir: string, codeGraph: CodeGr
     {
       kind: 'write',
       target: '.codex/hooks.json',
-      merge: true,
-      content: JSON.stringify({
-        description: 'Yoke command compression for Codex',
-        hooks: {
-          PreToolUse: [{
-            matcher: '^Bash$',
-            hooks: [{
-              type: 'command',
-              command: 'node "$(git rev-parse --show-toplevel)/.codex/hooks/rtk.mjs"',
-              commandWindows: 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = git rev-parse --show-toplevel; node (Join-Path $root \'.codex/hooks/rtk.mjs\')"',
-              timeout: 5,
-              statusMessage: 'Compressing command output with RTK',
-            }],
-          }],
-        },
-      }, null, 2) + '\n',
-      reason: 'rtk PreToolUse hook adapter',
+      content: codexHooks(targetDir),
+      reason: 'native RTK Codex hook; preserves foreign hooks and migrates the Yoke adapter',
     },
     {
       kind: 'write',
@@ -73,8 +73,8 @@ export function planCodex(canonDir: string, targetDir: string, codeGraph: CodeGr
     {
       kind: 'write',
       target: 'RTK.md',
-      content: rtkInstruction() + '\n',
-      reason: 'rtk instruction (Codex has no rewrite hook)',
+      content: rtkInstruction() + '\n\nCodex uses `rtk hook codex` when supported by the installed RTK. Run `yoke tools-preflight --json` to check native rewriting. Nested code-mode shell calls remain unverified; explicitly prefix verbose commands with RTK.\n',
+      reason: 'RTK guidance and operational verification',
     },
   )
 

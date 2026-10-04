@@ -1,3 +1,5 @@
+import { cacheIsolationProblem } from './cache-isolation.js'
+import { retainRuntimeProof } from './proof-retention.js'
 import { knownInfrastructureFailure } from "../routing/capability.js"
 import { existsSync, unlinkSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { acceptanceProtectionProblem } from '../check/command.js'
@@ -212,6 +214,7 @@ function runCompletionGate(opts: LoopOptions, stories: Story[]): LoopResult | nu
   try {
     const verdict = opts.completion(opts.targetDir)
     if (!verdict.passed) reason = `integrated system did not verify: ${verdict.summary}`
+    else if (!opts.git.isClean(opts.targetDir)) reason = 'completion command left source or final assets dirty; preserve changes and move rerun proofs to ignored runtime paths before resuming'
   } catch (error) {
     reason = `integrated completion gate failed: ${(error as Error).message}`
   } finally {
@@ -226,6 +229,8 @@ function runCompletionGate(opts: LoopOptions, stories: Story[]): LoopResult | nu
 }
 
 function runCriterionGates(opts: LoopOptions, executionDir: string, story: Story): { passed: boolean; summary: string } {
+  const cacheProblem = opts.isolate && executionDir !== opts.targetDir ? cacheIsolationProblem(executionDir) : undefined
+  if (cacheProblem) return { passed: false, summary: cacheProblem }
   const protectionProblem = acceptanceProtectionProblem(executionDir, opts.targetDir)
   if (protectionProblem) return { passed: false, summary: protectionProblem }
   const criteria = story.acceptance.filter(isAcceptanceCriterion)
@@ -235,10 +240,10 @@ function runCriterionGates(opts: LoopOptions, executionDir: string, story: Story
       : { passed: true, summary: 'legacy acceptance criteria' }
   }
   if (!opts.verifyCriterion) return { passed: false, summary: `story ${story.id} has criteria but no criterion verifier` }
-  const evidence = criteria.map(criterion => ({
-    criterion,
-    result: opts.verifyCriterion!(executionDir, story, criterion),
-  }))
+  const evidence = criteria.map(criterion => {
+    const problem = opts.isolate && executionDir !== opts.targetDir ? cacheIsolationProblem(executionDir) : undefined
+    return { criterion, result: problem ? { passed: false, summary: problem } : opts.verifyCriterion!(executionDir, story, criterion) }
+  })
   try {
     writeCriterionEvidence(opts.targetDir, story, evidence)
   } catch (error) {
@@ -251,6 +256,13 @@ function runCriterionGates(opts: LoopOptions, executionDir: string, story: Story
 }
 
 export function runLoop(opts: LoopOptions): LoopResult {
+  if (opts.isolate) for (const name of ['verify', 'design', 'perf', 'audit'] as const) {
+    const gate = opts[name]
+    if (gate) opts = { ...opts, [name]: (dir: string) => {
+      const problem = dir !== opts.targetDir ? cacheIsolationProblem(dir) : undefined
+      return problem ? { passed: false, summary: problem } : gate(dir)
+    } }
+  }
   let iterations = 0
   const reporter = opts.reporter ?? noopReporter
 
@@ -465,6 +477,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         })
         const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
         savePrd(wtPrd, updated)
+        retainRuntimeProof(wt, story.id, opts.targetDir)
         opts.git.commitAll(wt, `yoke: complete ${story.id} ${story.title}`, opts.commitIdentity)
         opts.git.integrate(opts.targetDir, wt)
         result.routing?.recordOutcome(true)
@@ -649,6 +662,8 @@ function runImplementation(opts: LoopOptions, dir: string, story: Story, reporte
   let feedback: string | undefined = opts.feedback
   for (let attempt = 0; ; attempt++) {
     const result = opts.runner({ targetDir: dir, story, feedback })
+    const cacheProblem = opts.isolate && dir !== opts.targetDir ? cacheIsolationProblem(dir) : undefined
+    if (cacheProblem) return { result: { ...result, success: false, infrastructureFailure: true, summary: cacheProblem } }
     if (!result.routing?.canRetry || result.routing.blocked || attempt >= 7) return { result }
     if (["decision-request.yaml", "ambiguity.md", "loop.pause"].some(name => existsSync(join(dir, ".yoke", name))) || existsSync(pauseFilePath(opts.targetDir))) return { result }
     const protection = acceptanceProtectionProblem(dir, opts.targetDir)

@@ -156,6 +156,8 @@ function callUsage(role: ModelCallUsage['role'], provider: Agent, selection: Mod
     ...(selection.reasoningEffort ? { requestedReasoningEffort: selection.reasoningEffort } : {}),
     ...(selection.variant ? { requestedVariant: selection.variant } : {}),
     ...(tokens?.model ? { actualModel: tokens.model } : {}),
+    usageMissingFields: tokens?.usageMissingFields ?? (!tokens ? ['inputTokens', 'outputTokens', 'cachedInputTokens', 'reasoningOutputTokens', 'totalCostUsd'] : []),
+    ...(tokens?.usagePartialFields ? { usagePartialFields: tokens.usagePartialFields } : {}),
     inputTokens: tokens?.inputTokens ?? 0,
     ...(tokens?.cachedInputTokens !== undefined ? { cachedInputTokens: tokens.cachedInputTokens } : {}),
     ...(tokens?.cacheWriteInputTokens !== undefined ? { cacheWriteInputTokens: tokens.cacheWriteInputTokens } : {}),

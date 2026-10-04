@@ -1,0 +1,8 @@
+category,count,failed_or_cancelled,process_lifetime_seconds,output_bytes
+discovery,73,12,32.161418747,452893
+dependency_setup,10,5,114.452577168,6349
+checks,92,25,461.32378954399996,420588
+browser_validation,23,9,103.279605002,109393
+dev_server_or_mixed,12,12,677.7817032089998,4534
+other,17,3,86.670873458,4748
+file_editing,1,0,0.268871041,0

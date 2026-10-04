@@ -1,0 +1,5 @@
+role,sessions,measured_sessions,model_calls,input_tokens,cached_input_tokens,output_tokens,tool_output_bytes,uncached_input_tokens,unknown_sessions
+guardian,7,7,48,1281675,1073152,5404,0,208523,0
+implementation,8,8,189,11234592,10621952,82193,6175737,612640,0
+coordinator,1,1,127,15525113,15139456,107118,2971077,385657,0
+planner_or_review,2,2,2,52718,14336,1215,0,38382,0

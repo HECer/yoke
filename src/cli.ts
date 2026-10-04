@@ -27,6 +27,8 @@ import { printAudit, runAudit } from './audit/command.js'
 import { runSetup } from './setup/command.js'
 import { runCodeIntelligenceServer } from './code-intelligence/mcp-server.js'
 import { pendingChanges, queueChange } from './change/inbox.js'
+import { localUsageReport } from './observability/local-report.js'
+import { runToolPreflight } from './code-intelligence/preflight.js'
 import {
   answerPendingDecision, answeredDecisionResumeIsValid, clearDecisionResume, decisionProcessingExists, decisionResumeMatchesCurrent,
   finalizeCommittedDecisionResume,
@@ -151,7 +153,69 @@ function parseExploreLimitFlag(args: readonly string[], explore: boolean): { rea
 
 export function main(argv: string[]): number | Promise<number> {
   const [cmd, ...rest] = argv
+  // Help must exit before any command can write configuration or start a process.
+  if (argv.includes('--help') || argv.includes('-h')) return main([])
+  const mutationFlags: Record<string, readonly string[]> = {
+    setup: ['--yes', '--host=', '--agent=', '--runner=', '--code-graph=', '--code-intelligence=', '--decision-policy=', '--loop', '--no-loop', '--routing', '--no-routing', '--routing-strategy=', '--model-provider=', '--runner-model=', '--runner-reasoning=', '--model=', '--reasoning=', '--clean-worktrees', '--configure-models', '--routing-preset'],
+    retrofit: ['--loop', '--agent=', '--code-graph=', '--code-intelligence=', '--clean-worktrees', '--runner-model=', '--runner-reasoning=', '--model=', '--reasoning='],
+    context: [],
+    projects: [],
+    worktrees: ['--all', '--force'],
+    dashboard: ['--port=', '--no-register'],
+    goal: ['--objective=', '--attempts=', '--minutes=', '--wall-minutes=', '--tokens=', '--criteria=', '--clear-token-budget', '--runner=', '--model=', '--effort=', '--bare', '--native-goal', '--no-native-goal'],
+    check: ['--json', '--protect', '--refresh', '--requirement='],
+    change: ['--idea='],
+    loop: ['--compact', '--remove-worktrees', '--discard-stale-recovery', '--discard', '--explore', '--explore-interval=', '--explore-limit=', '--quality', '--no-quality', '--quality-rounds=', '--quality-minutes=', '--quality-policy=', '--quality-unbounded', '--candidates=', '--choice=', '--rationale=', '--no-resume', '--max=', '--runner=', '--reviewer=', '--review', '--allow-self-review', '--routing', '--no-routing', '--isolate', '--no-isolate', '--unsafe', '--timeout=', '--decision-policy=', '--parallel=', '--json', '--on-ambiguity=', '--resume-worktree'],
+    new: ['--idea=', '--agent=', '--runner=', '--loop'],
+    prd: ['--idea=', '--runner=', '--story=', '--apply', '--reassess', '--force', '--timeout='],
+    review: ['--reviewer=', '--base=', '--focus=', '--allow-self-review', '--json', '--timeout='],
+    audit: ['--json'],
+    'flow-smoke': ['--url=', '--label='],
+    'design-scan': ['--report', '--max='],
+    usage: ['--json', '--from=', '--to=', '--run='],
+    'tools-preflight': ['--json'],
+  }
+  const accepted = mutationFlags[cmd]
+  if (accepted) {
+    const unknown = rest.find(value => value.startsWith('-') && !accepted.some(flag => flag.endsWith('=') ? value.startsWith(flag) && value.length > flag.length : value === flag))
+    if (unknown) { console.error(`Unknown or incomplete ${cmd} flag: ${unknown}`); return 1 }
+    for (const toggle of ['loop', 'routing', 'isolate', 'native-goal', 'quality']) {
+      if (rest.includes(`--${toggle}`) && rest.includes(`--no-${toggle}`)) {
+        console.error(`Cannot use --${toggle} with --no-${toggle}.`); return 1
+      }
+    }
+  }
   switch (cmd) {
+    case 'tools-preflight': {
+      return runToolPreflight(rest.find(arg => !arg.startsWith('-')) ?? '.').then(report => {
+        if (rest.includes('--json')) console.log(JSON.stringify(report))
+        else {
+          console.log(`RTK: ${report.rtk.status}; native rewrite=${report.rtk.nativeRewrite}; nested code mode=${report.rtk.nestedCodeMode}`)
+          console.log(`Code intelligence: ${report.codeIntelligence.status}; mode=${report.codeIntelligence.mode}; workspace=${report.codeIntelligence.workspaceId}`)
+          console.log(`  ${report.rtk.fallback}\n  ${report.codeIntelligence.fallback}; index freshness=${report.codeIntelligence.indexFreshness}`)
+        }
+        return 0
+      }).catch(error => { console.error(`Tool preflight unavailable: ${(error as Error).message}`); return 2 })
+    }
+    case 'usage': {
+      const value = (name: string) => rest.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3)
+      const to = value('to') === undefined ? Date.now() : Date.parse(value('to')!)
+      const from = value('from') === undefined ? to - 30 * 86400000 : Date.parse(value('from')!)
+      if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to || to - from > 366 * 86400000) {
+        console.error('Invalid usage time range: choose --from/--to dates spanning at most 366 days.'); return 2
+      }
+      try {
+        const report = localUsageReport(rest.find(arg => !arg.startsWith('-')) ?? '.', { from, to, runId: value('run') })
+        if (rest.includes('--json')) console.log(JSON.stringify(report))
+        else {
+          console.log(`Usage ${report.from} to ${report.to}: input=${report.total.inputTokens ?? 'unknown'} cache=${report.total.cachedInputTokens ?? 'unknown'} output=${report.total.outputTokens ?? 'unknown'} cost=${report.total.totalCostUsd ?? 'unknown'} (${report.total.coverage}; cost ${report.total.costCoverage})`)
+          console.log(`Guardian=${report.hostCoverage.guardian} approval=${report.hostCoverage.approval}; phase sum=${report.time.phaseDurationSumMs ?? 'unknown'}ms union=${report.time.phaseDurationUnionMs ?? 'unknown'}ms`)
+          for (const limit of report.limitations) console.log(`  ${limit}`)
+          for (const error of report.errors) console.error(`Usage history: ${error}`)
+        }
+        return report.errors.length ? 2 : 0
+      } catch (error) { console.error(`Usage report unavailable: ${(error as Error).message}`); return 2 }
+    }
     case 'code-intelligence-server':
       return runCodeIntelligenceServer(rest).then(() => 0).catch(error => { console.error(`Code intelligence server: ${(error as Error).message}`); return 2 })
     case 'setup': {
@@ -674,6 +738,7 @@ export function main(argv: string[]): number | Promise<number> {
     case 'upgrade':
       return runUpgrade()
     default:
+      console.log('Local diagnostics: yoke tools-preflight [dir] [--json] | usage [dir] [--from=ISO] [--to=ISO] [--run=id] [--json]')
       console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|bind|assess|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
       console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--code-intelligence=off|shadow|active] [--clean-worktrees] [--runner-model=<model>] [--runner-reasoning=<effort>] [--model=<agent>:<model>] [--reasoning=<agent>:<effort>] [--loop] | worktrees <list|prune> [dir] [--all] [--force] | change <add|status> [dir] | code-intelligence-server --workspace=<dir> --mode=<mode> | prd <draft|check|assess|decompose> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] | design-scan [dir] | flow-smoke [dir] | upgrade>`)
       return cmd ? 1 : 0

@@ -2,24 +2,14 @@ import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-function rtkCheck(command) {
-  const result = spawnSync('rtk', ['hook', 'check', command], { encoding: 'utf8', timeout: 3000 })
-  return result.status === 0 ? result.stdout.trim() : ''
+function nativeHook(input) {
+  const result = spawnSync('rtk', ['hook', 'codex'], { input: JSON.stringify(input), encoding: 'utf8', timeout: 3000 })
+  return result.status === 0 && result.stdout.trim() ? JSON.parse(result.stdout) : null
 }
 
-export function rewriteHookInput(input, check = rtkCheck) {
-  if (input?.tool_name !== 'Bash' && input?.toolName !== 'Bash') return null
-  const toolInput = input.tool_input ?? input.toolInput
-  const command = toolInput?.command
-  if (typeof command !== 'string' || command.trim() === '') return null
-  const rewritten = check(command)
-  if (!rewritten || rewritten === command) return null
-  return {
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      updatedInput: { ...toolInput, command: rewritten },
-    },
-  }
+export function rewriteHookInput(input, processHook = nativeHook) {
+  // Native RTK owns Codex schema, permission-mode handling and fail-open rules.
+  try { return processHook(input) ?? null } catch { return null }
 }
 
 async function main() {
