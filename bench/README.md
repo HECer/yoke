@@ -52,6 +52,38 @@ drives `yoke loop run --json --max=6 --timeout=10`, and writes a result JSON to
 The matrix is sequential to avoid cross-provider load distortion. Missing CLIs and authentication
 failures are stored as honest `unavailable`/`auth-failed` rows and never presented as quality measurements.
 
+### Full-repository dependency setup
+
+`run-large.mjs` requires the copied seed's own `package.json` and `package-lock.json`.
+It runs project-local `npm ci --ignore-scripts --no-audit --no-fund --json --fetch-retries=0`
+before model dispatch. Invalid inputs or failed setup stop the benchmark. Build and test
+commands use the copied project's installed tools. Lifecycle scripts stay disabled; fixtures
+that require generated assets must prepare those assets explicitly and declare their state.
+
+The default package-download cache is `.yoke/npm-download-cache` inside the copied project.
+Use `--npm-cache=<directory>` to share a download store and `--offline` to require cached
+packages. Installed dependencies and conventional writable runtime caches remain local.
+Linked inputs, receipts and cache paths are rejected. Reusing a download store does not
+establish installation readiness or provider-cache warmth.
+
+`setupNpmDependencies(projectDir, options)` in `dependency-setup.mjs` supports `offline`,
+`cacheDir`, `timeoutMs`, `reuse` and a trusted `npm: { command, args }` invocation override.
+Its ignored `node_modules/.yoke-dependency-setup.json` receipt binds package/lock bytes,
+Node/platform/architecture, observed npm version and exact installation arguments.
+Matching receipts allow reuse only with a present local installation. Changed inputs,
+missing installs and failed setup invalidate reuse. A receipt records setup readiness;
+it does not attest every installed byte. Setup refuses success if npm changes package inputs
+and preserves those changes for diagnosis.
+
+The helper returns observed `durationMs` and `installed`, `reused` or `failed` state.
+Successful benchmark setup adds `dependencySetup` to the run result; failed setup prints
+a safe diagnostic and exits before model dispatch. Setup time is separate from the existing
+loop `wallClockMs`. Structured npm errors
+distinguish offline cache misses, network and authentication failures. Process launch and
+timeout failures have separate causes; unsupported and lifecycle failures remain unknown.
+The helper performs no automatic retry and records no raw npm output or environment secrets.
+It provisions benchmark projects only; Yoke core does not install unmanaged project dependencies.
+
 ### Gate-output compaction benchmark
 
 `output-compaction.mjs` exercises only Yoke's deterministic failure-preview and artifact path.

@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // Controlled routing A/B against a full repository snapshot kept outside this repo.
 import { spawn, spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from 'yaml'
 import { validateResult } from './result-schema.mjs'
+import { setupNpmDependencies } from './dependency-setup.mjs'
 
 const benchDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = dirname(benchDir)
@@ -19,7 +20,7 @@ const seed = args.seed ? resolve(String(args.seed)) : null
 const routing = String(args.routing ?? '')
 const runRoot = resolve(String(args['run-root'] ?? join(benchDir, '.runs')))
 if (!seed || !existsSync(seed) || !['on', 'off'].includes(routing)) {
-  console.error('usage: node bench/run-large.mjs --seed=<dir> --routing=<on|off> [--run-root=<dir>] [--max=4] [--timeout=15] [--label=note]')
+  console.error('usage: node bench/run-large.mjs --seed=<dir> --routing=<on|off> [--run-root=<dir>] [--max=4] [--timeout=15] [--label=note] [--offline] [--npm-cache=<dir>]')
   process.exit(2)
 }
 
@@ -35,13 +36,18 @@ cpSync(seed, runDir, {
   recursive: true,
   filter: source => source === seed || !excluded.has(basename(source)),
 })
-symlinkSync(join(repoRoot, 'node_modules'), join(runDir, 'node_modules'), 'junction')
+const dependencySetup = await setupNpmDependencies(runDir, { offline: args.offline === true, cacheDir: args['npm-cache'] ? resolve(String(args['npm-cache'])) : undefined })
+if (dependencySetup.status === 'failed') {
+  console.error(`[bench-large] dependency setup failed: ${JSON.stringify(dependencySetup)}`)
+  process.exit(1)
+}
 
 const git = (...gitArgs) => {
   const result = spawnSync('git', ['-C', runDir, ...gitArgs], { encoding: 'utf8' })
   if (result.status !== 0) throw new Error(`git ${gitArgs.join(' ')} failed: ${result.stderr}`)
 }
 git('init', '-q')
+appendFileSync(join(runDir, '.git', 'info', 'exclude'), '\nnode_modules/\n.yoke/npm-download-cache/\n')
 git('-c', 'user.name=bench', '-c', 'user.email=bench@yoke', 'add', '-A')
 git('-c', 'user.name=bench', '-c', 'user.email=bench@yoke', 'commit', '-q', '-m', 'bench: full Yoke baseline')
 
@@ -74,8 +80,8 @@ child.stdout.on('data', chunk => {
 const exitCode = await new Promise(resolveExit => child.on('close', resolveExit))
 const wallClockMs = Date.now() - started
 
-const build = spawnSync(process.execPath, [join(repoRoot, 'node_modules', 'typescript', 'bin', 'tsc')], { cwd: runDir, env, encoding: 'utf8', timeout: 10 * 60_000 })
-const tests = spawnSync(process.execPath, [join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'), 'run'], { cwd: runDir, env, encoding: 'utf8', timeout: 10 * 60_000 })
+const build = spawnSync(process.execPath, [join(runDir, 'node_modules', 'typescript', 'bin', 'tsc')], { cwd: runDir, env, encoding: 'utf8', timeout: 10 * 60_000 })
+const tests = spawnSync(process.execPath, [join(runDir, 'node_modules', 'vitest', 'vitest.mjs'), 'run'], { cwd: runDir, env, encoding: 'utf8', timeout: 10 * 60_000 })
 const hiddenTargets = acceptanceManifest?.acceptanceTests?.map(test => [String(test.source), String(test.hidden)]) ?? [
   ['tests/routing/large-registry-status.test.ts', 'tests/routing/benchmark-original-status.test.ts'],
   ['tests/routing/large-fallback.test.ts', 'tests/routing/benchmark-original-fallback.test.ts'],
@@ -85,7 +91,7 @@ for (const [source, target] of hiddenTargets) {
   cpSync(join(seed, source), join(runDir, target))
 }
 const hiddenTests = spawnSync(process.execPath, [
-  join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'), 'run',
+  join(runDir, 'node_modules', 'vitest', 'vitest.mjs'), 'run',
   ...hiddenTargets.map(([, target]) => target), '--maxWorkers=1',
 ], { cwd: runDir, env, encoding: 'utf8', timeout: 10 * 60_000 })
 for (const [, target] of hiddenTargets) rmSync(join(runDir, target), { force: true })
@@ -147,6 +153,7 @@ const result = {
   routing,
   startedAt: new Date(started).toISOString(),
   wallClockMs,
+  dependencySetup,
   exitCode,
   finalState: last.state ?? null,
   verdict: exitCode === 0 && finalTestsPass ? 'completed' : 'blocked',
