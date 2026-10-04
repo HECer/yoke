@@ -4,6 +4,8 @@ Date: 2026-10-04. Source baseline: `e2e3c18` (1.22.0). Isolated branch: `codex/y
 
 ## Evidence and checks
 
+The first remote matrix exposed two new tests assuming RTK was installed on every host. Production correctly reported missing RTK as degraded. Commit `a9d3200` replaces those assumptions with deterministic native-protocol and ENOENT fixtures, preserving exact argument/payload/response assertions and adding one mandatory case. Independent checks passed all eight cases with both normal and empty PATH; no host-dependent skips were added. A broader 46-test tools suite and TypeScript checks passed. The earlier 1,694-pass full local run below precedes this test-only correction; source behavior is unchanged and final discovery contains 1,697 cases. Remote CI for the correction is tracked in [draft PR 16](https://github.com/HECer/yoke/pull/16).
+
 The user approved the design before implementation. New behavior was developed with failing regression tests followed by focused checks. The nine-story [executable PRD](superpowers/plans/2026-10-04-yoke-1.23-efficiency-prd.json) passes `runPrdCheck`; its `passes` fields remain false because this change was implemented through scoped native workers rather than a Yoke-owned PRD loop.
 
 Environment: Windows, Node 24.13.0. The clean detached baseline ran the entire suite: **1,607 passed, 1 failed, 2 skipped**. The failure was native Windows `EPERM` while removing a temporary MCP directory before the process had finished closing. The corrected client shares and awaits shutdown completion. The first integrated green full run had **1,669 passed, 0 failed, 2 skipped**; final counts after the last cache and notifier regressions are recorded below when verified.
