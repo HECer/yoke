@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, appendF
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { appendEvent } from '../observability/events.js'
+import { failureObservation, safeFailure, type FailureObservation } from '../observability/failure.js'
 import { estimateDurations, validDuration } from '../estimation/durations.js'
 import { recordActiveRoutingUsage, markActiveRoutingUsageIncomplete } from '../routing/attempts.js'
 
@@ -219,7 +220,8 @@ export interface LoopReporter {
   /** A story landed (verified + committed): record its duration and refresh the estimate. */
   storyDone(story: StoryRef, progress: Progress): void
   phase(phase: LoopPhase, reason?: string, progress?: Progress): void
-  blocked(reason: string, failure?: import('./failure.js').LoopFailure): void
+  blocked(reason: string, failure?: import('./failure.js').LoopFailure, observation?: FailureObservation): void
+  failure?(observation: FailureObservation, storyId?: string): void
   complete(progress: Progress): void
   capReached(progress: Progress): void
   paused(progress: Progress, reason?: string): void
@@ -261,6 +263,12 @@ export function makeReporter(
   let unmeasuredAttempts = 0
   type Attempt = { id: string; storyId: string; started: number; phase?: string; phaseStarted: number; usageAvailable: boolean; prediction?: { expectedMs: number; lowerMs: number; upperMs: number; sampleCount: number } }
   const attempts = new Map<string, Attempt>()
+  let blockingFailure: FailureObservation | undefined
+  const recordFailure = (observation: FailureObservation, storyId?: string) => {
+    const safe = safeFailure(observation) ?? failureObservation()
+    appendEvent(dir, { runId, timestamp: now().toISOString(), type: 'failure', ...(storyId ? { storyId } : {}),
+      outcome: safe.failureCategory === 'cancellation' ? 'cancelled' : 'failed', data: { ...safe } })
+  }
   const finishPhase = (attempt: Attempt, time: number) => {
     if (attempt.phase) appendEvent(dir, { runId, timestamp: new Date(time).toISOString(), type: 'phase-ended', storyId: attempt.storyId, attemptId: attempt.id, phase: attempt.phase, durationMs: Math.max(0, time - attempt.phaseStarted) })
   }
@@ -271,6 +279,7 @@ export function makeReporter(
     finishPhase(attempt, time)
     const durationMs = Math.max(0, time - attempt.started)
     appendEvent(dir, { runId, timestamp: new Date(time).toISOString(), type: 'attempt-ended', storyId: attempt.storyId, attemptId: attempt.id, durationMs, outcome, data: { usageAvailable: attempt.usageAvailable,
+      ...(blockingFailure ? { ...blockingFailure } : {}),
       ...(attempt.prediction ? { prediction: attempt.prediction, ...(outcome === 'completed' ? { errorMs: durationMs - attempt.prediction.expectedMs, withinObservedRange: durationMs >= attempt.prediction.lowerMs && durationMs <= attempt.prediction.upperMs } : {}) } : {}),
     } })
     attempts.delete(key)
@@ -331,6 +340,7 @@ export function makeReporter(
   }
 
   return {
+    failure: recordFailure,
     routingDecision(storyId, decision) {
       if (current) persist({ ...current, routingDecisions: { ...current.routingDecisions, [storyId]: decision }, updatedAt: now().toISOString() }, "routing", `  · route ${storyId}: ${decision.profile} (${decision.reason})`)
     },
@@ -379,10 +389,14 @@ export function makeReporter(
         : status
       persist({ ...base, state: 'running', phase, failure: undefined, ...(progress ? { progress } : {}), ...(reason ? { reason } : { reason: undefined }), updatedAt: now().toISOString() }, phase, `  · ${phase}…`)
     },
-    blocked(reason, failure) {
+    blocked(reason, failure, observation) {
       const base = current ?? emptyStatus(now().toISOString())
-      persist({ ...withoutParallel(base), state: 'blocked', reason, failure, updatedAt: now().toISOString() },
-        'blocked', `■ blocked on ${base.story ?? '?'}: ${reason}`)
+      blockingFailure = safeFailure(observation ?? failure?.observation) ?? failureObservation()
+      recordFailure(blockingFailure, failure?.storyId ?? base.story)
+      try {
+        persist({ ...withoutParallel(base), state: 'blocked', reason, failure, updatedAt: now().toISOString() },
+          'blocked', `■ blocked on ${base.story ?? '?'}: ${reason}`)
+      } finally { blockingFailure = undefined }
     },
     complete(progress) {
       persist({ ...withoutParallel(current ?? emptyStatus(now().toISOString())), state: 'complete', phase: undefined,

@@ -1,4 +1,5 @@
 import { cacheIsolationProblem } from './cache-isolation.js'
+import { executionFailure, failureObservation, type FailureObservation } from '../observability/failure.js'
 import { knownInfrastructureFailure } from "../routing/capability.js"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
@@ -30,7 +31,7 @@ type WorkerBaseResult = Omit<Extract<StoryWorkerResult, { readonly kind: 'candid
 
 type MechanicalGateResult =
   | { readonly kind: 'passed' }
-  | { readonly kind: 'failed'; readonly stage: 'criterion' | 'verify' | 'design' | 'perf' | 'audit'; readonly summary: string }
+  | { readonly kind: 'failed'; readonly stage: 'criterion' | 'verify' | 'design' | 'perf' | 'audit'; readonly summary: string; readonly observation?: FailureObservation }
   | { readonly kind: 'cancelled'; readonly summary: string }
 
 type MutableWorkerEvidence = {
@@ -94,7 +95,7 @@ function runMechanicalGates(input: StoryWorkerInput, context: AgentContext, evid
       const criteriaEvidence = [...evidence.criteria, { id: criterion.id, passed: result.passed, summary: result.summary }]
       evidence.criteria = criteriaEvidence
       input.callbacks?.onGate?.('criterion', result)
-      if (!result.passed) return { kind: 'failed', stage: 'criterion', summary: result.summary }
+      if (!result.passed) return { kind: 'failed', stage: 'criterion', summary: result.summary, observation: result.failure }
     }
   }
 
@@ -104,7 +105,7 @@ function runMechanicalGates(input: StoryWorkerInput, context: AgentContext, evid
   const verify = runGate(input.verify, context.targetDir, context.story.id)
   evidence.verify = verify
   input.callbacks?.onGate?.('verify', verify)
-  if (!verify.passed) return { kind: 'failed', stage: 'verify', summary: verify.summary }
+  if (!verify.passed) return { kind: 'failed', stage: 'verify', summary: verify.summary, observation: verify.failure }
   const afterVerifyCancellation = cancellationReason(input.cancellation)
   if (afterVerifyCancellation) return { kind: 'cancelled', summary: afterVerifyCancellation }
 
@@ -113,7 +114,7 @@ function runMechanicalGates(input: StoryWorkerInput, context: AgentContext, evid
     const design = runGate(input.design, context.targetDir, context.story.id)
     evidence.design = design
     input.callbacks?.onGate?.('design', design)
-    if (!design.passed) return { kind: 'failed', stage: 'design', summary: design.summary }
+    if (!design.passed) return { kind: 'failed', stage: 'design', summary: design.summary, observation: design.failure }
     const afterDesignCancellation = cancellationReason(input.cancellation)
     if (afterDesignCancellation) return { kind: 'cancelled', summary: afterDesignCancellation }
   }
@@ -123,7 +124,7 @@ function runMechanicalGates(input: StoryWorkerInput, context: AgentContext, evid
     const perf = runGate(input.perf, context.targetDir, context.story.id)
     evidence.perf = perf
     input.callbacks?.onGate?.('perf', perf)
-    if (!perf.passed) return { kind: 'failed', stage: 'perf', summary: perf.summary }
+    if (!perf.passed) return { kind: 'failed', stage: 'perf', summary: perf.summary, observation: perf.failure }
     const afterPerfCancellation = cancellationReason(input.cancellation)
     if (afterPerfCancellation) return { kind: 'cancelled', summary: afterPerfCancellation }
   }
@@ -133,7 +134,7 @@ function runMechanicalGates(input: StoryWorkerInput, context: AgentContext, evid
     const audit = runGate(input.audit, context.targetDir, context.story.id)
     evidence.audit = audit
     input.callbacks?.onGate?.('audit', audit)
-    if (!audit.passed) return { kind: 'failed', stage: 'audit', summary: audit.summary }
+    if (!audit.passed) return { kind: 'failed', stage: 'audit', summary: audit.summary, observation: audit.failure }
     const afterAuditCancellation = cancellationReason(input.cancellation)
     if (afterAuditCancellation) return { kind: 'cancelled', summary: afterAuditCancellation }
   }
@@ -142,6 +143,11 @@ function runMechanicalGates(input: StoryWorkerInput, context: AgentContext, evid
 }
 
 function finalResult(input: StoryWorkerInput, result: StoryWorkerResult): StoryWorkerResult {
+  if (result.kind !== 'candidate' && result.kind !== 'paused') {
+    const observation = result.failure?.observation ?? failureObservation(result.kind === 'cancelled' ? 'cancelled' : 'unknown')
+    result = { ...result, failure: result.failure ?? { kind: 'verification-failed', stage: result.kind === 'mechanical-failure' ? result.stage : 'quality', storyId: result.storyId, observation } }
+    try { input.reporter?.failure?.(observation, result.storyId) } catch { /* telemetry must preserve the worker outcome */ }
+  }
   input.callbacks?.onResult?.(result)
   return result
 }
@@ -219,11 +225,12 @@ export async function runStoryWorker(input: StoryWorkerInput): Promise<StoryWork
       ...baseResult(input, evidence, `worker implementation failed: ${errorMessage(error)}`),
       kind: 'mechanical-failure',
       stage: 'implementation',
+      failure: { kind: 'verification-failed', stage: 'implementation', storyId: context.story.id, observation: executionFailure(error) },
     })
   }
   if (implementation.tokens) input.reporter?.addTokens(implementation.tokens)
   if (implementation.infrastructureFailure) implementation.routing?.recordOutcome(false, 'infrastructure')
-  if (implementation.infrastructureFailure || implementation.routing?.blocked) return finalResult(input, { ...baseResult(input, evidence, implementation.summary), kind: "mechanical-failure", stage: "implementation", ...(failure ? { failure } : {}) })
+  if (implementation.infrastructureFailure || implementation.routing?.blocked) return finalResult(input, { ...baseResult(input, evidence, implementation.summary), kind: "mechanical-failure", stage: "implementation", failure: failure ?? { kind: 'verification-failed', stage: 'implementation', storyId: context.story.id, observation: implementation.failure ?? failureObservation() } })
 
   try {
     const afterImplementationCancellation = cancellationReason(input.cancellation)
@@ -256,7 +263,7 @@ export async function runStoryWorker(input: StoryWorkerInput): Promise<StoryWork
     }
     if (gates.kind === 'failed') {
       implementation.routing?.recordOutcome(false)
-      const observed = input.failureRoot ? observeFailure({ root: input.failureRoot, scope: input.failureScope, directory: context.targetDir, story: context.story, stage: gates.stage, summary: gates.summary }) : undefined
+      const observed = input.failureRoot ? observeFailure({ root: input.failureRoot, scope: input.failureScope, directory: context.targetDir, story: context.story, stage: gates.stage, summary: gates.summary, observation: gates.observation }) : undefined
       return finalResult(input, { ...baseResult(input, evidence, observed?.feedback ?? gates.summary), kind: 'mechanical-failure', stage: gates.stage, ...(observed ? { failure: observed.failure } : {}) })
     }
 
@@ -359,7 +366,7 @@ async function runWorkerImplementation(input: StoryWorkerInput, context: AgentCo
       return { result: { ...result, success: false, infrastructureFailure: true, summary: gates.summary, routing: { ...result.routing, blocked: true, canRetry: false } } }
     }
     result.routing.recordOutcome(false)
-    const observed = input.failureRoot ? observeFailure({ root: input.failureRoot, scope: input.failureScope, directory: context.targetDir, story: context.story, stage: gates.stage, summary: gates.summary }) : undefined
+    const observed = input.failureRoot ? observeFailure({ root: input.failureRoot, scope: input.failureScope, directory: context.targetDir, story: context.story, stage: gates.stage, summary: gates.summary, observation: gates.observation }) : undefined
     if (observed?.action === 'blocked') return { result: { ...result, success: false, summary: observed.feedback, routing: { ...result.routing, blocked: true, canRetry: false } }, failure: observed.failure }
     if (result.tokens) input.reporter?.addTokens(result.tokens)
     feedback = observed?.feedback ?? gates.summary

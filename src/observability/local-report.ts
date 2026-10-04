@@ -1,5 +1,6 @@
 import { EVENT_CAP, readEvents, type LoopEvent } from './events.js'
 import { readMeasurements } from './history.js'
+import { safeFailure } from './failure.js'
 
 type Coverage = 'measured' | 'partial' | 'unknown'
 const fields = ['inputTokens', 'cachedInputTokens', 'outputTokens', 'reasoningOutputTokens', 'totalCostUsd'] as const
@@ -98,11 +99,17 @@ export function summarizeUsageEvents(input: readonly LoopEvent[]) {
   const inputTokens = sum('inputTokens'), outputTokens = sum('outputTokens')
   const phases = events.filter(event => event.type === 'phase-ended')
   const phaseTime = intervalTotals(phases), attemptTime = intervalTotals(events.filter(event => event.type === 'attempt-ended'))
-  const failures = { observer: 0, infrastructure: 0, product: 0, unknown: 0 }
+  const failures: { observer: number; infrastructure: number; product: number; unknown: number; cancellation?: number } = { observer: 0, infrastructure: 0, product: 0, unknown: 0 }
+  const failureIds = new Set<string>()
   for (const event of events) {
-    if (!['failed', 'blocked', 'rejected', 'error'].includes(event.outcome ?? '')) continue
-    const category = event.data?.failureCategory
-    failures[category === 'observer' || category === 'infrastructure' || category === 'product' ? category : 'unknown']++
+    if (event.type !== 'failure' && !['failed', 'blocked', 'rejected', 'error', 'cancelled'].includes(event.outcome ?? '')) continue
+    const structured = safeFailure(event.data)
+    const id = structured?.failureId ?? event.id
+    if (failureIds.has(id)) continue
+    failureIds.add(id)
+    const category = event.type === 'failure' ? structured?.failureCategory : event.data?.failureCategory
+    if (category === 'cancellation' || event.outcome === 'cancelled') failures.cancellation = (failures.cancellation ?? 0) + 1
+    else failures[category === 'observer' || category === 'infrastructure' || category === 'product' ? category : 'unknown']++
   }
   return {
     calls,

@@ -3,20 +3,28 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileS
 import { dirname, join, relative, resolve, isAbsolute } from 'node:path'
 import { workspaceFingerprint } from '../workspace/fingerprint.js'
 import { storyPathSegment } from './prd.js'
+import { observedError, safeFailure, failureObservation } from '../observability/failure.js'
 
 const hash = (data: string | Buffer) => createHash('sha256').update(data).digest('hex')
 function safePath(root: string, path: string): void {
   const rel = relative(resolve(root), resolve(path))
-  if (isAbsolute(rel) || rel === '..' || rel.startsWith('../') || rel.startsWith('..\\')) throw new Error('Proof path escaped workspace')
+  if (isAbsolute(rel) || rel === '..' || rel.startsWith('../') || rel.startsWith('..\\')) throw observedError('Proof path escaped workspace', 'invalid-evidence')
   let current = root
   for (const segment of rel.split(/[\\/]/u).filter(Boolean)) {
     current = join(current, segment)
-    try { if (lstatSync(current).isSymbolicLink()) throw new Error(`Proof path must not contain a link: ${current}`) }
+    try { if (lstatSync(current).isSymbolicLink()) throw observedError(`Proof path must not contain a link: ${current}`, 'invalid-evidence') }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
   }
 }
 /** Copy selected proof into an immutable runtime snapshot; errors preserve the candidate. */
 export function retainRuntimeProof(directory: string, storyId: string, targetDirectory: string): void {
+  try { copyRuntimeProof(directory, storyId, targetDirectory) }
+  catch (error) {
+    if (error && typeof error === 'object' && !safeFailure((error as { failure?: unknown }).failure)) Object.assign(error, { failure: failureObservation('storage') })
+    throw error
+  }
+}
+function copyRuntimeProof(directory: string, storyId: string, targetDirectory: string): void {
   const entries: { path: string; sha256: string; bytes: Buffer }[] = []
   const walk = (dir: string, base: string, prefix = ''): void => {
     safePath(directory, dir)
@@ -28,7 +36,7 @@ export function retainRuntimeProof(directory: string, storyId: string, targetDir
       else if (stat.isFile()) {
         const bytes = readFileSync(file)
         entries.push({ path: (prefix + relative(base, file)).replace(/\\/gu, '/'), sha256: hash(bytes), bytes })
-      } else throw new Error(`Unsupported proof entry: ${file}`)
+      } else throw observedError(`Unsupported proof entry: ${file}`, 'invalid-evidence')
     }
   }
   const artifacts = join(directory, '.yoke/artifacts'), proof = join(directory, '.yoke/proof')
@@ -45,8 +53,8 @@ export function retainRuntimeProof(directory: string, storyId: string, targetDir
     const copied = join(destination, path); safePath(targetDirectory, copied)
     mkdirSync(dirname(copied), { recursive: true })
     if (existsSync(copied)) {
-      if (hash(readFileSync(copied)) !== sha256) throw new Error(`Retained proof hash mismatch: ${path}`)
+      if (hash(readFileSync(copied)) !== sha256) throw observedError(`Retained proof hash mismatch: ${path}`, 'invalid-evidence')
     } else writeFileSync(copied, bytes, { mode: 0o600, flag: 'wx' })
-    if (hash(readFileSync(copied)) !== sha256) throw new Error(`Proof copy hash mismatch: ${path}`)
+    if (hash(readFileSync(copied)) !== sha256) throw observedError(`Proof copy hash mismatch: ${path}`, 'invalid-evidence')
   }
 }

@@ -2,8 +2,10 @@ import { execSync } from 'node:child_process'
 import { compactCommandOutput } from '../output/compact.js'
 import { writeOutputArtifact } from '../output/artifact.js'
 import { DEFAULT_OUTPUT_POLICY, type OutputPhase, type OutputPolicy } from '../output/types.js'
+import { executionFailure, type FailureObservation } from '../observability/failure.js'
 
 export interface VerifyResult {
+  failure?: FailureObservation
   passed: boolean
   summary: string
 }
@@ -79,7 +81,7 @@ export function commandVerifier(command: string, options: CommandVerifierOptions
           parts.push(`[artifact unavailable: ${errorMessage(error)}]`)
         }
       }
-      return { passed: false, summary: parts.join('\n') }
+      return { passed: false, summary: parts.join('\n'), failure: executionFailure(e) }
     }
   }
 }
@@ -110,7 +112,7 @@ export function retryingVerifier(inner: Verifier, retries: number): Verifier {
       return { passed: true, summary: `${last.summary} (passed on retry ${attempt})` }
     }
     if (!last.passed && attempt > 0) {
-      return { passed: false, summary: `${last.summary} (still failing after ${attempt} retr${attempt === 1 ? 'y' : 'ies'})` }
+      return { ...last, passed: false, summary: `${last.summary} (still failing after ${attempt} retr${attempt === 1 ? 'y' : 'ies'})` }
     }
     return last
   }

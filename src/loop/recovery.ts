@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { statePath } from '../workspace/state.js'
 import { loadPrd } from './prd.js'
+import { observedError, safeFailure, type FailureObservation } from '../observability/failure.js'
 
 const Recovery = z.object({ version: z.literal(1), root: z.string(), worktree: z.string(), base: z.string(), prdHash: z.string() }).strict()
 const digest = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex')
@@ -54,7 +55,8 @@ const LegacyParallelRecovery = z.object({
   version: z.literal(1), root: z.string().max(4096), storyId: z.string().max(1024), worktree: z.string().max(4096), baseCommit: z.string().max(128),
   prdHash: z.string().length(64), ownerToken: z.string().min(1).max(256), reason: z.string().max(16384), state: z.literal('retained'), recordedAt: z.string().datetime(),
 }).strict()
-const CurrentParallelRecovery = LegacyParallelRecovery.extend({ version: z.literal(2), phase: z.enum(['implementation', 'integration']) })
+const CurrentParallelRecovery = LegacyParallelRecovery.extend({ version: z.literal(2), phase: z.enum(['implementation', 'integration']),
+  observation: z.unknown().refine(value => safeFailure(value) !== undefined, 'Invalid failure observation').optional() })
 const ParallelRecovery = z.discriminatedUnion('version', [LegacyParallelRecovery, CurrentParallelRecovery])
 
 export function parallelAcceptanceDigest(directory: string): string {
@@ -81,7 +83,7 @@ export function discardParallelRecoveryRecords(directory: string): void {
 }
 
 /** Records are outside the candidate and bind reuse to unchanged target acceptance. */
-export function retainParallelWorktree(directory: string, file: string, input: { storyId: string; worktree: string; ownerToken: string; reason: string; baseCommit: string; prdHash: string; phase?: ParallelRecoveryPhase }): void {
+export function retainParallelWorktree(directory: string, file: string, input: { storyId: string; worktree: string; ownerToken: string; reason: string; baseCommit: string; prdHash: string; phase?: ParallelRecoveryPhase; observation?: FailureObservation }): void {
   const root = realpathSync(directory)
   const worktree = realpathSync(input.worktree)
   const record = CurrentParallelRecovery.parse({ version: 2, root, ...input, phase: input.phase ?? 'integration', reason: input.reason.slice(0, 16384), worktree, state: 'retained', recordedAt: new Date().toISOString() })
@@ -95,13 +97,15 @@ export function retainParallelWorktree(directory: string, file: string, input: {
   } finally { rmSync(temp, { force: true }) }
 }
 
-export function recoverParallelWorktree(directory: string, file: string, storyId: string): { path: string; baseCommit: string; recovered: true; ownerToken: string; recovery: { phase: ParallelRecoveryPhase; feedback: string } } | undefined {
-  const safe = parallelRecordPath(directory, file)
+export function recoverParallelWorktree(directory: string, file: string, storyId: string): { path: string; baseCommit: string; recovered: true; ownerToken: string; recovery: { phase: ParallelRecoveryPhase; feedback: string; observation?: FailureObservation } } | undefined {
+  let safe: string
+  try { safe = parallelRecordPath(directory, file) } catch (error) { throw Object.assign(error as Error, { failure: observedError('', 'invalid-evidence').failure }) }
   if (!existsSync(safe)) return undefined
   const stat = lstatSync(safe)
-  if (!stat.isFile()) throw new Error('Parallel recovery record is not a file')
-  if (stat.size > 65536) throw new Error('Parallel recovery record is too large')
-  const saved = ParallelRecovery.parse(JSON.parse(readFileSync(safe, 'utf8')))
+  if (!stat.isFile()) throw observedError('Parallel recovery record is not a file', 'invalid-evidence')
+  if (stat.size > 65536) throw observedError('Parallel recovery record is too large', 'invalid-evidence')
+  const parsed = (() => { const raw = readFileSync(safe, 'utf8'); try { return ParallelRecovery.parse(JSON.parse(raw)) } catch (error) { throw Object.assign(error as Error, { failure: observedError('', 'invalid-evidence').failure }) } })()
+  const saved = parsed
   // Existing records describe independently checked candidates awaiting integration.
   const phase = saved.version === 1 ? 'integration' : saved.phase
   if (!existsSync(saved.worktree)) throw new Error(`Retained candidate is missing: ${saved.worktree}; resolve its recovery record before retrying`)
@@ -110,9 +114,9 @@ export function recoverParallelWorktree(directory: string, file: string, storyId
   const parent = realpathSync(join(root, '.yoke', 'worktrees'))
   const rel = relative(parent, actual)
   const expectedName = createHash('sha256').update(JSON.stringify([storyId, saved.ownerToken])).digest('hex').slice(0, 24)
-  if (saved.storyId !== storyId || pathIdentity(saved.root) !== pathIdentity(root) || pathIdentity(actual) !== pathIdentity(saved.worktree) || isAbsolute(rel) || rel !== expectedName) throw new Error('Retained candidate ownership or path binding is invalid')
+  if (saved.storyId !== storyId || pathIdentity(saved.root) !== pathIdentity(root) || pathIdentity(actual) !== pathIdentity(saved.worktree) || isAbsolute(rel) || rel !== expectedName) throw observedError('Retained candidate ownership or path binding is invalid', 'invalid-evidence')
   const git = (args: string[], cwd = root) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim()
-  const stale = () => new Error(`Retained candidate is stale against target or PRD: ${actual}; reconcile it before retrying`)
+  const stale = () => observedError(`Retained candidate is stale against target or PRD: ${actual}; reconcile it before retrying`, 'source-changed')
   if (saved.prdHash !== parallelAcceptanceDigest(root)) throw stale()
   if (saved.baseCommit !== git(['rev-parse', 'HEAD'])) {
     if (phase === 'integration') throw stale()
@@ -127,5 +131,5 @@ export function recoverParallelWorktree(directory: string, file: string, storyId
   const registered = git(['worktree', 'list', '--porcelain']).split(/\r?\n/u).filter(line => line.startsWith('worktree ')).map(line => realpathSync(resolve(line.slice(9))))
   if (!registered.some(path => pathIdentity(path) === pathIdentity(actual))) throw new Error('Retained candidate is not a registered worktree')
   git(['merge-base', '--is-ancestor', saved.baseCommit, 'HEAD'], actual)
-  return { path: actual, baseCommit: saved.baseCommit, recovered: true, ownerToken: saved.ownerToken, recovery: { phase, feedback: saved.reason } }
+  return { path: actual, baseCommit: saved.baseCommit, recovered: true, ownerToken: saved.ownerToken, recovery: { phase, feedback: saved.reason, ...(saved.version === 2 && safeFailure(saved.observation) ? { observation: safeFailure(saved.observation) } : {}) } }
 }

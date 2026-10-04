@@ -14,6 +14,7 @@ import { killProcessTreeForCleanup } from './watchdog.js'
 import { parallelAcceptanceDigest, recoverParallelWorktree, retainParallelWorktree } from './recovery.js'
 import { cacheIsolationProblem } from './cache-isolation.js'
 import { retainRuntimeProof } from './proof-retention.js'
+import { observedError } from '../observability/failure.js'
 import { writeScopesOverlap } from './scheduler.js'
 import { statePath } from '../workspace/state.js'
 
@@ -74,11 +75,11 @@ function productionAdapters(targetDir: string, identity: CommitIdentity | undefi
         return { path, baseCommit }
       },
       cleanupProcess: cleanupProviderProcesses,
-      retain: (input, reason, phase = 'integration') => {
+      retain: (input, reason, phase = 'integration', observation) => {
         const file = recoveryPath(targetDir, input.story.id)
         // Preserve the path's original ownership identity when a retry is rejected again.
         const ownerToken = ownershipTokens.get(input.worktree.path) ?? input.ownerToken
-        retainParallelWorktree(targetDir, file, { storyId: input.story.id, worktree: input.worktree.path, baseCommit: input.worktree.baseCommit, prdHash: acceptanceDigests.get(input.story.id)!, ownerToken, reason, phase })
+        retainParallelWorktree(targetDir, file, { storyId: input.story.id, worktree: input.worktree.path, baseCommit: input.worktree.baseCommit, prdHash: acceptanceDigests.get(input.story.id)!, ownerToken, reason, phase, observation })
       },
       remove: input => {
         removeOwnedWorktree(targetDir, input, owned, removed, realGitOps)
@@ -188,7 +189,8 @@ function shortWorktreePath(targetDir: string, storyId: string, ownerToken: strin
 }
 
 function recoveryPath(targetDir: string, storyId: string): string {
-  return statePath(targetDir, 'integration-recovery', `${storyPathSegment(storyId)}.json`)
+  try { return statePath(targetDir, 'integration-recovery', `${storyPathSegment(storyId)}.json`) }
+  catch (error) { throw Object.assign(error as Error, { failure: observedError('', 'invalid-evidence').failure }) }
 }
 
 function preflightWorktreePath(targetDir: string, path: string): void {
@@ -273,9 +275,9 @@ function rebaseCandidate(targetDir: string, input: DispatcherWorkerInput): Dispa
 }
 
 function integrateCandidate(targetDir: string, input: DispatcherWorkerInput, expectedHead: string): void {
-  if (!realGitOps.isClean(targetDir)) throw new Error('target working tree is not clean before integration')
+  if (!realGitOps.isClean(targetDir)) throw observedError('target working tree is not clean before integration', 'source-changed')
   const currentHead = gitText(targetDir, ['rev-parse', 'HEAD'])
-  if (currentHead !== expectedHead) throw new Error(`target HEAD changed from ${expectedHead} to ${currentHead} during integrated gates`)
+  if (currentHead !== expectedHead) throw observedError(`target HEAD changed from ${expectedHead} to ${currentHead} during integrated gates`, 'head-changed')
   realGitOps.integrate(targetDir, input.worktree.path)
 }
 

@@ -1,4 +1,5 @@
 import { cacheIsolationProblem } from './cache-isolation.js'
+import { executionFailure, failureObservation, safeFailure, type FailureObservation } from '../observability/failure.js'
 import { existsSync, rmSync } from 'node:fs'
 import { observeFailure, clearFailureProgress } from './failure.js'
 import { acceptanceProtectionProblem } from '../check/command.js'
@@ -132,6 +133,7 @@ export async function runParallelLoopCommand(input: ParallelCommandInput): Promi
     onProgress: status => input.reporter.parallel?.(status),
     onAccepted: story => input.reporter.accepted?.(story),
     onReopened: (story, evidence) => input.reporter.reopened?.(story, evidence),
+    onFailure: (observation, storyId) => input.reporter.failure?.(observation, storyId),
     gates: {
       verify: input.verify,
       design: input.design,
@@ -184,14 +186,15 @@ export async function runParallelLoopCommand(input: ParallelCommandInput): Promi
     const previous = process.env.YOKE_PHASE
     process.env.YOKE_PHASE = 'completion'
     let reason: string | undefined
+    let observation: FailureObservation | undefined
     try {
       const gate = input.completion(input.targetDir)
-      if (!gate.passed) reason = `integrated system did not verify: ${gate.summary}`
+      if (!gate.passed) { reason = `integrated system did not verify: ${gate.summary}`; observation = gate.failure }
       else if (!adapters.git.isClean(input.targetDir)) reason = 'completion command left source or final assets dirty; preserve changes and move rerun proofs to ignored runtime paths before resuming'
-    } catch (error) { reason = `integrated completion gate failed: ${error instanceof Error ? error.message : String(error)}` }
+    } catch (error) { reason = `integrated completion gate failed: ${error instanceof Error ? error.message : String(error)}`; observation = executionFailure(error) }
     finally { if (previous === undefined) delete process.env.YOKE_PHASE; else process.env.YOKE_PHASE = previous }
     if (reason) {
-      const observed = observeFailure({ root: input.targetDir, directory: input.targetDir, stage: 'completion', summary: reason })
+      const observed = observeFailure({ root: input.targetDir, directory: input.targetDir, stage: 'completion', summary: reason, observation })
       input.reporter.blocked(observed.action === 'retry' ? reason : observed.feedback, observed.failure)
       return 1
     }
@@ -285,7 +288,7 @@ function candidateDefinitions(input: ParallelCommandInput, worker: DispatcherWor
 
 type WorkerRunner = (context: AgentContext) => AgentResult | Promise<AgentResult>
 
-function workerReporter(reporter: LoopReporter, worker: DispatcherWorkerInput, candidate?: CandidateOwnership): Pick<LoopReporter, 'phase' | 'quality' | 'addTokens'> {
+function workerReporter(reporter: LoopReporter, worker: DispatcherWorkerInput, candidate?: CandidateOwnership): Pick<LoopReporter, 'phase' | 'quality' | 'addTokens' | 'failure'> {
   const attribution = {
     story: worker.story.id,
     storyTitle: worker.story.title,
@@ -303,6 +306,7 @@ function workerReporter(reporter: LoopReporter, worker: DispatcherWorkerInput, c
       else reporter.quality(quality)
     },
     addTokens: usage => reporter.addTokens({ ...usage, storyId: worker.story.id }),
+    failure: observation => reporter.failure?.(observation, worker.story.id),
   }
 }
 
@@ -411,10 +415,10 @@ export function providerProcessResultToAgentResult(agent: Agent, storyId: string
   const telemetry = tokens ? { tokens } : {}
   switch (result.kind) {
     case 'succeeded': return { success: true, summary: `${agent} implemented ${storyId}`, ...telemetry }
-    case 'cancelled': return { success: false, infrastructureFailure: true, summary: result.reason, ...telemetry }
-    case 'timed-out': return { success: false, infrastructureFailure: true, summary: result.reason, ...telemetry }
-    case 'spawn-failed': return { success: false, infrastructureFailure: true, summary: result.error, ...telemetry }
-    case 'failed': return { success: false, infrastructureFailure: true, summary: `${agent} exited ${result.exitCode ?? 'without a code'}`, ...telemetry }
+    case 'cancelled': return { success: false, infrastructureFailure: true, failure: failureObservation('cancelled'), summary: result.reason, ...telemetry }
+    case 'timed-out': return { success: false, infrastructureFailure: true, failure: failureObservation('timeout'), summary: result.reason, ...telemetry }
+    case 'spawn-failed': return { success: false, infrastructureFailure: true, failure: safeFailure(result.failure) ?? failureObservation('spawn'), summary: result.error, ...telemetry }
+    case 'failed': return { success: false, infrastructureFailure: true, failure: failureObservation(), summary: `${agent} exited ${result.exitCode ?? 'without a code'}`, ...telemetry }
     default: return assertNever(result)
   }
 }

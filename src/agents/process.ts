@@ -13,6 +13,7 @@ import { processIncarnation } from './process-incarnation.js'
 import { prepareWindowsInvocation, resolveWindowsCommand } from './windows-launch.js'
 import { createSupervision, supervisionLimits, assertPreviousProvidersStopped } from './supervision.js'
 import { prepareSolPiTemporaryConfig } from './sol-pi-runtime.js'
+import { failureObservation, type FailureObservation } from '../observability/failure.js'
 
 export type ProviderProcessOutput = {
   readonly stream: 'stdout' | 'stderr'
@@ -42,6 +43,7 @@ export type ProviderSpawnOptions = {
 }
 
 type ProcessEvidence = {
+  readonly failure?: FailureObservation
   readonly invocation: AgentInvocation
   readonly pid: number | undefined
   readonly stdout: string
@@ -226,7 +228,7 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     }
     const details = evidence()
     if (recordFailure) {
-      finish({ ...details, kind: 'spawn-failed', error: recordFailure })
+      finish({ ...details, kind: 'spawn-failed', error: recordFailure, failure: failureObservation('storage') })
       return
     }
     if (termination?.kind === 'timed-out') {
@@ -296,7 +298,7 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   child.stdin?.on('error', () => {})
   child.on('close', code => { finalize(code) })
   child.on('error', error => {
-    finish({ ...evidence(), kind: 'spawn-failed', error: recordFailure ?? error.message })
+    finish({ ...evidence(), kind: 'spawn-failed', error: recordFailure ?? error.message, ...(recordFailure ? { failure: failureObservation('storage') } : {}) })
   })
   if (pid !== undefined) {
     try {

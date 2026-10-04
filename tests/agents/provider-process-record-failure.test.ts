@@ -43,6 +43,7 @@ describe('provider process ownership publication', () => {
     const result = await handle.completion
 
     expect(result).toMatchObject({ kind: 'spawn-failed', error: expect.stringContaining('process ownership record failure') })
+    expect(result).toMatchObject({ failure: { failureCategory: 'infrastructure', failureCause: 'storage' } })
     const pid = handle.pid
     if (typeof pid !== 'number') throw new Error('expected spawned provider PID')
     expect(terminations).toEqual([[pid, false], [pid, true]])
