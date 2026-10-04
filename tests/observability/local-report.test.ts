@@ -71,6 +71,15 @@ it('separates process durations, phase interval sum and union, and explicit fail
   expect(report.failures).toEqual({ observer: 1, infrastructure: 1, product: 1, unknown: 1 })
 })
 
+it('includes story-bound serial parent implementation duration while excluding orchestration', () => {
+  const report = summarizeUsageEvents([
+    event('serial', { callId: 'serial', role: 'parent', inputTokens: 1, outputTokens: 1 }, { storyId: 'S1', durationMs: 500 }),
+    event('controller', { callId: 'controller', role: 'orchestrator', inputTokens: 1, outputTokens: 1 }, { storyId: 'S1', durationMs: 100 }),
+    event('unbound', { callId: 'unbound', role: 'parent', inputTokens: 1, outputTokens: 1 }, { durationMs: 200 }),
+  ])
+  expect(report.time.workerProcessDurationMs).toBe(500)
+})
+
 it('reads archived and recent local events once without mutating the store', () => {
   expect(api.localUsageReport).toBeTypeOf('function')
   const root = mkdtempSync(join(tmpdir(), 'yoke-local-report-'))

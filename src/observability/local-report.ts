@@ -112,7 +112,8 @@ export function summarizeUsageEvents(input: readonly LoopEvent[]) {
       costCoverage: !counted.length || counted.every(call => call.costCoverage === 'unknown') ? 'unknown' : counted.every(call => call.costCoverage === 'measured') && !unmeasuredAttempts ? 'measured' : 'partial',
     },
     hostCoverage: { guardian: coverage(calls.filter(call => call.role === 'guardian')), approval: coverage(calls.filter(call => call.role === 'approval')) },
-    time: { workerProcessDurationMs: sum('durationMs', counted.filter(call => call.role === 'worker')),
+    // Serial makeRunner labels story implementation as parent; routing controllers use orchestrator.
+    time: { workerProcessDurationMs: sum('durationMs', counted.filter(call => call.role === 'worker' || (call.role === 'parent' && call.storyId !== undefined))),
       phaseDurationSumMs: phaseTime.sumMs, phaseDurationUnionMs: phaseTime.unionMs,
       attemptDurationSumMs: attemptTime.sumMs, attemptDurationUnionMs: attemptTime.unionMs,
       phases: [...new Set(phases.map(event => event.phase ?? 'unknown'))].sort().map(phase => ({ phase, ...intervalTotals(phases.filter(event => (event.phase ?? 'unknown') === phase)) })),
