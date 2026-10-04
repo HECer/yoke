@@ -5,13 +5,15 @@ import { basename, dirname, join, resolve } from 'node:path'
 import type { CandidateLifecycle, CandidateOwnership, CandidateWorktreeRequest } from './candidate-contracts.js'
 import type { CommitIdentity } from './identity.js'
 import { isProviderTreeAlive, reapProviderProcesses } from './cleanup.js'
-import { realGitOps, stageImplementation } from './git.js'
+import { realGitOps, stageImplementation, RUNTIME_EXCLUDES } from './git.js'
 import type { GitOps } from './gates.js'
 import type { DispatcherGit, DispatcherRebase, DispatcherWorktree, DispatcherWorktrees, DispatcherWorkerInput } from './dispatcher.js'
 import { isPidAlive } from './lock.js'
 import { storyPathSegment } from './prd.js'
 import { killProcessTreeForCleanup } from './watchdog.js'
 import { parallelAcceptanceDigest, recoverParallelWorktree, retainParallelWorktree } from './recovery.js'
+import { retainRuntimeProof } from './proof-retention.js'
+import { writeScopesOverlap } from './scheduler.js'
 import { statePath } from '../workspace/state.js'
 
 export type ParallelAdapters = {
@@ -86,7 +88,12 @@ function productionAdapters(targetDir: string, identity: CommitIdentity | undefi
     git: {
       isClean: dir => realGitOps.isClean(dir),
       rebase: input => rebaseCandidate(targetDir, input),
-      commit: input => realGitOps.commitAll(input.worktree.path, `yoke: complete ${input.story.id} ${input.story.title}`, identity),
+      commit: input => {
+        const unexpected = unexpectedWrites(input, changedPaths(input.worktree.path, gitText(input.worktree.path, ['rev-parse', 'HEAD'])))
+        if (unexpected.length) throw new Error(`Candidate writes outside declared scopes after integrated gates: ${unexpected.join(', ')}`)
+        retainRuntimeProof(input.worktree.path, input.story.id, targetDir)
+        realGitOps.commitAll(input.worktree.path, `yoke: complete ${input.story.id} ${input.story.title}`, identity)
+      },
       integrate: (input, expectedHead) => integrateCandidate(targetDir, input, expectedHead),
     },
     candidates: primary => makeCandidateLifecycle(targetDir, primary, owned, removed, realGitOps, ownershipTokens, acceptanceDigests.get(primary.story.id)),
@@ -206,6 +213,12 @@ function writeCandidateStatus(
 
 function rebaseCandidate(targetDir: string, input: DispatcherWorkerInput): DispatcherRebase {
   const currentHead = gitText(targetDir, ['rev-parse', 'HEAD'])
+  const actual = changedPaths(input.worktree.path, input.worktree.baseCommit)
+  const unexpected = unexpectedWrites(input, actual)
+  const siblings = currentHead === input.worktree.baseCommit ? [] : changedPaths(targetDir, input.worktree.baseCommit)
+  const collisions = actual.filter(path => writeScopesOverlap([path], siblings))
+  if (unexpected.length) return { kind: 'reopen', reason: `Candidate writes outside declared scopes: ${unexpected.join(', ')}${collisions.length ? `; integrated sibling collisions: ${collisions.join(', ')}` : ''}` }
+  if (collisions.length) return { kind: 'reopen', reason: `Candidate writes collide with integrated sibling changes: ${collisions.join(', ')}` }
   const candidateHead = gitText(input.worktree.path, ['rev-parse', 'HEAD'])
   try {
     execFileSync('git', ['merge-base', '--is-ancestor', input.worktree.baseCommit, 'HEAD'], { cwd: input.worktree.path, stdio: 'pipe' })
@@ -269,4 +282,18 @@ function gitText(dir: string, args: readonly string[]): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function changedPaths(directory: string, base: string): string[] {
+  const read = (args: string[]) => execFileSync('git', args, { cwd: directory, stdio: 'pipe' }).toString().split('\0').filter(Boolean)
+  return [...new Set([...read(['diff', '--no-renames', '--name-only', '-z', base, '--', '.', ...RUNTIME_EXCLUDES]), ...read(['ls-files', '--others', '--exclude-standard', '-z', '--', '.', ...RUNTIME_EXCLUDES])])].filter(path => !/^(?:\.yoke\/(?:proof|context)\/|\.yoke\/prd\.(?:yaml|json)$)/u.test(path))
+}
+
+function unexpectedWrites(input: DispatcherWorkerInput, paths: readonly string[]): string[] {
+  if (input.story.writes === undefined) return []
+  const normalize = (value: string) => {
+    const path = value.replace(/\\/gu, '/').replace(/\/$/u, '')
+    return process.platform === 'win32' ? path.toLowerCase() : path
+  }
+  return paths.filter(path => !input.story.writes!.some(scope => normalize(path) === normalize(scope) || normalize(path).startsWith(`${normalize(scope)}/`)))
 }

@@ -515,3 +515,11 @@ describe('no DEP0190', () => {
     expect(warnings.some(w => w.includes('DEP0190'))).toBe(false)
   })
 })
+
+it('instructs implementations to isolate writable dependency caches without relaxing the sandbox', () => {
+  const prompt = buildClaudePrompt(story, '')
+  expect(prompt).toContain('worktree-local')
+  expect(prompt).toContain('.vite-temp')
+  expect(prompt).toContain('sandbox')
+  expect(prompt).toContain('offline cache misses')
+})

@@ -1,3 +1,4 @@
+import { retainRuntimeProof } from './proof-retention.js'
 import { knownInfrastructureFailure } from "../routing/capability.js"
 import { existsSync, unlinkSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { acceptanceProtectionProblem } from '../check/command.js'
@@ -465,6 +466,7 @@ export function runLoop(opts: LoopOptions): LoopResult {
         })
         const updated = stories.map(s => (s.id === story.id ? { ...s, passes: true } : s))
         savePrd(wtPrd, updated)
+        retainRuntimeProof(wt, story.id, opts.targetDir)
         opts.git.commitAll(wt, `yoke: complete ${story.id} ${story.title}`, opts.commitIdentity)
         opts.git.integrate(opts.targetDir, wt)
         result.routing?.recordOutcome(true)
