@@ -24,6 +24,7 @@ export function archiveMeasurement(root: string, event: LoopEvent): void {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
   const data = event.data ?? {}
   const allowed = ['inputTokens', 'outputTokens', 'cachedInputTokens', 'cacheWriteInputTokens', 'reasoningOutputTokens', 'totalCostUsd', 'agent', 'provider', 'model', 'actualModel', 'requestedProvider', 'requestedModel', 'requestedReasoningEffort', 'requestedVariant', 'variant', 'role', 'callId', 'parentCallId', 'calls', 'measurementComplete', 'costMeasurementComplete', 'usageAvailable', 'prediction', 'errorMs', 'withinObservedRange', 'escalated']
+  allowed.push('usageSource', 'usageMissingFields', 'usagePartialFields', 'failureCategory')
   const compact = { ...event, data: Object.fromEntries(allowed.filter(key => data[key] !== undefined).map(key => [key, data[key]])) }
   appendFileSync(file, JSON.stringify(compact) + '\n')
 }
