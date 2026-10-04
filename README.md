@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node.js 20+](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 
-<!-- yoke:version:start -->1.22.0<!-- yoke:version:end --> · <!-- yoke:tests:start -->1610<!-- yoke:tests:end --> test cases · <!-- yoke:skills:start -->34<!-- yoke:skills:end --> skills
+<!-- yoke:version:start -->1.23.0<!-- yoke:version:end --> · <!-- yoke:tests:start -->1696<!-- yoke:tests:end --> test cases · <!-- yoke:skills:start -->34<!-- yoke:skills:end --> skills
 
 <!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi | Hermes<!-- yoke:agents:end -->
 
@@ -20,6 +20,8 @@
 Yoke turns a goal into acceptance-tested stories, coordinates one or more coding agents, and commits work only after the configured checks pass. Run a normal backlog to completion, or optionally let Yoke explore for evidence-backed improvements and continue the same verified loop.
 
 ## How it works
+
+Version 1.23 adds local `yoke usage [dir] --json` and `yoke tools-preflight [dir] --json` diagnostics. Browser smoke now requires `smoke.sourceIdentity` with an app-specific same-origin path and the lowercase SHA-256 of its served bytes. Pin a stable source response and refresh it deliberately after source changes; see [browser delivery configuration](docs/DELIVERY-JOURNEYS.md). Local version preparation and validation limits are recorded in [1.23 validation](docs/RELEASE-VALIDATION-1.23.0.md).
 
 ```mermaid
 flowchart LR
