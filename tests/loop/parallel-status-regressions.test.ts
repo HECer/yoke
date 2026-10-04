@@ -32,6 +32,14 @@ afterEach(() => {
 })
 
 describe('parallel status regressions', () => {
+  it('does not announce integration success merely because the integrator clears', () => {
+    const logs: string[] = []
+    const reporter = makeReporter(dir, { log: line => logs.push(line) })
+    reporter.parallel?.({ dispatcherId: 'd', maxConcurrency: 1, activeWorkers: 0, queuedCandidates: 0, integrated: 0, reopened: 0, workers: [] })
+    reporter.parallelIntegrator?.({ story: 'A', storyTitle: 'API', provider: 'codex', phase: 'committing' })
+    reporter.parallelIntegrator?.(null)
+    expect(logs.join('\n')).not.toContain('integration complete')
+  })
   it('clears a rejected worker from live status and reports its failure reason', async () => {
     const reporter = makeReporter(dir, { log: () => {} })
     const parallel = reporter.parallel

@@ -113,6 +113,8 @@ function appendDuration(dir: string, d: StoryDuration): void {
 // Cumulative runner token usage across the run (claude stream-json runners only).
 // model is the last-seen model id from the stream (absent if the CLI never reported one).
 export interface ModelCallUsage {
+  usageMissingFields?: string[]
+  usagePartialFields?: string[]
   callId?: string
   routingAttemptId?: string
   costMeasurementComplete?: boolean
@@ -135,6 +137,9 @@ export interface ModelCallUsage {
 }
 
 export interface TokenUsage {
+  usagePartialFields?: string[]
+  /** Explicit provider measurement gaps; zero must not imply measured usage. */
+  usageMissingFields?: string[]
   callId?: string
   routingAttemptId?: string
   storyId?: string
@@ -483,7 +488,7 @@ export function makeReporter(
         return
       }
       const { integrator: _integrator, ...withoutIntegrator } = parallel
-      persist({ ...base, parallel: withoutIntegrator, updatedAt: now().toISOString() }, 'parallel-integrator', '  · integration complete')
+      persist({ ...base, parallel: withoutIntegrator, updatedAt: now().toISOString() }, 'parallel-integrator', '  · integrator idle')
     },
     addTokens(usage) {
       if (![usage.inputTokens, usage.outputTokens].every(value => Number.isFinite(value) && value >= 0)) return

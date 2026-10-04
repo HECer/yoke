@@ -214,6 +214,7 @@ function runCompletionGate(opts: LoopOptions, stories: Story[]): LoopResult | nu
   try {
     const verdict = opts.completion(opts.targetDir)
     if (!verdict.passed) reason = `integrated system did not verify: ${verdict.summary}`
+    else if (!opts.git.isClean(opts.targetDir)) reason = 'completion command left source or final assets dirty; preserve changes and move rerun proofs to ignored runtime paths before resuming'
   } catch (error) {
     reason = `integrated completion gate failed: ${(error as Error).message}`
   } finally {

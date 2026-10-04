@@ -187,6 +187,7 @@ export async function runParallelLoopCommand(input: ParallelCommandInput): Promi
     try {
       const gate = input.completion(input.targetDir)
       if (!gate.passed) reason = `integrated system did not verify: ${gate.summary}`
+      else if (!adapters.git.isClean(input.targetDir)) reason = 'completion command left source or final assets dirty; preserve changes and move rerun proofs to ignored runtime paths before resuming'
     } catch (error) { reason = `integrated completion gate failed: ${error instanceof Error ? error.message : String(error)}` }
     finally { if (previous === undefined) delete process.env.YOKE_PHASE; else process.env.YOKE_PHASE = previous }
     if (reason) {

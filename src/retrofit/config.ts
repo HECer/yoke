@@ -39,7 +39,9 @@ const SmokeStepSchema = z.discriminatedUnion('action', [
   if (step.action === 'fill' && (step.value === undefined) === (step.valueEnv === undefined)) context.addIssue({ code: 'custom', message: 'A fill step needs exactly one of value or valueEnv' })
 })
 const SmokeFlowSchema = z.object({ name: z.string().min(1), path: z.string().min(1), landmark: z.string().optional(), timeoutMs: z.number().int().min(1).max(120000).optional(), steps: z.array(SmokeStepSchema).min(1).max(50).optional() })
-const SmokeSchema = z.object({ baseUrl: z.string().min(1), flows: z.array(SmokeFlowSchema).min(1) })
+const SmokeSchema = z.object({ baseUrl: z.string().min(1), flows: z.array(SmokeFlowSchema).min(1),
+  sourceIdentity: z.object({ path: z.string().regex(/^\/(?!\/)/).max(4096), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).optional(),
+})
 const OutputPolicySchema = z.object({
   previewBytes: z.number().int().positive().optional(),
   artifactThresholdBytes: z.number().int().positive().optional(),
@@ -189,7 +191,7 @@ export const YokeConfigSchema = z.object({
 
 export type SmokeStep = z.infer<typeof SmokeStepSchema>
 export interface SmokeFlow { name: string; path: string; landmark?: string; timeoutMs?: number; steps?: SmokeStep[] }
-export interface SmokeConfig { baseUrl: string; flows: SmokeFlow[] }
+export interface SmokeConfig { baseUrl: string; flows: SmokeFlow[]; sourceIdentity?: { path: string; sha256: string } }
 export interface RoutingWorker {
   id: string
   agent: Agent

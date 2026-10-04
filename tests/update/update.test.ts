@@ -57,6 +57,12 @@ describe('cache', () => {
 })
 
 describe('maybeNotifyUpdate', () => {
+  it.each(['--help', '-h'])('never spawns an update process for terminal help %s', flag => {
+    const spawnRefresh = vi.fn()
+    maybeNotifyUpdate('1.23.0', { cacheFile: cacheFile(), env: {}, argv: ['node', 'yoke', 'setup', flag], tty: true, spawnRefresh })
+    expect(spawnRefresh).not.toHaveBeenCalled()
+    expect(existsSync(cacheFile())).toBe(false)
+  })
   const baseOpts = () => ({
     cacheFile: cacheFile(),
     env: {} as Record<string, string | undefined>,
