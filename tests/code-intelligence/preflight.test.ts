@@ -1,9 +1,24 @@
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 import * as codeIntelligence from '../../src/code-intelligence/index.js'
 import { defaultConfig, saveConfig } from '../../src/retrofit/config.js'
+
+const rtkProcess = vi.hoisted(() => vi.fn())
+vi.mock('node:child_process', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  return { ...actual, spawnSync: (...args: any[]) => args[0] === 'rtk' ? rtkProcess(...args) : (actual.spawnSync as any)(...args) }
+})
+
+beforeEach(() => {
+  rtkProcess.mockReset().mockImplementation((_command, args, options) => {
+    if (JSON.stringify(args) === JSON.stringify(['--version'])) return { status: 0, stdout: 'rtk 0.50.0\n', stderr: '' }
+    expect(args).toEqual(['hook', 'codex'])
+    expect(JSON.parse(options.input)).toEqual({ hook_event_name: 'PreToolUse', permission_mode: 'default', tool_name: 'Bash', tool_input: { command: 'git status' } })
+    return { status: 0, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', updatedInput: { command: 'rtk git status' } } }), stderr: '' }
+  })
+})
 
 function files(root: string): Record<string, string> {
   return Object.fromEntries(readdirSync(root, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile()).map(entry => {
@@ -35,6 +50,7 @@ createInterface({input:process.stdin}).on('line', line => {
     expect(report.codeIntelligence.fallback).toContain('source')
     expect(report.rtk).toMatchObject({ status: 'available', hookRegistration: 'missing', nestedCodeMode: 'unverified' })
     expect(report.rtk.version).toMatch(/^rtk \d/)
+    expect(rtkProcess).toHaveBeenCalledTimes(2)
     expect(files(root)).toEqual(before)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
@@ -44,6 +60,7 @@ it('reports missing default backends separately from active configuration', asyn
   saveConfig(root, { ...defaultConfig('test'), codeIntelligence: { mode: 'active' } })
   const before = files(root)
   vi.stubEnv('PATH', '')
+  rtkProcess.mockImplementation(() => ({ status: null, stdout: null, stderr: null, error: Object.assign(new Error('spawnSync rtk ENOENT'), { code: 'ENOENT' }) }))
   try {
     const report = await (codeIntelligence as any).runToolPreflight(root)
     expect(report.codeIntelligence).toMatchObject({ mode: 'active', status: 'degraded' })
