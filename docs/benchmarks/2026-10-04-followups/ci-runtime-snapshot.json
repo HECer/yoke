@@ -1,0 +1,502 @@
+{
+  "conclusion": "success",
+  "createdAt": "2026-10-04T14:18:10Z",
+  "headSha": "132eda01a55b3352a98d33a29d025dc4e8195d48",
+  "jobs": [
+    {
+      "completedAt": "2026-10-04T14:24:00Z",
+      "conclusion": "success",
+      "databaseId": 111455409043,
+      "name": "build + test (windows-latest, node 24)",
+      "startedAt": "2026-10-04T14:18:12Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-04T14:18:14Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-04T14:18:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:19Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v7",
+          "number": 2,
+          "startedAt": "2026-10-04T14:18:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:24Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v6",
+          "number": 3,
+          "startedAt": "2026-10-04T14:18:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:30Z",
+          "conclusion": "success",
+          "name": "Run npm ci",
+          "number": 4,
+          "startedAt": "2026-10-04T14:18:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:36Z",
+          "conclusion": "success",
+          "name": "Run npm run lint",
+          "number": 5,
+          "startedAt": "2026-10-04T14:18:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:43Z",
+          "conclusion": "success",
+          "name": "Run npm run build",
+          "number": 6,
+          "startedAt": "2026-10-04T14:18:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:22:54Z",
+          "conclusion": "success",
+          "name": "Run npm test",
+          "number": 7,
+          "startedAt": "2026-10-04T14:18:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:22:56Z",
+          "conclusion": "success",
+          "name": "Run npm run yoke -- validate canon",
+          "number": 8,
+          "startedAt": "2026-10-04T14:22:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:23:49Z",
+          "conclusion": "success",
+          "name": "Run npm run docs:check",
+          "number": 9,
+          "startedAt": "2026-10-04T14:22:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:23:50Z",
+          "conclusion": "success",
+          "name": "Run npm run audit:ci",
+          "number": 10,
+          "startedAt": "2026-10-04T14:23:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:23:53Z",
+          "conclusion": "success",
+          "name": "Run npm run package:check",
+          "number": 11,
+          "startedAt": "2026-10-04T14:23:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:23:56Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v6",
+          "number": 21,
+          "startedAt": "2026-10-04T14:23:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:23:59Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v7",
+          "number": 22,
+          "startedAt": "2026-10-04T14:23:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:23:59Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 23,
+          "startedAt": "2026-10-04T14:23:59Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/HECer/yoke/actions/runs/37208754601/job/111455409043"
+    },
+    {
+      "completedAt": "2026-10-04T14:20:43Z",
+      "conclusion": "success",
+      "databaseId": 111455409219,
+      "name": "build + test (ubuntu-latest, node 24)",
+      "startedAt": "2026-10-04T14:18:14Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-04T14:18:15Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-04T14:18:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:16Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v7",
+          "number": 2,
+          "startedAt": "2026-10-04T14:18:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:18Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v6",
+          "number": 3,
+          "startedAt": "2026-10-04T14:18:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:20Z",
+          "conclusion": "success",
+          "name": "Run npm ci",
+          "number": 4,
+          "startedAt": "2026-10-04T14:18:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:25Z",
+          "conclusion": "success",
+          "name": "Run npm run lint",
+          "number": 5,
+          "startedAt": "2026-10-04T14:18:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:30Z",
+          "conclusion": "success",
+          "name": "Run npm run build",
+          "number": 6,
+          "startedAt": "2026-10-04T14:18:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:00Z",
+          "conclusion": "success",
+          "name": "Run npm test",
+          "number": 7,
+          "startedAt": "2026-10-04T14:18:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:01Z",
+          "conclusion": "success",
+          "name": "Run npm run yoke -- validate canon",
+          "number": 8,
+          "startedAt": "2026-10-04T14:20:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:39Z",
+          "conclusion": "success",
+          "name": "Run npm run docs:check",
+          "number": 9,
+          "startedAt": "2026-10-04T14:20:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:40Z",
+          "conclusion": "success",
+          "name": "Run npm run audit:ci",
+          "number": 10,
+          "startedAt": "2026-10-04T14:20:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:41Z",
+          "conclusion": "success",
+          "name": "Run npm run package:check",
+          "number": 11,
+          "startedAt": "2026-10-04T14:20:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:41Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v6",
+          "number": 21,
+          "startedAt": "2026-10-04T14:20:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:41Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v7",
+          "number": 22,
+          "startedAt": "2026-10-04T14:20:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:41Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 23,
+          "startedAt": "2026-10-04T14:20:41Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/HECer/yoke/actions/runs/37208754601/job/111455409219"
+    },
+    {
+      "completedAt": "2026-10-04T14:25:06Z",
+      "conclusion": "success",
+      "databaseId": 111455409300,
+      "name": "build + test (windows-latest, node 20)",
+      "startedAt": "2026-10-04T14:18:14Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-04T14:18:16Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-04T14:18:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:23Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v7",
+          "number": 2,
+          "startedAt": "2026-10-04T14:18:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:32Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v6",
+          "number": 3,
+          "startedAt": "2026-10-04T14:18:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:36Z",
+          "conclusion": "success",
+          "name": "Run npm ci",
+          "number": 4,
+          "startedAt": "2026-10-04T14:18:32Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:44Z",
+          "conclusion": "success",
+          "name": "Run npm run lint",
+          "number": 5,
+          "startedAt": "2026-10-04T14:18:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:52Z",
+          "conclusion": "success",
+          "name": "Run npm run build",
+          "number": 6,
+          "startedAt": "2026-10-04T14:18:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:23:48Z",
+          "conclusion": "success",
+          "name": "Run npm test",
+          "number": 7,
+          "startedAt": "2026-10-04T14:18:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:23:50Z",
+          "conclusion": "success",
+          "name": "Run npm run yoke -- validate canon",
+          "number": 8,
+          "startedAt": "2026-10-04T14:23:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:24:57Z",
+          "conclusion": "success",
+          "name": "Run npm run docs:check",
+          "number": 9,
+          "startedAt": "2026-10-04T14:23:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:24:59Z",
+          "conclusion": "success",
+          "name": "Run npm run audit:ci",
+          "number": 10,
+          "startedAt": "2026-10-04T14:24:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:25:01Z",
+          "conclusion": "success",
+          "name": "Run npm run package:check",
+          "number": 11,
+          "startedAt": "2026-10-04T14:24:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:25:02Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v6",
+          "number": 21,
+          "startedAt": "2026-10-04T14:25:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:25:05Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v7",
+          "number": 22,
+          "startedAt": "2026-10-04T14:25:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:25:05Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 23,
+          "startedAt": "2026-10-04T14:25:05Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/HECer/yoke/actions/runs/37208754601/job/111455409300"
+    },
+    {
+      "completedAt": "2026-10-04T14:21:00Z",
+      "conclusion": "success",
+      "databaseId": 111455409337,
+      "name": "build + test (ubuntu-latest, node 20)",
+      "startedAt": "2026-10-04T14:18:13Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-04T14:18:14Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-04T14:18:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:15Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v7",
+          "number": 2,
+          "startedAt": "2026-10-04T14:18:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:21Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v6",
+          "number": 3,
+          "startedAt": "2026-10-04T14:18:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:23Z",
+          "conclusion": "success",
+          "name": "Run npm ci",
+          "number": 4,
+          "startedAt": "2026-10-04T14:18:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:29Z",
+          "conclusion": "success",
+          "name": "Run npm run lint",
+          "number": 5,
+          "startedAt": "2026-10-04T14:18:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:18:36Z",
+          "conclusion": "success",
+          "name": "Run npm run build",
+          "number": 6,
+          "startedAt": "2026-10-04T14:18:29Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:13Z",
+          "conclusion": "success",
+          "name": "Run npm test",
+          "number": 7,
+          "startedAt": "2026-10-04T14:18:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:14Z",
+          "conclusion": "success",
+          "name": "Run npm run yoke -- validate canon",
+          "number": 8,
+          "startedAt": "2026-10-04T14:20:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:55Z",
+          "conclusion": "success",
+          "name": "Run npm run docs:check",
+          "number": 9,
+          "startedAt": "2026-10-04T14:20:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:56Z",
+          "conclusion": "success",
+          "name": "Run npm run audit:ci",
+          "number": 10,
+          "startedAt": "2026-10-04T14:20:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:57Z",
+          "conclusion": "success",
+          "name": "Run npm run package:check",
+          "number": 11,
+          "startedAt": "2026-10-04T14:20:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:57Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v6",
+          "number": 21,
+          "startedAt": "2026-10-04T14:20:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:58Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v7",
+          "number": 22,
+          "startedAt": "2026-10-04T14:20:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T14:20:58Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 23,
+          "startedAt": "2026-10-04T14:20:58Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/HECer/yoke/actions/runs/37208754601/job/111455409337"
+    }
+  ],
+  "status": "completed",
+  "updatedAt": "2026-10-04T14:25:07Z",
+  "url": "https://github.com/HECer/yoke/actions/runs/37208754601"
+}

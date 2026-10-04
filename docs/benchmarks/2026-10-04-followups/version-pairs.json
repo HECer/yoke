@@ -1,0 +1,861 @@
+{
+  "schemaVersion": 1,
+  "kind": "source-version",
+  "order": [
+    "1-baseline",
+    "1-candidate",
+    "2-candidate",
+    "2-baseline",
+    "3-baseline",
+    "3-candidate"
+  ],
+  "allowedDifferences": [
+    "context.source.version",
+    "context.source.commit",
+    "context.source.buildDigest"
+  ],
+  "invariantValidation": "clean/stable sources, equal fixture/execution/startup/environment bundles, one actual runtime digest per version arm, native model/effort and usage verified against recorded calls",
+  "baselinePublishedMerge": "a989a8c0ca323cfccfcb4107e408bbf0ecc72efe",
+  "baselineMeasuredTreeMatchesPublishedMerge": true,
+  "candidateSnapshotNote": "697408a first candidate;132eda0 later candidates contain test-only Windows canonical-path correction and inventory update. Runtime digest identical.",
+  "limits": [
+    "Two-story TaskQueue fixture, not a full NEXUS model benchmark",
+    "No randomized assignment or controlled provider cache/background load",
+    "Workflow-input digests do not attest provider system prompts or every dynamically expanded prompt",
+    "Setup before loop timing not separately measured; acceptance replay recorded separately",
+    "Actual model absent from Yoke event model field; separately bound native session records supplement it",
+    "CPU/RAM, prices, guardian/approval waiting and installed plugins/skills coverage remain unknown"
+  ],
+  "statistics": {
+    "baseline": {
+      "n": 3,
+      "accepted": 3,
+      "wallMs": {
+        "min": 289127,
+        "median": 319236,
+        "max": 324097
+      },
+      "inputTokens": 1356910,
+      "cachedInputTokens": 1166848,
+      "outputTokens": 19337
+    },
+    "candidate": {
+      "n": 3,
+      "accepted": 3,
+      "wallMs": {
+        "min": 295487,
+        "median": 318147,
+        "max": 355403
+      },
+      "inputTokens": 1385667,
+      "cachedInputTokens": 1176960,
+      "outputTokens": 19882
+    }
+  },
+  "samples": [
+    {
+      "sample": "1-baseline",
+      "pair": 1,
+      "versionArm": "baseline",
+      "rawResultSha256": "f35c372b6de2ac608a8731649bd7c28dc8b067765de744259af96fc99b4f326b",
+      "comparisonId": "43f69730-8abb-418d-ac0d-788c6896ccff",
+      "result": {
+        "fixture": "routing-queue",
+        "repeat": 1,
+        "arm": "yoke-serial",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "routing": false,
+        "nativeMultiAgent": false,
+        "parallel": 1,
+        "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+        "context": {
+          "source": {
+            "version": "1.23.0",
+            "commit": "d85cd0d970d22b8e6a6b966d3e151754872c3aee",
+            "dirty": false,
+            "buildDigest": "eb4e7e71107d897d48e55ad2e1f441ff4370dfe7f6b45adab4888cba261c2045",
+            "stable": true
+          },
+          "fixture": {
+            "id": "routing-queue",
+            "seedDigest": "3c4bdefe094107d0fd8d55795662234008b13fa97f3111b2b9fe0e70607ffa72",
+            "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+            "requirementsDigest": "074ca2ff5a19a1ae5659b8082b22139972e5aa55ba2af5eacd4d2ec2b7c2070b"
+          },
+          "execution": {
+            "provider": "codex",
+            "requestedModel": "gpt-6.1-sol",
+            "actualModels": null,
+            "effort": "medium",
+            "routing": false,
+            "nativeMultiAgent": false,
+            "nativeGoal": false,
+            "parallel": 1,
+            "workflow": "yoke-story-loop",
+            "promptDigest": "0871f42102cd0b517368137e3be65fcd7090815be456ed265a991668e9f04b34",
+            "promptScope": "workflow-input-bundle"
+          },
+          "startup": {
+            "permissionProfile": "unsafe",
+            "bare": true,
+            "ignoreRules": false,
+            "commitPolicy": "normal-story-commits",
+            "isolation": "fresh-fixture-and-story-worktrees",
+            "timeoutPolicy": "three dispatches; 600000ms per runner",
+            "userStatePolicy": "isolated-LOCALAPPDATA"
+          },
+          "environment": {
+            "platform": "win32",
+            "arch": "x64",
+            "nodeVersion": "v24.13.0",
+            "providerVersion": "codex-cli 0.161.0-alpha.2",
+            "hostDigest": "6893178b16ae4f1be30a1817235a5d6696270c495a91c75c8f7b8ef82fceddb9",
+            "hostLoad": "uncontrolled",
+            "skillsPlugins": "not-audited"
+          }
+        },
+        "wallMs": 289127,
+        "acceptanceMs": 190,
+        "accepted": true,
+        "outcome": 0,
+        "usage": {
+          "measurementComplete": true,
+          "costMeasurementComplete": false,
+          "inputTokens": 427671,
+          "cachedInputTokens": 371712,
+          "cacheWriteInputTokens": 0,
+          "outputTokens": 5935,
+          "reasoningOutputTokens": 445
+        },
+        "events": 11
+      },
+      "nativeIdentity": {
+        "sessions": [
+          {
+            "sessionId": "01a10722-898c-7e62-98b9-b238119280b5",
+            "sessionSha256": "4228efa6f5151d89181e3cc4e2583295f3548c76b811e8b968480ccd1cb3b257",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 214330,
+              "cached_input_tokens": 186368,
+              "output_tokens": 2666,
+              "reasoning_output_tokens": 253
+            }
+          },
+          {
+            "sessionId": "01a10724-8ede-75f0-9636-0ed9a270f460",
+            "sessionSha256": "8491bcb6ba331bc31819158dd749fe36a8d9dab94b7dd47be6bbf1977f30806d",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 213341,
+              "cached_input_tokens": 185344,
+              "output_tokens": 3269,
+              "reasoning_output_tokens": 192
+            }
+          }
+        ],
+        "recordedTokenEvents": 2,
+        "identityVerifiedAgainstRecordedCalls": true,
+        "nativeUsageMatchesYoke": true,
+        "binding": "native session cwd lies under the unique completed sample directory"
+      },
+      "implementationCalls": [
+        {
+          "storyId": "STORY-1",
+          "durationMs": 131644,
+          "timestamp": "2026-10-04T13:39:56.327Z"
+        },
+        {
+          "storyId": "STORY-2",
+          "durationMs": 154666,
+          "timestamp": "2026-10-04T13:42:31.691Z"
+        }
+      ],
+      "recordedImplementationMs": 286310,
+      "remainingLoopMs": 2817
+    },
+    {
+      "sample": "1-candidate",
+      "pair": 1,
+      "versionArm": "candidate",
+      "rawResultSha256": "8391bbeea19a7a9cbed408ab07c5bb36da2a79a90e8de50f2d93e08f3c0cd7dd",
+      "comparisonId": "83f033f0-3dd9-48b9-970c-993fb5dd4978",
+      "result": {
+        "fixture": "routing-queue",
+        "repeat": 1,
+        "arm": "yoke-serial",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "routing": false,
+        "nativeMultiAgent": false,
+        "parallel": 1,
+        "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+        "context": {
+          "source": {
+            "version": "1.24.0",
+            "commit": "697408ac34662fa3300b1881387b15ea7ee769ac",
+            "dirty": false,
+            "buildDigest": "8f6cd603c84f41815d818679043ef269b4afdb2a93240840c087497f39ed09d3",
+            "stable": true
+          },
+          "fixture": {
+            "id": "routing-queue",
+            "seedDigest": "3c4bdefe094107d0fd8d55795662234008b13fa97f3111b2b9fe0e70607ffa72",
+            "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+            "requirementsDigest": "074ca2ff5a19a1ae5659b8082b22139972e5aa55ba2af5eacd4d2ec2b7c2070b"
+          },
+          "execution": {
+            "provider": "codex",
+            "requestedModel": "gpt-6.1-sol",
+            "actualModels": null,
+            "effort": "medium",
+            "routing": false,
+            "nativeMultiAgent": false,
+            "nativeGoal": false,
+            "parallel": 1,
+            "workflow": "yoke-story-loop",
+            "promptDigest": "0871f42102cd0b517368137e3be65fcd7090815be456ed265a991668e9f04b34",
+            "promptScope": "workflow-input-bundle"
+          },
+          "startup": {
+            "permissionProfile": "unsafe",
+            "bare": true,
+            "ignoreRules": false,
+            "commitPolicy": "normal-story-commits",
+            "isolation": "fresh-fixture-and-story-worktrees",
+            "timeoutPolicy": "three dispatches; 600000ms per runner",
+            "userStatePolicy": "isolated-LOCALAPPDATA"
+          },
+          "environment": {
+            "platform": "win32",
+            "arch": "x64",
+            "nodeVersion": "v24.13.0",
+            "providerVersion": "codex-cli 0.161.0-alpha.2",
+            "hostDigest": "6893178b16ae4f1be30a1817235a5d6696270c495a91c75c8f7b8ef82fceddb9",
+            "hostLoad": "uncontrolled",
+            "skillsPlugins": "not-audited"
+          }
+        },
+        "wallMs": 355403,
+        "acceptanceMs": 120,
+        "accepted": true,
+        "outcome": 0,
+        "usage": {
+          "measurementComplete": true,
+          "costMeasurementComplete": false,
+          "inputTokens": 540442,
+          "cachedInputTokens": 462848,
+          "cacheWriteInputTokens": 0,
+          "outputTokens": 6669,
+          "reasoningOutputTokens": 658
+        },
+        "events": 11
+      },
+      "nativeIdentity": {
+        "sessions": [
+          {
+            "sessionId": "01a1073c-0d14-7c80-87f2-0af88532e08e",
+            "sessionSha256": "eaca7ab1c7ce585b82a21114729d93688b681c3cde0d45f6d1b30aae036a769a",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 278661,
+              "cached_input_tokens": 231936,
+              "output_tokens": 3099,
+              "reasoning_output_tokens": 393
+            }
+          },
+          {
+            "sessionId": "01a1073e-a5bd-7140-b0d3-f47a6188c6d6",
+            "sessionSha256": "1999cc0008c57d13f04375bfc6bd061a2ac2a5f65a91b0474f01bcdb85d161d8",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 261781,
+              "cached_input_tokens": 230912,
+              "output_tokens": 3570,
+              "reasoning_output_tokens": 265
+            }
+          }
+        ],
+        "recordedTokenEvents": 2,
+        "identityVerifiedAgainstRecordedCalls": true,
+        "nativeUsageMatchesYoke": true,
+        "binding": "native session cwd lies under the unique completed sample directory"
+      },
+      "implementationCalls": [
+        {
+          "storyId": "STORY-1",
+          "durationMs": 169397,
+          "timestamp": "2026-10-04T14:08:26.309Z"
+        },
+        {
+          "storyId": "STORY-2",
+          "durationMs": 183570,
+          "timestamp": "2026-10-04T14:11:30.551Z"
+        }
+      ],
+      "recordedImplementationMs": 352967,
+      "remainingLoopMs": 2436
+    },
+    {
+      "sample": "2-candidate",
+      "pair": 2,
+      "versionArm": "candidate",
+      "rawResultSha256": "1a354a735720ab9985ac566912ea2720834eeb15a410dbe600a8d897ad815d73",
+      "comparisonId": "a3386499-8316-4428-bfc8-4209bb456767",
+      "result": {
+        "fixture": "routing-queue",
+        "repeat": 1,
+        "arm": "yoke-serial",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "routing": false,
+        "nativeMultiAgent": false,
+        "parallel": 1,
+        "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+        "context": {
+          "source": {
+            "version": "1.24.0",
+            "commit": "132eda01a55b3352a98d33a29d025dc4e8195d48",
+            "dirty": false,
+            "buildDigest": "8f6cd603c84f41815d818679043ef269b4afdb2a93240840c087497f39ed09d3",
+            "stable": true
+          },
+          "fixture": {
+            "id": "routing-queue",
+            "seedDigest": "3c4bdefe094107d0fd8d55795662234008b13fa97f3111b2b9fe0e70607ffa72",
+            "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+            "requirementsDigest": "074ca2ff5a19a1ae5659b8082b22139972e5aa55ba2af5eacd4d2ec2b7c2070b"
+          },
+          "execution": {
+            "provider": "codex",
+            "requestedModel": "gpt-6.1-sol",
+            "actualModels": null,
+            "effort": "medium",
+            "routing": false,
+            "nativeMultiAgent": false,
+            "nativeGoal": false,
+            "parallel": 1,
+            "workflow": "yoke-story-loop",
+            "promptDigest": "0871f42102cd0b517368137e3be65fcd7090815be456ed265a991668e9f04b34",
+            "promptScope": "workflow-input-bundle"
+          },
+          "startup": {
+            "permissionProfile": "unsafe",
+            "bare": true,
+            "ignoreRules": false,
+            "commitPolicy": "normal-story-commits",
+            "isolation": "fresh-fixture-and-story-worktrees",
+            "timeoutPolicy": "three dispatches; 600000ms per runner",
+            "userStatePolicy": "isolated-LOCALAPPDATA"
+          },
+          "environment": {
+            "platform": "win32",
+            "arch": "x64",
+            "nodeVersion": "v24.13.0",
+            "providerVersion": "codex-cli 0.161.0-alpha.2",
+            "hostDigest": "6893178b16ae4f1be30a1817235a5d6696270c495a91c75c8f7b8ef82fceddb9",
+            "hostLoad": "uncontrolled",
+            "skillsPlugins": "not-audited"
+          }
+        },
+        "wallMs": 318147,
+        "acceptanceMs": 124,
+        "accepted": true,
+        "outcome": 0,
+        "usage": {
+          "measurementComplete": true,
+          "costMeasurementComplete": false,
+          "inputTokens": 444365,
+          "cachedInputTokens": 365568,
+          "cacheWriteInputTokens": 0,
+          "outputTokens": 6863,
+          "reasoningOutputTokens": 694
+        },
+        "events": 11
+      },
+      "nativeIdentity": {
+        "sessions": [
+          {
+            "sessionId": "01a10747-7f68-7340-bc16-f2643b50c8e9",
+            "sessionSha256": "0b4ac3afc260ebb086cf1f67d91c2e8e6f0a5f57de298f41acddd66ed640aef2",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 247854,
+              "cached_input_tokens": 217600,
+              "output_tokens": 3708,
+              "reasoning_output_tokens": 540
+            }
+          },
+          {
+            "sessionId": "01a1074a-4d62-71c3-a28a-ffa6570265ca",
+            "sessionSha256": "c46eda6c0a95d465adfecd67c938ba7f8c8f4154d25a7b854f5d3710a2fd6bf5",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 196511,
+              "cached_input_tokens": 147968,
+              "output_tokens": 3155,
+              "reasoning_output_tokens": 154
+            }
+          }
+        ],
+        "recordedTokenEvents": 2,
+        "identityVerifiedAgainstRecordedCalls": true,
+        "nativeUsageMatchesYoke": true,
+        "binding": "native session cwd lies under the unique completed sample directory"
+      },
+      "implementationCalls": [
+        {
+          "storyId": "STORY-1",
+          "durationMs": 183084,
+          "timestamp": "2026-10-04T14:21:10.211Z"
+        },
+        {
+          "storyId": "STORY-2",
+          "durationMs": 132621,
+          "timestamp": "2026-10-04T14:23:23.497Z"
+        }
+      ],
+      "recordedImplementationMs": 315705,
+      "remainingLoopMs": 2442
+    },
+    {
+      "sample": "2-baseline",
+      "pair": 2,
+      "versionArm": "baseline",
+      "rawResultSha256": "3ad125f9d28f51332d51d1ef1cac7485e38c56eb5eef061f46d72088fb7ad5d7",
+      "comparisonId": "e2d94b1a-8c74-435a-b135-054d457f513c",
+      "result": {
+        "fixture": "routing-queue",
+        "repeat": 1,
+        "arm": "yoke-serial",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "routing": false,
+        "nativeMultiAgent": false,
+        "parallel": 1,
+        "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+        "context": {
+          "source": {
+            "version": "1.23.0",
+            "commit": "d85cd0d970d22b8e6a6b966d3e151754872c3aee",
+            "dirty": false,
+            "buildDigest": "eb4e7e71107d897d48e55ad2e1f441ff4370dfe7f6b45adab4888cba261c2045",
+            "stable": true
+          },
+          "fixture": {
+            "id": "routing-queue",
+            "seedDigest": "3c4bdefe094107d0fd8d55795662234008b13fa97f3111b2b9fe0e70607ffa72",
+            "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+            "requirementsDigest": "074ca2ff5a19a1ae5659b8082b22139972e5aa55ba2af5eacd4d2ec2b7c2070b"
+          },
+          "execution": {
+            "provider": "codex",
+            "requestedModel": "gpt-6.1-sol",
+            "actualModels": null,
+            "effort": "medium",
+            "routing": false,
+            "nativeMultiAgent": false,
+            "nativeGoal": false,
+            "parallel": 1,
+            "workflow": "yoke-story-loop",
+            "promptDigest": "0871f42102cd0b517368137e3be65fcd7090815be456ed265a991668e9f04b34",
+            "promptScope": "workflow-input-bundle"
+          },
+          "startup": {
+            "permissionProfile": "unsafe",
+            "bare": true,
+            "ignoreRules": false,
+            "commitPolicy": "normal-story-commits",
+            "isolation": "fresh-fixture-and-story-worktrees",
+            "timeoutPolicy": "three dispatches; 600000ms per runner",
+            "userStatePolicy": "isolated-LOCALAPPDATA"
+          },
+          "environment": {
+            "platform": "win32",
+            "arch": "x64",
+            "nodeVersion": "v24.13.0",
+            "providerVersion": "codex-cli 0.161.0-alpha.2",
+            "hostDigest": "6893178b16ae4f1be30a1817235a5d6696270c495a91c75c8f7b8ef82fceddb9",
+            "hostLoad": "uncontrolled",
+            "skillsPlugins": "not-audited"
+          }
+        },
+        "wallMs": 319236,
+        "acceptanceMs": 120,
+        "accepted": true,
+        "outcome": 0,
+        "usage": {
+          "measurementComplete": true,
+          "costMeasurementComplete": false,
+          "inputTokens": 482918,
+          "cachedInputTokens": 407040,
+          "cacheWriteInputTokens": 0,
+          "outputTokens": 6863,
+          "reasoningOutputTokens": 649
+        },
+        "events": 11
+      },
+      "nativeIdentity": {
+        "sessions": [
+          {
+            "sessionId": "01a1074c-5e16-72e3-8c6d-5fa763c09103",
+            "sessionSha256": "6ab788e83e45a509570e03de2a8c4e27ec3cc7d18257b502ff2d82c3e578c92c",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 257835,
+              "cached_input_tokens": 209408,
+              "output_tokens": 3614,
+              "reasoning_output_tokens": 483
+            }
+          },
+          {
+            "sessionId": "01a1074e-f509-75a2-b407-8604957e1c84",
+            "sessionSha256": "88e752b22a8a20388855f304141818117f4a7d4c22b2c3ab4be6e6b73c5dc4ff",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 225083,
+              "cached_input_tokens": 197632,
+              "output_tokens": 3249,
+              "reasoning_output_tokens": 166
+            }
+          }
+        ],
+        "recordedTokenEvents": 2,
+        "identityVerifiedAgainstRecordedCalls": true,
+        "nativeUsageMatchesYoke": true,
+        "binding": "native session cwd lies under the unique completed sample directory"
+      },
+      "implementationCalls": [
+        {
+          "storyId": "STORY-1",
+          "durationMs": 169027,
+          "timestamp": "2026-10-04T14:26:15.206Z"
+        },
+        {
+          "storyId": "STORY-2",
+          "durationMs": 147738,
+          "timestamp": "2026-10-04T14:28:43.620Z"
+        }
+      ],
+      "recordedImplementationMs": 316765,
+      "remainingLoopMs": 2471
+    },
+    {
+      "sample": "3-baseline",
+      "pair": 3,
+      "versionArm": "baseline",
+      "rawResultSha256": "8e50881842c39a9d65054d12a66c71bdaf368829aa9e12443b402ae0a77a213b",
+      "comparisonId": "0bdd6323-04f6-43ed-8151-0347583aae00",
+      "result": {
+        "fixture": "routing-queue",
+        "repeat": 1,
+        "arm": "yoke-serial",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "routing": false,
+        "nativeMultiAgent": false,
+        "parallel": 1,
+        "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+        "context": {
+          "source": {
+            "version": "1.23.0",
+            "commit": "d85cd0d970d22b8e6a6b966d3e151754872c3aee",
+            "dirty": false,
+            "buildDigest": "eb4e7e71107d897d48e55ad2e1f441ff4370dfe7f6b45adab4888cba261c2045",
+            "stable": true
+          },
+          "fixture": {
+            "id": "routing-queue",
+            "seedDigest": "3c4bdefe094107d0fd8d55795662234008b13fa97f3111b2b9fe0e70607ffa72",
+            "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+            "requirementsDigest": "074ca2ff5a19a1ae5659b8082b22139972e5aa55ba2af5eacd4d2ec2b7c2070b"
+          },
+          "execution": {
+            "provider": "codex",
+            "requestedModel": "gpt-6.1-sol",
+            "actualModels": null,
+            "effort": "medium",
+            "routing": false,
+            "nativeMultiAgent": false,
+            "nativeGoal": false,
+            "parallel": 1,
+            "workflow": "yoke-story-loop",
+            "promptDigest": "0871f42102cd0b517368137e3be65fcd7090815be456ed265a991668e9f04b34",
+            "promptScope": "workflow-input-bundle"
+          },
+          "startup": {
+            "permissionProfile": "unsafe",
+            "bare": true,
+            "ignoreRules": false,
+            "commitPolicy": "normal-story-commits",
+            "isolation": "fresh-fixture-and-story-worktrees",
+            "timeoutPolicy": "three dispatches; 600000ms per runner",
+            "userStatePolicy": "isolated-LOCALAPPDATA"
+          },
+          "environment": {
+            "platform": "win32",
+            "arch": "x64",
+            "nodeVersion": "v24.13.0",
+            "providerVersion": "codex-cli 0.161.0-alpha.2",
+            "hostDigest": "6893178b16ae4f1be30a1817235a5d6696270c495a91c75c8f7b8ef82fceddb9",
+            "hostLoad": "uncontrolled",
+            "skillsPlugins": "not-audited"
+          }
+        },
+        "wallMs": 324097,
+        "acceptanceMs": 114,
+        "accepted": true,
+        "outcome": 0,
+        "usage": {
+          "measurementComplete": true,
+          "costMeasurementComplete": false,
+          "inputTokens": 446321,
+          "cachedInputTokens": 388096,
+          "cacheWriteInputTokens": 0,
+          "outputTokens": 6539,
+          "reasoningOutputTokens": 696
+        },
+        "events": 11
+      },
+      "nativeIdentity": {
+        "sessions": [
+          {
+            "sessionId": "01a10751-4101-7862-a58b-f5d413ac4adc",
+            "sessionSha256": "f8de6e607e28c6913659051be006b3429e8e5142814918bd0ec200fc0394e79c",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 257709,
+              "cached_input_tokens": 227200,
+              "output_tokens": 3229,
+              "reasoning_output_tokens": 464
+            }
+          },
+          {
+            "sessionId": "01a10753-e6ed-7d32-9e3a-bfdce95b7a50",
+            "sessionSha256": "b59a9b4b1c10ab4ce8794a28f258755f85c0376e9afa1bf876a6ed5088b5b1e5",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 188612,
+              "cached_input_tokens": 160896,
+              "output_tokens": 3310,
+              "reasoning_output_tokens": 232
+            }
+          }
+        ],
+        "recordedTokenEvents": 2,
+        "identityVerifiedAgainstRecordedCalls": true,
+        "nativeUsageMatchesYoke": true,
+        "binding": "native session cwd lies under the unique completed sample directory"
+      },
+      "implementationCalls": [
+        {
+          "storyId": "STORY-1",
+          "durationMs": 172921,
+          "timestamp": "2026-10-04T14:31:39.342Z"
+        },
+        {
+          "storyId": "STORY-2",
+          "durationMs": 148578,
+          "timestamp": "2026-10-04T14:34:08.624Z"
+        }
+      ],
+      "recordedImplementationMs": 321499,
+      "remainingLoopMs": 2598
+    },
+    {
+      "sample": "3-candidate",
+      "pair": 3,
+      "versionArm": "candidate",
+      "rawResultSha256": "3d4f261d9c5fc28a95854db3bcb8683972d4a1b41b13f3e4a5b240ac5539bb69",
+      "comparisonId": "b09b84df-7a48-4b95-8e83-7cd7554c7b89",
+      "result": {
+        "fixture": "routing-queue",
+        "repeat": 1,
+        "arm": "yoke-serial",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "routing": false,
+        "nativeMultiAgent": false,
+        "parallel": 1,
+        "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+        "context": {
+          "source": {
+            "version": "1.24.0",
+            "commit": "132eda01a55b3352a98d33a29d025dc4e8195d48",
+            "dirty": false,
+            "buildDigest": "8f6cd603c84f41815d818679043ef269b4afdb2a93240840c087497f39ed09d3",
+            "stable": true
+          },
+          "fixture": {
+            "id": "routing-queue",
+            "seedDigest": "3c4bdefe094107d0fd8d55795662234008b13fa97f3111b2b9fe0e70607ffa72",
+            "acceptanceDigest": "4d057ba649e2a88e74a53110cbf86a30c07302bd071a0805dc5b1d0ea2271612",
+            "requirementsDigest": "074ca2ff5a19a1ae5659b8082b22139972e5aa55ba2af5eacd4d2ec2b7c2070b"
+          },
+          "execution": {
+            "provider": "codex",
+            "requestedModel": "gpt-6.1-sol",
+            "actualModels": null,
+            "effort": "medium",
+            "routing": false,
+            "nativeMultiAgent": false,
+            "nativeGoal": false,
+            "parallel": 1,
+            "workflow": "yoke-story-loop",
+            "promptDigest": "0871f42102cd0b517368137e3be65fcd7090815be456ed265a991668e9f04b34",
+            "promptScope": "workflow-input-bundle"
+          },
+          "startup": {
+            "permissionProfile": "unsafe",
+            "bare": true,
+            "ignoreRules": false,
+            "commitPolicy": "normal-story-commits",
+            "isolation": "fresh-fixture-and-story-worktrees",
+            "timeoutPolicy": "three dispatches; 600000ms per runner",
+            "userStatePolicy": "isolated-LOCALAPPDATA"
+          },
+          "environment": {
+            "platform": "win32",
+            "arch": "x64",
+            "nodeVersion": "v24.13.0",
+            "providerVersion": "codex-cli 0.161.0-alpha.2",
+            "hostDigest": "6893178b16ae4f1be30a1817235a5d6696270c495a91c75c8f7b8ef82fceddb9",
+            "hostLoad": "uncontrolled",
+            "skillsPlugins": "not-audited"
+          }
+        },
+        "wallMs": 295487,
+        "acceptanceMs": 118,
+        "accepted": true,
+        "outcome": 0,
+        "usage": {
+          "measurementComplete": true,
+          "costMeasurementComplete": false,
+          "inputTokens": 400860,
+          "cachedInputTokens": 348544,
+          "cacheWriteInputTokens": 0,
+          "outputTokens": 6350,
+          "reasoningOutputTokens": 640
+        },
+        "events": 11
+      },
+      "nativeIdentity": {
+        "sessions": [
+          {
+            "sessionId": "01a10756-35d7-7f73-986d-3c61b365f822",
+            "sessionSha256": "f4b9f456d1cd549eb5517ac89be33ee062139479a8519316e047afe6cce7b6b8",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 210015,
+              "cached_input_tokens": 180352,
+              "output_tokens": 3261,
+              "reasoning_output_tokens": 579
+            }
+          },
+          {
+            "sessionId": "01a10758-ab5b-7882-a2a9-b41346be71c6",
+            "sessionSha256": "7e82ee89d2e3bdf676f24926e95244a8fe55b396d3203b7ffecb60533a15bb78",
+            "models": [
+              "gpt-6.1-sol"
+            ],
+            "efforts": [
+              "medium"
+            ],
+            "turnCount": 1,
+            "usage": {
+              "input_tokens": 190845,
+              "cached_input_tokens": 168192,
+              "output_tokens": 3089,
+              "reasoning_output_tokens": 61
+            }
+          }
+        ],
+        "recordedTokenEvents": 2,
+        "identityVerifiedAgainstRecordedCalls": true,
+        "nativeUsageMatchesYoke": true,
+        "binding": "native session cwd lies under the unique completed sample directory"
+      },
+      "implementationCalls": [
+        {
+          "storyId": "STORY-1",
+          "durationMs": 159988,
+          "timestamp": "2026-10-04T14:36:51.229Z"
+        },
+        {
+          "storyId": "STORY-2",
+          "durationMs": 132917,
+          "timestamp": "2026-10-04T14:39:04.904Z"
+        }
+      ],
+      "recordedImplementationMs": 292905,
+      "remainingLoopMs": 2582
+    }
+  ]
+}
