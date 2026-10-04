@@ -1,6 +1,6 @@
 # Yoke 1.23.0: local implementation and validation
 
-Date: 2026-10-04. Source baseline: `e2e3c18` (1.22.0). Isolated branch: `codex/yoke-1.23-efficiency`. This is local version preparation, not a published release or a claim that every original E1–E9 acceptance item is complete.
+Date: 2026-10-04. Source baseline: `e2e3c18` (1.22.0). Isolated branch: `codex/yoke-1.23-efficiency`. After the limitations below were disclosed, the user explicitly authorized publication with “publish it”. The release includes the implemented contracts and preserves the remaining E7/E8/E9 work as follow-ups; it does not claim complete original E1–E9 acceptance or general model speed/cost improvements.
 
 ## Evidence and checks
 
@@ -34,6 +34,6 @@ These are fresh/repeated project targets, **not measured cold/warm OS, dependenc
 - E7 guards conventional writable cache roots and actual candidate writes. Package-level pnpm links and immutable download stores remain allowed. Yoke has no dependency installer to own offline-miss/network retry behavior or lockfile-keyed install reuse; prompt guidance does not count as executable installer enforcement. Package/lock invalidation and cold/warm install evidence therefore remain open.
 - E8 reporting supports explicit observer/infrastructure/product categories and preserves `unknown` when missing. Current production emitters do not uniformly populate those categories; synthetic category tests do not establish production classification coverage. Guardian/approval and inaccessible host sessions remain unknown.
 - Static served-byte identity is a conservative same-origin pin checked before and after smoke journeys, not an independent deployment attestation or protection against changes between checks. Production requires an intentional pin; injected test drivers may remain explicitly unverified.
-- Independent review and local Windows checks do not replace the repository's Linux/Windows × Node 20/24 CI matrix. No tag, npm publication, merge or confirmed remote CI is claimed. The open acceptance items above prevent claiming complete E1–E9 DoD or a fully validated release.
+- The corrected Linux/Windows × Node 20/24 CI matrix passed all four jobs at `46b6279`: [CI run](https://github.com/HECer/yoke/actions/runs/37202687686). Linux Node 24 passed 1,697 tests; Windows Node 24 passed 1,695 with two platform skips. Publication additionally verifies the final documentation-only release commit, merge/tag identity and npm registry result. Open acceptance items remain listed in `TODOS.md` and prevent a claim of complete original E1–E9 DoD.
 
 The detailed measured workload, story times, overlapping durations, failed attempts, token coverage and required priorities remain in the [German analysis](benchmarks/2026-10-04-efficiency/ANALYSE.md).
