@@ -1,31 +1,33 @@
-# NEXUS: Entwicklungsanalyse mit Yoke
+# NEXUS: Development Analysis with Yoke
 
-Messstand: 2026-10-04T09:27:32.214737+00:00 (UTC). Ein realer Benchmark-Lauf; keine Vergleichsmessung gegen direkten Codex. Rohdaten enthalten beobachtbare Metadaten und Messwerte, keine verborgenen Reasoning-Inhalte.
+English translation of the original benchmark report. Source results, measurement dates, and limitations are preserved; numerical separators follow English conventions.
 
-## Kompakte Auswertung
+Measurement cutoff: 2026-10-04T09:27:32.214737+00:00 (UTC). One real benchmark run; no comparison measurement against direct Codex. Raw data contains observable metadata and measurements, without hidden reasoning content.
 
-7/7 Stories bestanden; acht Implementierungsversuche, maximal zwei parallele Worker. Summierte Yoke-Loop-Laufzeit 56,4 Minuten. Implementierungsworker: 11.234.592 Input-Tokens einschließlich 10.621.952 Cache-Tokens, 82.193 Output-Tokens. Alle gemessenen Rollen zusammen zum Cutoff: 28,094,098 Input, davon 26,848,896 Cache-Lesen; 1,245,202 Input ohne Cache und 195,930 Output. Die große kumulierte Input-Zahl zählt wiederholten Kontext bei jedem Aufruf; sie entspricht nicht der Menge einmalig gelesener Inhalte.
+## Compact Assessment
 
-Die wichtigsten belegten Bremsen waren Einrichtungs-/Kompatibilitätsprobleme, wiederholte Prüfung und Browserarbeit, eine Observer-verursachte Integrationswiederholung und ein erst unabhängig entdeckter Layoutfehler. Shell-Prüfungen der Implementierungsworker beanspruchten summiert 461,3 Prozesssekunden; diese Zeit ist teilweise in den Implementierungsphasen enthalten. Eine belastbare Aufteilung jeder Sekunde in Modelllatenz, Denken und Tool-Wartezeit ist mit den verfügbaren Daten nicht möglich.
+7/7 stories passed; eight implementation attempts, at most two parallel workers. Total Yoke loop runtime: 56.4 minutes. Implementation workers: 11,234,592 input tokens including 10,621,952 cached tokens, 82,193 output tokens. All measured roles combined at the cutoff: 28,094,098 input, including 26,848,896 cache reads; 1,245,202 uncached input and 195,930 output. The large cumulative input count includes repeated context on every call; it does not represent the amount of content read once.
 
-## Messverfahren und Grenzen
+The main evidenced bottlenecks were setup/compatibility issues, repeated checks and browser work, an integration retry caused by the observer, and a layout defect discovered only by independent review. Implementation workers' shell checks took a total of 461.3 process seconds; this time is partly included in the implementation phases. The available data does not support a reliable breakdown of every second into model latency, thinking, and tool wait time.
 
-- Provider-Tokens stammen aus Yokes History und nativen Codex-Tokenereignissen. Beide Ansichten werden nicht addiert. Eingabetokens enthalten Cache-Lese-Tokens; Reasoning-Ausgabetokens sind eine Teilmenge der Ausgabetokens.
-- Ausgabebytes sind serialisierte Tool- bzw. Shell-Ausgaben, keine Provider-Tokens. Tool-Bytes können Bilddaten und Metadaten enthalten; daraus lässt sich keine Textkontextgröße ableiten. Gezählt werden eindeutige Usage-Ereignisse, keine unabhängig verifizierten HTTP-Requests.
-- Aufteilung nach Story/Rolle ist direkt beobachtbar. Zweck einzelner Modellaufrufe in model-calls.jsonl und Shell-Kategorien ist eine Heuristik aus sichtbaren Tool-Aufrufen; gemischte Befehle sind nicht exakt zerlegbar.
-- Shell-Zeiten sind Prozesslaufzeiten. Hintergrundserver, parallele Worker und Prüfungen können sich überlappen; ihre Summe ist keine Entwicklungs-Gesamtzeit. Verschachtelte Yoke-Phasen ebenfalls nicht doppelt addieren.
-- RTK-Savings und Code-Intelligence-Tokenbudgets sind Schätzungen des Tools, keine zusätzlich gemessenen Provider-Tokens oder Geldbeträge. Geldkosten fehlen und werden als unbekannt geführt.
-- Coordinator enthält Einrichtung, laufende Kommunikation, Instrumentierung und eigenständige Kontrolle. Dieser zusätzliche Messaufwand wird separat ausgewiesen. Werte enden am Messstand; spätere Aufrufe und Schlussantwort sind nicht enthalten.
+## Measurement Method and Limitations
 
-## Messumfang, Umgebung und Instrumentierungsaufwand
+- Provider tokens come from Yoke history and native Codex token events. The two views are not added together. Input tokens include cache-read tokens; reasoning output tokens are a subset of output tokens.
+- Output bytes are serialized tool or shell output, not provider tokens. Tool bytes can include image data and metadata; they do not establish text context size. Unique usage events are counted, not independently verified HTTP requests.
+- The breakdown by story/role is directly observable. The purpose of individual model calls in model-calls.jsonl and shell categories is inferred heuristically from visible tool calls; mixed commands cannot be broken down precisely.
+- Shell times are process runtimes. Background servers, parallel workers, and checks can overlap; their sum is not total development time. Nested Yoke phases must also not be counted twice.
+- RTK savings and Code Intelligence token budgets are tool estimates, not additional measured provider tokens or monetary amounts. Monetary costs are unavailable and recorded as unknown.
+- Coordinator includes setup, ongoing communication, instrumentation, and independent checks. This additional measurement overhead is reported separately. Values end at the measurement cutoff; later calls and the final response are excluded.
 
-Seit Start des 10-Sekunden-Observers bis zum Messstand: 91.7 Minuten. Das ist die erfasste verstrichene Zeit einschließlich Einrichtung, Unterbrechungen, Kontrolle und Analyse; kein reiner Produktentwicklungswert. Der Observer wurde vor der finalen Auswertung gestoppt. Sein letzter CPU-/RSS-Snapshot steht in observer-resources-final.txt.
+## Measurement Scope, Environment, and Instrumentation Overhead
 
-Yoke 1.22.0; codex-cli 0.160.0; rtk 0.51.0; Runner gpt-6.1-sol / medium. Isolierte Worktrees, automatische Parallelität und Entscheidungen aktiv. Kein --explore. Code-Intelligence-Facade in ACTIVE: MCP-Handshake erfolgreich, tatsächliche semantische Backends graft/graphify/serena fehlen. Ein semantischer Effizienzgewinn wurde deshalb nicht nachgewiesen.
+From the start of the 10-second observer to the measurement cutoff: 91.7 minutes. This is recorded elapsed time including setup, interruptions, checks, and analysis; it is not a pure product development measure. The observer was stopped before the final assessment. Its last CPU/RSS snapshot is in observer-resources-final.txt.
 
-RTK-Datenbank für Root und sämtliche projektbezogenen Worktrees: 42 Befehle; geschätzte Input-/Output-Tokens 13.752/11.635; geschätzte Einsparung 2.117 (15.4 %). Diese lokalen Schätzungen betreffen registrierte RTK-Befehle und beweisen keinen prozentualen Rückgang des gesamten Modellverbrauchs. Native automatische Umschreibung verschachtelter Code-Mode-Aufrufe war nicht nachweisbar; explizite RTK-Nutzung ist ab den letzten Workern belegt.
+Yoke 1.22.0; codex-cli 0.160.0; rtk 0.51.0; runner gpt-6.1-sol / medium. Isolated worktrees, automatic parallelism and decisions enabled. No --explore. Code Intelligence facade in ACTIVE: MCP handshake successful, actual semantic backends graft/graphify/serena missing. A semantic efficiency gain was therefore not demonstrated.
 
-| Instrumentierte Befehlsphase | Befehle | Fehler | Wall s | Child CPU s |
+RTK database for root and all project-related worktrees: 42 commands; estimated input/output tokens 13,752/11,635; estimated savings 2,117 (15.4%). These local estimates cover registered RTK commands and do not prove a percentage reduction in total model usage. Native automatic rewriting of nested code-mode calls could not be demonstrated; explicit RTK usage is evidenced from the last workers onward.
+
+| Instrumented Command Phase | Commands | Errors | Wall s | Child CPU s |
 |---|---:|---:|---:|---:|
 | environment | 4 | 1 | 0.9 | 0.6 |
 | code-intelligence | 3 | 0 | 2.0 | 1.3 |
@@ -39,69 +41,69 @@ RTK-Datenbank für Root und sämtliche projektbezogenen Worktrees: 42 Befehle; g
 | final-validation | 1 | 0 | 20.0 | 30.0 |
 | final-yoke-smoke | 2 | 2 | 5.5 | 4.2 |
 
-Dies umfasst nur über measure.py gestartete Prozesse. Child CPU kann überlappende Unterprozesse einschließen; Messskript-Ausführung, Tool-Roundtrips und Provider-Latenz sind nicht vollständig getrennt. Der Coordinator-Tokenverbrauch umfasst sowohl nötige Orchestrierung als auch zusätzliche Messarbeit; diese sind rückwirkend nicht exakt auseinanderzurechnen.
+This includes only processes launched through measure.py. Child CPU can include overlapping subprocesses; measurement script execution, tool round trips, and provider latency are not fully separated. Coordinator token usage includes both necessary orchestration and additional measurement work; these cannot be separated precisely after the fact.
 
-## Tokenverbrauch nach beobachtetem Zweck
+## Token Usage by Observed Purpose
 
-Die folgende Aufteilung ist ausdrücklich eine Heuristik anhand des zuletzt sichtbaren Tool-Aufrufs. Ein Aufruf kann Lesen, Editieren und Prüfen verbinden. Werte sind keine exakte Trennung zwischen Denkzeit, Schreiben und Tool-Ergebnisverarbeitung. Vollständige Rolle/Zweck-Matrix: model-purpose-hints.csv.
+The following breakdown is explicitly a heuristic based on the last visible tool call. A call can combine reading, editing, and checking. Values do not provide an exact separation between thinking time, writing, and tool-result processing. Full role/purpose matrix: model-purpose-hints.csv.
 
-| Implementierungsworker: Zweckhinweis | Usage-Ereignisse | Input | Cache | Output |
+| Implementation Workers: Purpose Hint | Usage Events | Input | Cache | Output |
 |---|---:|---:|---:|---:|
-| discovery | 35 | 2.015.491 | 1.824.896 | 6.669 |
-| checks | 63 | 3.377.368 | 3.130.624 | 44.163 |
-| code_intelligence | 6 | 263.056 | 252.160 | 785 |
-| dependency_setup | 6 | 270.273 | 244.480 | 2.947 |
-| dev_server_or_mixed | 12 | 809.495 | 797.184 | 4.029 |
-| waiting_or_polling | 26 | 1.668.311 | 1.642.752 | 1.869 |
-| browser_validation | 41 | 2.830.598 | 2.729.856 | 21.731 |
+| discovery | 35 | 2,015,491 | 1,824,896 | 6,669 |
+| checks | 63 | 3,377,368 | 3,130,624 | 44,163 |
+| code_intelligence | 6 | 263,056 | 252,160 | 785 |
+| dependency_setup | 6 | 270,273 | 244,480 | 2,947 |
+| dev_server_or_mixed | 12 | 809,495 | 797,184 | 4,029 |
+| waiting_or_polling | 26 | 1,668,311 | 1,642,752 | 1,869 |
+| browser_validation | 41 | 2,830,598 | 2,729,856 | 21,731 |
 
-### Direkt belegte Nacharbeit
+### Directly Evidenced Rework
 
-Eine zusätzliche STORY-5-Implementierungsphase entstand durch den Observer-Commit während einer Integration. STORY-7 ist eine zusätzliche Reparatur innerhalb des ursprünglichen Produktscopes: Die unabhängige Prüfung fand trotz bestandener erster Gates 938px Desktop-Höhe bei 900px Viewport. Nach Reparatur misst der korrekt zugeordnete Root-Server 900px; Eventpanel-Unterkante 884px. Beide Messstände und Server-Provenienz sind archiviert. Fehlmessungen gegen den fremden Server wurden ausdrücklich invalidiert.
+An additional STORY-5 implementation phase resulted from the observer commit during an integration. STORY-7 is an additional repair within the original product scope: independent review found a desktop height of 938px with a 900px viewport despite the initial gates passing. After repair, the correctly attributed root server measures 900px; event panel bottom edge: 884px. Both measurement states and server provenance are archived. Incorrect measurements against the unrelated server were explicitly invalidated.
 
-Guardian-Sessions sind separat ausgewiesen, weil sie in der Yoke-Story-Tokenansicht nicht enthalten waren. Für Kapazitäts-/Kostenplanung muss Yoke diese Kontrollkosten zusätzlich sichtbar machen. Keine erfundenen Geldkosten; keine Gegenrechnung von Cache-Lesetokens als kostenlos.
+Guardian sessions are reported separately because they were absent from Yoke's story token view. For capacity/cost planning, Yoke must also make these control costs visible. No invented monetary costs; cache-read tokens are not treated as free.
 
-## Tokens nach Rolle
+## Tokens by Role
 
-| Rolle | Sessions gemessen/gesamt | Modellaufrufe | Input inkl. Cache | Cache gelesen | Input ohne Cache | Output |
+| Role | Sessions Measured/Total | Model Calls | Input Including Cache | Cache Read | Uncached Input | Output |
 |---|---:|---:|---:|---:|---:|---:|
-| guardian | 7/7 | 48 | 1.281.675 | 1.073.152 | 208.523 | 5.404 |
-| implementation | 8/8 | 189 | 11.234.592 | 10.621.952 | 612.640 | 82.193 |
-| coordinator | 1/1 | 127 | 15.525.113 | 15.139.456 | 385.657 | 107.118 |
-| planner_or_review | 2/2 | 2 | 52.718 | 14.336 | 38.382 | 1.215 |
+| guardian | 7/7 | 48 | 1,281,675 | 1,073,152 | 208,523 | 5,404 |
+| implementation | 8/8 | 189 | 11,234,592 | 10,621,952 | 612,640 | 82,193 |
+| coordinator | 1/1 | 127 | 15,525,113 | 15,139,456 | 385,657 | 107,118 |
+| planner_or_review | 2/2 | 2 | 52,718 | 14,336 | 38,382 | 1,215 |
 
-## Stories und Zeit
+## Stories and Time
 
-| Story | bestanden | Implementierungsaufrufe | Implementierung s | Gate-Prüfung s | Integration s | Input | Cache | Output |
+| Story | Passed | Implementation Calls | Implementation s | Gate Checks s | Integration s | Input | Cache | Output |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| STORY-1 | True | 1 | 565.9 | 3.1 | 6.3 | 1.435.585 | 1.314.176 | 12.725 |
-| STORY-2 | True | 1 | 367.4 | 2.8 | 8.7 | 698.268 | 643.968 | 8.663 |
-| STORY-3 | True | 1 | 696.3 | 5.2 | 9.2 | 2.080.455 | 1.994.752 | 15.192 |
-| STORY-4 | True | 1 | 505.8 | 4.1 | 11.8 | 921.789 | 857.088 | 12.190 |
-| STORY-5 | True | 2 | 566.1 | 11.6 | 35.7 | 1.347.301 | 1.245.568 | 11.899 |
-| STORY-6 | True | 1 | 683.2 | 28.8 | 28.3 | 2.950.211 | 2.853.888 | 13.068 |
-| STORY-7 | True | 1 | 484.2 | 18.4 | 0.0 | 1.800.983 | 1.712.512 | 8.456 |
+| STORY-1 | True | 1 | 565.9 | 3.1 | 6.3 | 1,435,585 | 1,314,176 | 12,725 |
+| STORY-2 | True | 1 | 367.4 | 2.8 | 8.7 | 698,268 | 643,968 | 8,663 |
+| STORY-3 | True | 1 | 696.3 | 5.2 | 9.2 | 2,080,455 | 1,994,752 | 15,192 |
+| STORY-4 | True | 1 | 505.8 | 4.1 | 11.8 | 921,789 | 857,088 | 12,190 |
+| STORY-5 | True | 2 | 566.1 | 11.6 | 35.7 | 1,347,301 | 1,245,568 | 11,899 |
+| STORY-6 | True | 1 | 683.2 | 28.8 | 28.3 | 2,950,211 | 2,853,888 | 13,068 |
+| STORY-7 | True | 1 | 484.2 | 18.4 | 0.0 | 1,800,983 | 1,712,512 | 8,456 |
 
-Abgeschlossene Loop-Prozesse: 4, davon fehlgeschlagen: 2. Summierte Loop-Laufzeit: 3384.7 s. Summierte Implementierungsphasen: 3868.9 s; Vereinigungsdauer dieser Intervalle: 3184.7 s. Beobachtete überlappende Worker-Zeit: 684.2 s. Dies ist keine gemessene Beschleunigung gegenüber einem seriellen Kontrolllauf.
-Parallelitätsstichproben: 530, Intervall 10 s, beobachtete Spitze 2 Implementierungsworker und 2 gemeinsame Einheiten. Kurze Spitzen zwischen Stichproben können fehlen.
+Completed loop processes: 4, of which failed: 2. Total loop runtime: 3384.7 s. Total implementation phases: 3868.9 s; union duration of these intervals: 3184.7 s. Observed overlapping worker time: 684.2 s. This is not a measured speedup against a serial control run.
+Concurrency samples: 530, interval 10 s, observed peak of 2 implementation workers and 2 combined units. Brief peaks between samples may be missing.
 
-## Shell-Arbeit der Implementierungsworker
+## Implementation Workers' Shell Work
 
-| Kategorie (heuristisch) | Aufrufe | Exit != 0 / abgebrochen | Prozesslaufzeit s | Ausgabebytes |
+| Category (Heuristic) | Calls | Exit != 0 / Aborted | Process Runtime s | Output Bytes |
 |---|---:|---:|---:|---:|
-| discovery | 73 | 12 | 32.2 | 452.893 |
-| dependency_setup | 10 | 5 | 114.5 | 6.349 |
-| checks | 92 | 25 | 461.3 | 420.588 |
-| browser_validation | 23 | 9 | 103.3 | 109.393 |
-| dev_server_or_mixed | 12 | 12 | 677.8 | 4.534 |
-| other | 17 | 3 | 86.7 | 4.748 |
+| discovery | 73 | 12 | 32.2 | 452,893 |
+| dependency_setup | 10 | 5 | 114.5 | 6,349 |
+| checks | 92 | 25 | 461.3 | 420,588 |
+| browser_validation | 23 | 9 | 103.3 | 109,393 |
+| dev_server_or_mixed | 12 | 12 | 677.8 | 4,534 |
+| other | 17 | 3 | 86.7 | 4,748 |
 | file_editing | 1 | 0 | 0.3 | 0 |
 
-Fehlgeschlagene Testbefehle umfassen bewusst rote TDD-Tests. Sie sind nicht automatisch Produktfehler oder zusätzliche Yoke-Story-Versuche. dev_server_or_mixed enthält langlebige bzw. gemischte Befehle.
+Failed test commands include intentionally red TDD tests. They do not automatically represent product defects or additional Yoke story attempts. dev_server_or_mixed includes long-running or mixed commands.
 
-## Konkrete Findings und Verbesserungen
+## Concrete Findings and Improvements
 
-| ID | Beobachtung | Auswirkung / Verbesserung |
+| ID | Observation | Impact / Improvement |
 |---|---|---|
 | CLI-HELP-MUTATION | yoke setup --help created 95 files and enabled loop; yoke retrofit --help then disabled loop | Read-only discovery mutated configuration and required explicit correction Handle help before command dispatch; reject unknown flags before mutation |
 | RTK-INIT-FLAGS | rtk init --codex --auto-patch exits 1: cannot be combined | One failed setup call Document per-runner incompatible flags and expose compatibility validation |
@@ -125,18 +127,18 @@ Fehlgeschlagene Testbefehle umfassen bewusst rote TDD-Tests. Sie sind nicht auto
 | VERIFIED-VISUAL-GAP | Correctly bound app on port 6317 has document scrollHeight 938 for viewport 900; event panel bottom 914. All original six stories and design-scan passed. | Full-screen layout still incomplete; finite original-scope repair STORY-7 added, preserving existing functionality and tests Assert panel bottom bounds and populated incident/event states, not only horizontal overflow or panel top visibility; use independent visually bound review |
 | OBSERVER-FINAL-SMOKE-DIRTY | Two final root smoke attempts had 1/1 successful browser flows but source evidence was rejected: first because observer config was uncommitted; second because observer report generation created an untracked root file during the gate. | Observer interference, not product failure. Root smoke must run only after artifact writes and commit are finished. Treat integrated source gates as a write lock for all coordinator tasks; keep measurement generation outside that interval. |
 
-Priorität für Yoke: (1) sichere CLI-Hilfe und klare Preflight-Prüfung tatsächlicher RTK/CI-Funktion, (2) korrekte Zuordnung von Provider-, Approval-, Kontroll- und Integrationsfehlern, (3) konkrete Ursachen bei Browserfehlern und wiederverwendbare Paket-Caches mit isolierten Schreibverzeichnissen, (4) überprüfbare Schreibbereiche und dauerhafte Proof-Artefakte, (5) verlässliche kompakte Live-Status- und Tokeninformationen.
+Priorities for Yoke: (1) safe CLI help and clear preflight checks of actual RTK/CI functionality, (2) correct attribution of provider, approval, control, and integration failures, (3) concrete browser failure causes and reusable package caches with isolated write directories, (4) verifiable write scopes and durable proof artifacts, (5) reliable compact live status and token information.
 
-Die HEAD-Race wurde vom Observer verursacht. Yokes Ablehnung war eine richtige Sicherheitsentscheidung; die dadurch entstandene Zeit und Wiederholung dürfen nicht als spontanes Modellversagen interpretiert werden. Der erhaltene Kandidat wurde über Yokes Recovery-APIs in eine erneute Implementierungsprüfung überführt; Integrationsnachweise wurden nicht als weiter gültig ausgegeben.
+The HEAD race was caused by the observer. Yoke's rejection was the correct safety decision; the resulting time and repetition must not be interpreted as spontaneous model failure. The retained candidate was passed through Yoke's recovery APIs for renewed implementation verification; integration evidence was not presented as still valid.
 
-Der native RTK-Codex-Vertrag wurde mit der [offiziellen RTK-Dokumentation](https://github.com/rtk-ai/rtk/blob/develop/hooks/codex/README.md) abgeglichen. Alle übrigen konkreten Findings stammen aus lokalen Befehlen, Laufzeitdateien und der installierten Yoke-Implementierung 1.22.0.
+The native RTK Codex contract was checked against the [official RTK documentation](https://github.com/rtk-ai/rtk/blob/develop/hooks/codex/README.md). All other concrete findings come from local commands, runtime files, and the installed Yoke 1.22.0 implementation.
 
-## Daten für Folgeanalysen
+## Data for Follow-up Analyses
 
-measurements/summary.json, stories.csv, roles.csv, yoke-phases.csv, shell-categories.csv, model-calls.jsonl, shell-metrics.jsonl, sessions.json, yoke-history.jsonl, commands.jsonl, status-samples.jsonl, observations.jsonl und Code-Intelligence-/Recovery-Probes. Screenshots liegen separat unter screenshots/. Observer- und Auswerteskripte liegen unter tools/.
+measurements/summary.json, stories.csv, roles.csv, yoke-phases.csv, shell-categories.csv, model-calls.jsonl, shell-metrics.jsonl, sessions.json, yoke-history.jsonl, commands.jsonl, status-samples.jsonl, observations.jsonl, and Code Intelligence/recovery probes. Screenshots are stored separately under screenshots/. Observer and analysis scripts are under tools/.
 
-Für belastbare Verbesserungsnachweise: gleiche Aufgabe und Testgates mit/ohne Änderung, gleiche Modellversion, mehrere Wiederholungen, frischer und warmer Cache, kontrollierte Netzwerk-/Sandboxbedingungen sowie getrennte Erfassung des Beobachtungsaufwands. Dieser Lauf liefert konkrete Fehlerbelege und Messdaten, aber keine kausale Aussage über allgemeine Yoke-Effizienz.
+For reliable evidence of improvement: the same task and test gates with/without the change, the same model version, multiple repetitions, cold and warm caches, controlled network/sandbox conditions, and separate measurement of observer overhead. This run provides concrete failure evidence and measurements, but no causal conclusion about general Yoke efficiency.
 
-## Abschlussprüfung nach dem Mess-Cutoff
+## Final Verification After the Measurement Cutoff
 
-Yoke Flow-Smoke gegen den unveränderten, committed Root-Server bestand am 2026-10-04T09:28:21.392Z: 1/1, 2,156 Sekunden Gesamtzeit, stabile Source-Fingerprints. Bericht in measurements/final-yoke-smoke.json. Das bestätigt, dass die zuvor korrekt abgelehnten Observer-Prüfungen nach Ende aller Schreibvorgänge funktionieren. Dieses zusätzliche Gate und die anschließende Artefaktverpackung sind nicht in den oben eingefrorenen Token-/Zeitaggregaten enthalten.
+Yoke Flow-Smoke against the unchanged, committed root server passed at 2026-10-04T09:28:21.392Z: 1/1, 2.156 seconds total runtime, stable source fingerprints. Report in measurements/final-yoke-smoke.json. This confirms that the observer checks, which were correctly rejected earlier, work after all writes have ended. This additional gate and subsequent artifact packaging are excluded from the token/time aggregates frozen above.

@@ -1,5 +1,7 @@
 # Contributing to Yoke
 
+Use English for code comments, documentation, commit messages, pull requests, issues and release notes. Conversation language does not determine publication language. Preserve original measurement evidence; label translations and retain original source checksums.
+
 Commits must use the contributor's human Git identity. Project policy controls co-author
 trailers; tooling must not add AI attribution implicitly. Before a release, run the full
 `prepublishOnly` pipeline, `npm audit`, canon validation, and a tarball install smoke test.

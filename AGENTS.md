@@ -1,5 +1,9 @@
 # Yoke project context
 
+## Publication language
+
+Write code comments, documentation, descriptions, commit messages, pull requests, issues and release notes in English. Everything published on GitHub must use English, regardless of the conversation language. Preserve original measurement evidence and label translated source reports with their original checksums.
+
 For product strategy, roadmap, provider parity, token/cost optimization, task time estimation, or dashboard work, first read [the saved product discussion](docs/PRODUCT-DIRECTION-2026-09-05.md).
 
 That document distinguishes observed code findings, user preferences, and proposed features. Do not treat proposals as implemented functionality or blanket authorization to implement them. Recheck dated findings against the current code. This file complements the user's global instructions.
