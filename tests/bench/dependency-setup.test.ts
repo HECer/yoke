@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -39,12 +39,25 @@ it('installs locally with bounded npm arguments and reuses only a matching succe
   expect(result).toMatchObject({ status: 'installed' }); expect(result.durationMs).toBeGreaterThanOrEqual(0)
   const receipt = JSON.parse(readFileSync(result.receiptPath, 'utf8'))
   expect(receipt).toMatchObject({ version: 1, status: 'installed', fingerprint: result.fingerprint, identity: { npmVersion: '10.9.3', nodeVersion: process.version, platform: process.platform, arch: process.arch } })
-  expect(f.calls()[1]).toEqual(['ci', '--ignore-scripts', '--no-audit', '--no-fund', '--json', '--fetch-retries=0', '--cache', join(f.root, '.yoke', 'npm-download-cache')])
+  expect(f.calls()[1]).toEqual(['ci', '--ignore-scripts', '--no-audit', '--no-fund', '--json', '--fetch-retries=0', '--cache', join(realpathSync.native(f.root), '.yoke', 'npm-download-cache')])
   const reused = await setup(f.root, f.options)
   expect(reused).toMatchObject({ status: 'reused', fingerprint: result.fingerprint })
   expect(f.calls().filter(args => args[0] === 'ci')).toHaveLength(1)
   expect(readFileSync(join(f.root, 'package.json'))).toEqual(packageBytes)
   expect(readFileSync(join(f.root, 'package-lock.json'))).toEqual(lockBytes)
+})
+
+it('uses canonical local paths and reuses the same install through a project directory alias', async () => {
+  const f = fixture(), alias = join(directory(), 'project alias')
+  symlinkSync(f.root, alias, 'junction')
+  const canonicalRoot = realpathSync.native(alias)
+  expect(alias).not.toBe(canonicalRoot)
+  const installed = await setup(alias, f.options)
+  expect(installed.status).toBe('installed')
+  expect(f.calls()[1]).toEqual(['ci', '--ignore-scripts', '--no-audit', '--no-fund', '--json', '--fetch-retries=0', '--cache', join(canonicalRoot, '.yoke', 'npm-download-cache')])
+  expect(installed.receiptPath).toBe(join(canonicalRoot, 'node_modules', '.yoke-dependency-setup.json'))
+  expect(await setup(f.root, f.options)).toMatchObject({ status: 'reused', fingerprint: installed.fingerprint, receiptPath: installed.receiptPath })
+  expect(f.calls().filter(args => args[0] === 'ci')).toHaveLength(1)
 })
 
 it('resolves npm_execpath with spaces through Node argv without a platform shell', async () => {
