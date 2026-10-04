@@ -75,5 +75,6 @@
   },
   "t3Screenshot": "C:/Users/HEC_e/.t3/userdata/browser-artifacts/browser-screenshot-127-0-0-1-mutuv530-3151a827.png",
   "originalUnchanged": true,
-  "identityLimits": "Strict own port; served hashes captured after visual inspection, not a pre/post deployment attestation."
+  "identityLimits": "Strict own port; served hashes captured after visual inspection, not a pre/post deployment attestation.",
+  "servedHashesStableAtRecheck": true
 }

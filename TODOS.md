@@ -1,10 +1,10 @@
 # Yoke follow-up work
 
-## Deferred from the user-authorized 1.23.0 release
+## Follow-ups from the user-authorized 1.23.0 release
 
-- E7: establish dependency-installer ownership before enforcing lockfile-keyed install reuse and offline/network failure classification; measure genuine cold/warm setup conditions.
-- E8: emit explicit failure categories at production boundaries where the cause is known; preserve unknown observer/guardian/approval coverage.
-- E9: collect paired full-product benchmarks and rerun the populated NEXUS layout regression with a platform-correct dependency tree. The copied macOS dependencies could not start Vite on Windows. No general speed/cost improvement is established yet.
+- E7: benchmark-owned npm setup, input/invocation-bound readiness receipts and three paired fresh/warm download-cache samples are prepared in 1.24. Core dependency setup remains unmanaged; receipts do not attest every installed byte.
+- E8: structured durable failure observations are prepared in 1.24. Legacy captured/review paths without explicit metadata and unobserved guardian/approval coverage remain unknown; expand only where a known boundary supplies evidence.
+- E9: populated NEXUS acceptance now passes with a platform-correct dependency tree; the original project is unchanged. Controlled small-fixture version pairs are being recorded. Full-product model comparisons and general speed/cost improvement remain unestablished; provider-cache state and prices remain unknown.
 
 - Add provider-native output schemas when all three CLIs expose compatible stable APIs.
 - Expand benchmark fixtures and collect multiple authenticated samples per provider/model.
