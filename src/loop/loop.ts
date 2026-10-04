@@ -89,30 +89,34 @@ function runQualityReview(
   const reviewAssessment = opts.review
   if (!qualityAssessment && !reviewAssessment) return null
   const qualityMetadata = opts.qualityMetadata?.({ targetDir: executionDir, story })
+  let failure: LoopFailure | undefined
+  const failedRerun = (stage: 'criterion' | 'verify' | 'design' | 'perf' | 'audit', verdict: VerifyResult) => {
+    failure = { kind: 'verification-failed', stage, storyId: story.id, observation: verdict.failure ?? failureObservation() }
+    return { kind: 'failed' as const, stage, summary: verdict.summary }
+  }
   const rerunGates = () => {
     const criteria = runCriterionGates(opts, executionDir, story)
-    if (!criteria.passed) return { kind: 'failed' as const, stage: 'criterion' as const, summary: criteria.summary }
+    if (!criteria.passed) return failedRerun('criterion', criteria)
     reporter.phase('verifying')
     const verify = runGate(opts.verify, executionDir, story.id)
-    if (!verify.passed) return { kind: 'failed' as const, stage: 'verify' as const, summary: verify.summary }
+    if (!verify.passed) return failedRerun('verify', verify)
     if (opts.design) {
       reporter.phase('design')
       const design = runGate(opts.design, executionDir, story.id)
-      if (!design.passed) return { kind: 'failed' as const, stage: 'design' as const, summary: design.summary }
+      if (!design.passed) return failedRerun('design', design)
     }
     if (opts.perf) {
       reporter.phase('perf')
       const perf = runGate(opts.perf, executionDir, story.id)
-      if (!perf.passed) return { kind: 'failed' as const, stage: 'perf' as const, summary: perf.summary }
+      if (!perf.passed) return failedRerun('perf', perf)
     }
     if (opts.audit) {
       reporter.phase('audit')
       const audit = runGate(opts.audit, executionDir, story.id)
-      if (!audit.passed) return { kind: 'failed' as const, stage: 'audit' as const, summary: audit.summary }
+      if (!audit.passed) return failedRerun('audit', audit)
     }
     return { kind: 'passed' as const }
   }
-  let failure: LoopFailure | undefined
   const outcome = runQualityRepairLoop({
     quality: qualityAssessment
       ? round => {
@@ -687,7 +691,9 @@ function runImplementation(opts: LoopOptions, dir: string, story: Story, reporte
     if (verdict.passed) return { result, gates: snapshotGates(dir, story, before, evidence) }
     if (knownInfrastructureFailure(verdict.summary)) {
       result.routing.recordOutcome(false, 'infrastructure')
-      return { result: { ...result, success: false, infrastructureFailure: true, summary: verdict.summary, routing: { ...result.routing, blocked: true, canRetry: false } } }
+      const observation = verdict.failure ?? failureObservation()
+      return { result: { ...result, success: false, infrastructureFailure: true, failure: observation, summary: verdict.summary, routing: { ...result.routing, blocked: true, canRetry: false } },
+        failure: { kind: 'verification-failed', stage: failedStage, storyId: story.id, observation } }
     }
     result.routing.recordOutcome(false)
     const observed = observeFailure({ root: opts.targetDir, directory: dir, story, stage: failedStage, summary: verdict.summary, observation: verdict.failure })

@@ -14,6 +14,7 @@ import { createDispatcher } from '../../src/loop/dispatcher.js'
 import { retainRuntimeProof } from '../../src/loop/proof-retention.js'
 import { appendEvent } from '../../src/observability/events.js'
 import { runStoryWorker } from '../../src/loop/worker.js'
+import { retainParallelWorktree } from '../../src/loop/recovery.js'
 
 const roots: string[] = []
 const root = () => { const dir = mkdtempSync(join(tmpdir(), 'yoke-failure-')); roots.push(dir); return dir }
@@ -174,5 +175,72 @@ it('preserves an explicit criterion assertion observation through saved criterio
   runLoop({ targetDir: dir, prdPath: join(dir, '.yoke/prd.yaml'), maxIterations: 1, runner: () => ({ success: true, summary: 'done' }),
     verify: () => ({ passed: true, summary: 'done' }), verifyCriterion: () => ({ passed: false, summary: 'assertion', failure: observation }), reporter: makeReporter(dir, { quiet: true }),
     git: { isClean: () => true, commitAll: () => {}, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} } })
+  expect(localUsageReport(dir, period()).failures).toMatchObject({ product: 1, unknown: 0 })
+})
+
+it.each(['assertion', 'timeout'] as const)('retains a rejected worker promise with its %s identity through archive and recovery', async cause => {
+  const dir = root(), worktree = root(); const reporter = makeReporter(dir, { quiet: true })
+  const record = join(dir, '.yoke/integration-recovery/S1.json')
+  const observation = { failureId: '12345678-1234-1234-1234-123456789abc', failureCategory: 'product', failureCause: 'assertion' } as const
+  const failure = cause === 'assertion' ? Object.assign(new Error('SECRET assertion'), { failure: observation })
+    : Object.assign(new Error('SECRET timeout'), { code: 'ETIMEDOUT' })
+  const story = { id: 'S1', title: 'first', priority: 1, acceptance: ['done'], passes: false }
+  const result = await createDispatcher({ targetDir: dir, stories: [story], maxConcurrency: 1, maxIterations: 1,
+    claims: { acquire: () => true, heartbeat: () => {}, release: () => {} },
+    worktrees: { create: () => ({ path: worktree, baseCommit: 'base' }), remove: () => {},
+      retain: (input, reason, phase, retainedObservation) => retainParallelWorktree(dir, record, {
+        storyId: story.id, worktree, ownerToken: input.ownerToken, baseCommit: input.worktree.baseCommit, prdHash: 'a'.repeat(64), reason, phase, observation: retainedObservation,
+      }) },
+    git: { isClean: () => true, rebase: () => ({ kind: 'rebased', expectedHead: 'base' }), commit: () => {}, integrate: () => {} },
+    worker: input => runStoryWorker({ story, worktree, baseCommit: 'base', provider: input.provider,
+      runner: () => ({ success: true, summary: 'implementation finished' }), verify: () => { throw failure } }),
+    gates: { verify: () => ({ passed: true, summary: 'done' }) }, onFailure: failure => reporter.failure?.(failure, story.id),
+  }).run()
+  const category = cause === 'assertion' ? 'product' : 'infrastructure'
+  expect(result).toMatchObject({ status: 'blocked', failure: { observation: { failureCategory: category, failureCause: cause } } })
+  if (cause === 'assertion') expect(result.failure?.observation).toEqual(observation)
+  const saved = JSON.parse(readFileSync(record, 'utf8'))
+  expect(saved.observation).toEqual(result.failure?.observation)
+  reporter.blocked(result.reason ?? 'blocked', result.failure)
+  reporter.failure?.(saved.observation, story.id)
+  expect(localUsageReport(dir, period()).failures).toMatchObject({ [category]: 1, unknown: 0 })
+  expect(JSON.stringify(readMeasurements(dir, period().from, period().to).events)).not.toContain('SECRET')
+})
+
+it.each(['serial', 'parallel'] as const)('retains verifier timeout identity at the routed %s early infrastructure exit', async mode => {
+  const dir = root(); mkdirSync(join(dir, '.yoke'))
+  const story = { id: 'S1', title: 'first', priority: 1, acceptance: ['done'], passes: false }
+  writeFileSync(join(dir, '.yoke/prd.yaml'), JSON.stringify([story]))
+  const reporter = makeReporter(dir, { quiet: true })
+  const observation = { failureId: '12345678-1234-1234-1234-123456789abc', failureCategory: 'infrastructure', failureCause: 'timeout' } as const
+  const input = { story, targetDir: dir, worktree: dir, baseCommit: 'base', prdPath: join(dir, '.yoke/prd.yaml'), maxIterations: 1,
+    provider: { provider: 'codex', role: 'implementation' } as const, failureRoot: dir, reporter,
+    runner: () => ({ success: true, summary: 'implementation finished', routing: { canRetry: true, recordOutcome: () => {} } }),
+    verify: () => ({ passed: false, summary: 'ETIMEDOUT', failure: observation }),
+    git: { isClean: () => true, commitAll: () => {}, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} } }
+  const result = mode === 'serial' ? runLoop(input) : await runStoryWorker(input)
+  expect(result.failure).toMatchObject({ stage: 'verify', observation })
+  if (mode === 'parallel') reporter.blocked('gate failed', result.failure)
+  expect(localUsageReport(dir, period()).failures).toMatchObject({ infrastructure: 1, unknown: 0 })
+})
+
+it.each(['serial', 'parallel'] as const)('retains assertion metadata after a %s quality repair reruns verification', async mode => {
+  const dir = root(); mkdirSync(join(dir, '.yoke'))
+  const story = { id: 'S1', title: 'first', priority: 1, acceptance: ['done'], passes: false }
+  writeFileSync(join(dir, '.yoke/prd.yaml'), JSON.stringify([story]))
+  const reporter = makeReporter(dir, { quiet: true })
+  const observation = { failureId: '12345678-1234-1234-1234-123456789abc', failureCategory: 'product', failureCause: 'assertion' } as const
+  let checks = 0
+  const input = { story, targetDir: dir, worktree: dir, baseCommit: 'base', prdPath: join(dir, '.yoke/prd.yaml'), maxIterations: 1,
+    provider: { provider: 'codex', role: 'implementation' } as const, failureRoot: dir, reporter,
+    runner: () => ({ success: true, summary: 'implementation finished' }),
+    verify: () => ++checks === 1 ? { passed: true, summary: 'initially green' } : { passed: false, summary: 'verified assertion', failure: observation },
+    qualityStage: () => ({ kind: 'lose', biggestGap: 'alignment', evidence: ['screenshot'], summary: 'repair alignment' } as const),
+    repair: () => ({ success: true, summary: 'repaired' }), repairLimits: { maxRounds: 1, maxTimeMs: 10000 },
+    git: { isClean: () => true, commitAll: () => {}, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} } }
+  const result = mode === 'serial' ? runLoop(input) : await runStoryWorker(input)
+  expect(checks).toBe(2)
+  expect(result.failure).toMatchObject({ stage: 'verify', observation })
+  if (mode === 'parallel') reporter.blocked('rerun failed', result.failure)
   expect(localUsageReport(dir, period()).failures).toMatchObject({ product: 1, unknown: 0 })
 })

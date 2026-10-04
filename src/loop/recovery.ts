@@ -54,9 +54,9 @@ export type ParallelRecoveryPhase = 'implementation' | 'integration'
 const LegacyParallelRecovery = z.object({
   version: z.literal(1), root: z.string().max(4096), storyId: z.string().max(1024), worktree: z.string().max(4096), baseCommit: z.string().max(128),
   prdHash: z.string().length(64), ownerToken: z.string().min(1).max(256), reason: z.string().max(16384), state: z.literal('retained'), recordedAt: z.string().datetime(),
+  observation: z.unknown().transform(safeFailure).refine(value => value !== undefined, 'Invalid failure observation').optional(),
 }).strict()
-const CurrentParallelRecovery = LegacyParallelRecovery.extend({ version: z.literal(2), phase: z.enum(['implementation', 'integration']),
-  observation: z.unknown().refine(value => safeFailure(value) !== undefined, 'Invalid failure observation').optional() })
+const CurrentParallelRecovery = LegacyParallelRecovery.extend({ version: z.literal(2), phase: z.enum(['implementation', 'integration']) })
 const ParallelRecovery = z.discriminatedUnion('version', [LegacyParallelRecovery, CurrentParallelRecovery])
 
 export function parallelAcceptanceDigest(directory: string): string {
@@ -131,5 +131,5 @@ export function recoverParallelWorktree(directory: string, file: string, storyId
   const registered = git(['worktree', 'list', '--porcelain']).split(/\r?\n/u).filter(line => line.startsWith('worktree ')).map(line => realpathSync(resolve(line.slice(9))))
   if (!registered.some(path => pathIdentity(path) === pathIdentity(actual))) throw new Error('Retained candidate is not a registered worktree')
   git(['merge-base', '--is-ancestor', saved.baseCommit, 'HEAD'], actual)
-  return { path: actual, baseCommit: saved.baseCommit, recovered: true, ownerToken: saved.ownerToken, recovery: { phase, feedback: saved.reason, ...(saved.version === 2 && safeFailure(saved.observation) ? { observation: safeFailure(saved.observation) } : {}) } }
+  return { path: actual, baseCommit: saved.baseCommit, recovered: true, ownerToken: saved.ownerToken, recovery: { phase, feedback: saved.reason, ...(saved.observation ? { observation: saved.observation } : {}) } }
 }

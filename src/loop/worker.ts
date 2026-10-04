@@ -314,6 +314,7 @@ export async function runStoryWorker(input: StoryWorkerInput): Promise<StoryWork
         const rerun = runMechanicalGates(input, context, evidence)
         if (rerun.kind === 'passed') return { kind: 'passed' }
         if (rerun.kind === 'cancelled') return rerun
+        qualityFailure = { kind: 'verification-failed', stage: rerun.stage, storyId: context.story.id, observation: rerun.observation ?? failureObservation() }
         return { kind: 'failed', stage: rerun.stage, summary: rerun.summary }
       },
       ...(input.repairLimits ? { limits: input.repairLimits } : {}),
@@ -363,7 +364,9 @@ async function runWorkerImplementation(input: StoryWorkerInput, context: AgentCo
     }
     if (knownInfrastructureFailure(gates.summary)) {
       result.routing.recordOutcome(false, 'infrastructure')
-      return { result: { ...result, success: false, infrastructureFailure: true, summary: gates.summary, routing: { ...result.routing, blocked: true, canRetry: false } } }
+      const observation = gates.observation ?? failureObservation()
+      return { result: { ...result, success: false, infrastructureFailure: true, failure: observation, summary: gates.summary, routing: { ...result.routing, blocked: true, canRetry: false } },
+        failure: { kind: 'verification-failed', stage: gates.stage, storyId: context.story.id, observation } }
     }
     result.routing.recordOutcome(false)
     const observed = input.failureRoot ? observeFailure({ root: input.failureRoot, scope: input.failureScope, directory: context.targetDir, story: context.story, stage: gates.stage, summary: gates.summary, observation: gates.observation }) : undefined
