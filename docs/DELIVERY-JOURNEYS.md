@@ -2,7 +2,7 @@
 
 Use executable acceptance criteria to decide whether a release is ready. A build command shows that an artifact can be produced; a journey checks a specific user interaction. Yoke can now record the relationship between those criteria, named journeys and the exact artifact files present during a check.
 
-The delivery declaration belongs in `.yoke/acceptance.yaml`. Browser smoke steps belong in `.yoke/config.yaml`. Existing smoke flows containing only `name`, `path` and an optional `landmark` continue to work.
+The delivery declaration belongs in `.yoke/acceptance.yaml`. Browser smoke steps belong in `.yoke/config.yaml`. Existing flow definitions containing only `name`, `path` and an optional `landmark` remain valid, but production browser runs now also require `smoke.sourceIdentity`.
 
 ## Optional browser steps
 
@@ -13,6 +13,9 @@ For example, add this section to the project's existing `.yoke/config.yaml`:
 ```yaml
 smoke:
   baseUrl: http://localhost:3000
+  sourceIdentity:
+    path: /assets/app-specific-static-source.js
+    sha256: "<replace with SHA-256 of the served bytes>"
   flows:
     - name: profile-survives-reload
       path: /login
@@ -50,6 +53,10 @@ smoke:
           text: Smoke User
           exact: true
 ```
+
+Replace the source resource path and hash placeholder before running this example. Confirm the intended server's checkout/build and port, then fetch a stable, app-specific source resource from the effective `baseUrl` origin and calculate the SHA-256 of the exact served body bytes. Dev servers may transform local source, so hashing a local file alone is insufficient. Set `sha256` to the resulting 64-character lowercase hexadecimal digest. The resource must return a successful HTTP response without redirects, finish within five seconds and contain at most 1 MiB. It must remain stable through the run. Production smoke checks the pin before browser launch and again after the flows; a missing or mismatching pin prevents valid smoke evidence.
+
+After an intentional source/build change, verify the server serves that change and explicitly refresh the pin. Do not update it automatically on a mismatch or accept a foreign process occupying the expected port. Choose a resource that changes with the relevant app source, rather than a shared health response or an unchanged marker. The static pin checks only that resource's bytes before and after the run; it does not independently prove the identity of every module, backend or dynamic response. Source fingerprints and other acceptance checks remain necessary.
 
 Supply `SMOKE_TEST_PASSWORD` through the environment using credentials for a dedicated test account, then run:
 
