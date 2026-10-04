@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join, parse, resolve } from 'node:path'
+import { delimiter, dirname, join, parse, resolve } from 'node:path'
 
 const RECEIPT = '.yoke-dependency-setup.json'
 const CACHE_PATHS = ['node_modules', '.yoke', '.cache', '.vite', '.vite-temp', 'node_modules/.cache', 'node_modules/.vite', 'node_modules/.vite-temp']
@@ -41,11 +41,16 @@ function inputBytes(root) {
   }
   return result
 }
-function defaultNpm() {
-  const candidates = [process.env.npm_execpath, join(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js')]
+export function resolveNpmInvocation(env = process.env, nodeExecutable = process.execPath) {
+  const candidates = [env.npm_execpath, join(dirname(nodeExecutable), 'node_modules/npm/bin/npm-cli.js')]
+  const path = Object.entries(env).find(([name]) => name.toUpperCase() === 'PATH')?.[1] ?? ''
+  for (const directory of path.split(delimiter).filter(Boolean)) {
+    const root = directory.replace(/^"|"$/g, '')
+    if (existsSync(join(root, 'npm.cmd')) || existsSync(join(root, 'npm'))) candidates.push(join(root, 'node_modules/npm/bin/npm-cli.js'), join(root, 'npm/bin/npm-cli.js'))
+  }
   try { candidates.push(createRequire(import.meta.url).resolve('npm/bin/npm-cli.js')) } catch { /* system npm can still be on PATH */ }
   const cli = candidates.find(path => path && path.endsWith('npm-cli.js') && existsSync(path))
-  return cli ? { command: process.execPath, args: [cli] } : { command: 'npm', args: [] }
+  return cli ? { command: nodeExecutable, args: [cli] } : { command: 'npm', args: [] }
 }
 function npmFailure(result) {
   if (result.spawnCode) return { kind: 'spawn', causeCode: ['ENOENT', 'EACCES', 'EPERM'].includes(result.spawnCode) ? result.spawnCode : 'SPAWN_FAILED' }
@@ -94,23 +99,24 @@ export async function setupNpmDependencies(projectDir, options = {}) {
   try {
     const root = realpathSync.native(projectDir)
     const cache = resolve(options.cacheDir ?? join(root, '.yoke', 'npm-download-cache'))
-    safePaths(root, cache)
-    const inputs = inputBytes(root)
-    receiptPath = join(root, 'node_modules', RECEIPT)
+    receiptPath = noLinks(join(root, 'node_modules', RECEIPT))
     let previous
     if (existsSync(receiptPath)) {
       if (!lstatSync(receiptPath).isFile() || lstatSync(receiptPath).size > 16384) throw problem('unsafe-path')
       try { previous = JSON.parse(readFileSync(receiptPath, 'utf8')) } catch { /* invalid receipts are not reusable */ }
       unlinkSync(receiptPath)
     }
+    safePaths(root, cache)
+    const inputs = inputBytes(root)
     const timeoutMs = Math.min(600000, Math.max(1, options.timeoutMs ?? 120000))
-    const npm = options.npm ?? defaultNpm(), env = options.env ?? process.env
+    const env = options.env ?? process.env, npm = options.npm ?? resolveNpmInvocation(env)
     const version = await runNpm(npm, ['--version'], root, env, timeoutMs)
     if (version.status !== 0 || version.timedOut || version.captureExceeded) return finish({ status: 'failed', failure: npmFailure(version) })
     const npmVersion = version.stdout.trim()
     if (!/^\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.-]+)?$/.test(npmVersion) || npmVersion.length > 64) return finish({ status: 'failed', failure: { kind: 'unknown', causeCode: 'NPM_VERSION_UNVERIFIED' } })
     const args = ['ci', '--ignore-scripts', '--no-audit', '--no-fund', '--json', '--fetch-retries=0', '--cache', cache, ...(options.offline ? ['--offline'] : [])]
-    const identity = { inputs, nodeVersion: process.version, platform: process.platform, arch: process.arch, npmVersion, args }
+    const invocation = { commandHash: sha256(npm.command), prefixArgsHash: sha256(JSON.stringify(npm.args ?? [])) }
+    const identity = { inputs, nodeVersion: process.version, platform: process.platform, arch: process.arch, npmVersion, invocation, args }
     fingerprint = sha256(JSON.stringify(identity))
     safePaths(root, cache)
     if (JSON.stringify(inputBytes(root)) !== JSON.stringify(inputs)) return finish({ status: 'failed', failure: { kind: 'inputs-changed' } })

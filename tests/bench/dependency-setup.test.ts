@@ -1,9 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 
 const roots: string[] = []
 afterEach(() => { vi.unstubAllEnvs(); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })) })
@@ -13,13 +14,13 @@ function fixture() {
   writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'setup-fixture', version: '1.0.0' }))
   writeFileSync(join(root, 'package-lock.json'), JSON.stringify({ name: 'setup-fixture', version: '1.0.0', lockfileVersion: 3, packages: { '': { name: 'setup-fixture', version: '1.0.0' } } }))
   writeFileSync(tool, `import {appendFileSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
-const args=process.argv.slice(2); appendFileSync('npm-calls.log', JSON.stringify(args)+'\\n');
+const rawArgs=process.argv.slice(2); appendFileSync('npm-calls.log', JSON.stringify(rawArgs)+'\\n'); const args=rawArgs.filter(arg=>arg!=='--omit=dev'&&!arg.startsWith('--auth-token='));
 if(args[0]==='--version') { if(process.env.TEST_MUTATE_VERSION) writeFileSync('package-lock.json', readFileSync('package-lock.json','utf8')+' '); console.log(process.env.TEST_NPM_VERSION??'10.9.3'); }
 else if(args[0]==='ci') {
  if(process.env.TEST_MUTATE_INPUT) writeFileSync('package-lock.json', readFileSync('package-lock.json','utf8')+' ');
  if(process.env.TEST_NPM_CAUSE) { console.error(JSON.stringify({error:{code:process.env.TEST_NPM_CAUSE,summary:'secret-token-do-not-copy',detail:'https://user:password@registry.example'}})); process.exit(1); }
  if(process.env.TEST_NPM_DELAY) await new Promise(resolve=>setTimeout(resolve,10000));
- mkdirSync('node_modules', {recursive:true}); writeFileSync('node_modules/package.txt', 'installed');
+ mkdirSync('node_modules', {recursive:true}); writeFileSync('node_modules/package.txt', rawArgs.includes('--omit=dev')?'installed without dev':'installed');
 } else process.exit(2);
 `)
   const npm = { command: process.execPath, args: [tool] }
@@ -55,6 +56,15 @@ it('resolves npm_execpath with spaces through Node argv without a platform shell
   expect(f.calls()[1]).toContain('--offline')
 })
 
+it.each(['node_modules/npm/bin/npm-cli.js', 'npm/bin/npm-cli.js'])('discovers a PATH-only npm.cmd beside %s without invoking the shim', async relativeCli => {
+  const pathDir = join(directory(), 'npm shim with spaces'), nodeExecutable = join(directory(), 'unbundled-node')
+  const cli = join(pathDir, relativeCli); mkdirSync(dirname(cli), { recursive: true }); writeFileSync(cli, '// npm CLI fixture')
+  writeFileSync(join(pathDir, 'npm.cmd'), '@echo off\nexit /b 99\n')
+  const module = await import(/* @vite-ignore */ pathToFileURL(resolve('bench/dependency-setup.mjs')).href)
+  expect(module.resolveNpmInvocation).toBeTypeOf('function')
+  expect(module.resolveNpmInvocation({ PATH: [directory(), pathDir].join(delimiter) }, nodeExecutable)).toEqual({ command: nodeExecutable, args: [cli] })
+})
+
 it.each(['package.json', 'package-lock.json'])('invalidates installation reuse when %s changes', async input => {
   const f = fixture(), original = await setup(f.root, f.options)
   writeFileSync(join(f.root, input), readFileSync(join(f.root, input), 'utf8')+'\n')
@@ -70,6 +80,17 @@ it('rejects a deleted lockfile before invoking npm or reusing an old receipt', a
   expect(f.calls()).toHaveLength(calls)
 })
 
+it.each(['deleted', 'corrupt'])('invalidates a successful receipt after failed setup with a %s lockfile even if its original bytes return', async state => {
+  const f = fixture(), lock = join(f.root, 'package-lock.json'), original = readFileSync(lock), first = await setup(f.root, f.options)
+  if (state === 'deleted') rmSync(lock)
+  else writeFileSync(lock, 'invalid-json')
+  expect(await setup(f.root, f.options)).toMatchObject({ status: 'failed', failure: { kind: 'invalid-input' } })
+  expect(existsSync(first.receiptPath)).toBe(false)
+  writeFileSync(lock, original)
+  expect((await setup(f.root, f.options)).status).toBe('installed')
+  expect(f.calls().filter(args => args[0] === 'ci')).toHaveLength(2)
+})
+
 it('invalidates reuse after npm version, install arguments or recorded environment change', async () => {
   const f = fixture(); const installed = await setup(f.root, f.options)
   const receipt = JSON.parse(readFileSync(installed.receiptPath, 'utf8')); receipt.identity.nodeVersion='v0.0.0'; writeFileSync(installed.receiptPath, JSON.stringify(receipt))
@@ -78,6 +99,30 @@ it('invalidates reuse after npm version, install arguments or recorded environme
   expect((await setup(f.root, { ...f.options, offline: true })).status).toBe('installed')
   expect(f.calls().at(-1)).toContain('--offline')
   expect(f.calls().filter(args => args[0] === 'ci')).toHaveLength(4)
+})
+
+it.each(['command', 'prefix'])('invalidates reuse when the actual npm invocation %s changes at the same npm version', async change => {
+  const f = fixture(), first = await setup(f.root, f.options)
+  let npm
+  if (change === 'prefix') npm = { ...f.npm, args: [...f.npm.args, '--omit=dev'] }
+  else {
+    const alias = join(directory(), process.platform === 'win32' ? 'node-alias.exe' : 'node-alias')
+    symlinkSync(process.execPath, alias)
+    npm = { ...f.npm, command: alias }
+  }
+  const second = await setup(f.root, { ...f.options, npm })
+  expect(second.status).toBe('installed'); expect(second.fingerprint).not.toBe(first.fingerprint)
+  expect(f.calls().filter(args => args.includes('ci'))).toHaveLength(2)
+  const receipt = JSON.parse(readFileSync(second.receiptPath, 'utf8'))
+  expect(receipt.identity.invocation).toEqual({ commandHash: createHash('sha256').update(npm.command).digest('hex'), prefixArgsHash: createHash('sha256').update(JSON.stringify(npm.args)).digest('hex') })
+  if (change === 'prefix') expect(readFileSync(join(f.root, 'node_modules/package.txt'), 'utf8')).toBe('installed without dev')
+})
+
+it('binds arbitrary trusted npm prefixes without persisting their secrets in a receipt', async () => {
+  const f = fixture(), prefix = [...f.npm.args, '--auth-token=secret-prefix-do-not-record']
+  const result = await setup(f.root, { ...f.options, npm: { ...f.npm, args: prefix } })
+  expect(result.status).toBe('installed')
+  expect(readFileSync(result.receiptPath, 'utf8')).not.toContain('secret-prefix-do-not-record')
 })
 
 it('does not reuse a receipt without a present installation', async () => {
@@ -129,6 +174,14 @@ it.each(['node_modules', '.yoke', '.cache', '.vite', '.vite-temp'])('rejects a l
   symlinkSync(outside, join(f.root, path), 'junction')
   expect(await setup(f.root, f.options)).toMatchObject({ status: 'failed', failure: { kind: 'unsafe-path' } })
   expect(f.calls()).toEqual([])
+})
+
+it('invalidates its safely owned receipt on a cache-boundary failure while preserving the linked target', async () => {
+  const f = fixture(), first = await setup(f.root, f.options), outside = directory()
+  writeFileSync(join(outside, 'keep.txt'), 'KEEP'); symlinkSync(outside, join(f.root, '.cache'), 'junction')
+  expect(await setup(f.root, f.options)).toMatchObject({ status: 'failed', failure: { kind: 'unsafe-path' } })
+  expect(existsSync(first.receiptPath)).toBe(false)
+  expect(readFileSync(join(outside, 'keep.txt'), 'utf8')).toBe('KEEP')
 })
 
 it.each(['package.json', 'package-lock.json', 'receipt'])('rejects linked %s without modifying its target', async input => {

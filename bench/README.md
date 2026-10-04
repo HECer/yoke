@@ -69,7 +69,10 @@ establish installation readiness or provider-cache warmth.
 `setupNpmDependencies(projectDir, options)` in `dependency-setup.mjs` supports `offline`,
 `cacheDir`, `timeoutMs`, `reuse` and a trusted `npm: { command, args }` invocation override.
 Its ignored `node_modules/.yoke-dependency-setup.json` receipt binds package/lock bytes,
-Node/platform/architecture, observed npm version and exact installation arguments.
+Node/platform/architecture, observed npm version, exact installation arguments and
+digests of the executed npm command and any trusted invocation prefix. Prefix digests
+bind policy changes without persisting credential arguments. Default npm discovery uses
+Node argv for npm CLI scripts beside Node or PATH shims, including Windows `npm.cmd` layouts.
 Matching receipts allow reuse only with a present local installation. Changed inputs,
 missing installs and failed setup invalidate reuse. A receipt records setup readiness;
 it does not attest every installed byte. Setup refuses success if npm changes package inputs
