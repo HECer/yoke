@@ -12,6 +12,7 @@ import { isPidAlive } from './lock.js'
 import { storyPathSegment } from './prd.js'
 import { killProcessTreeForCleanup } from './watchdog.js'
 import { parallelAcceptanceDigest, recoverParallelWorktree, retainParallelWorktree } from './recovery.js'
+import { cacheIsolationProblem } from './cache-isolation.js'
 import { retainRuntimeProof } from './proof-retention.js'
 import { writeScopesOverlap } from './scheduler.js'
 import { statePath } from '../workspace/state.js'
@@ -212,6 +213,8 @@ function writeCandidateStatus(
 }
 
 function rebaseCandidate(targetDir: string, input: DispatcherWorkerInput): DispatcherRebase {
+  const cacheProblem = cacheIsolationProblem(input.worktree.path)
+  if (cacheProblem) return { kind: 'reopen', reason: cacheProblem }
   const currentHead = gitText(targetDir, ['rev-parse', 'HEAD'])
   const actual = changedPaths(input.worktree.path, input.worktree.baseCommit)
   const unexpected = unexpectedWrites(input, actual)

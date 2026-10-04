@@ -1,3 +1,4 @@
+import { cacheIsolationProblem } from './cache-isolation.js'
 import { existsSync, rmSync } from 'node:fs'
 import { observeFailure, clearFailureProgress } from './failure.js'
 import { acceptanceProtectionProblem } from '../check/command.js'
@@ -60,11 +61,22 @@ export type ParallelCommandInput = {
 }
 
 export async function runParallelLoopCommand(input: ParallelCommandInput): Promise<number> {
-  const originalVerify = input.verify
+  const originalVerify = input.verify, originalCriterion = input.verifyCriterion
+  const cacheProblem = (path: string) => !input.git && path !== input.targetDir ? cacheIsolationProblem(path) : undefined
   input = { ...input, verify: path => {
-    const problem = acceptanceProtectionProblem(path, input.targetDir)
+    const problem = cacheProblem(path) ?? acceptanceProtectionProblem(path, input.targetDir)
     return problem ? { passed: false, summary: problem } : originalVerify(path)
+  }, verifyCriterion: (path, story, criterion) => {
+    const problem = cacheProblem(path)
+    return problem ? { passed: false, summary: problem } : originalCriterion(path, story, criterion)
   } }
+  for (const name of ['design', 'perf', 'audit'] as const) {
+    const gate = input[name]
+    if (gate) input = { ...input, [name]: (path: string) => {
+      const problem = cacheProblem(path)
+      return problem ? { passed: false, summary: problem } : gate(path)
+    } }
+  }
   const adapters = makeParallelAdapters(input.targetDir, input.identity, input.git)
   if (!adapters.git.isClean(input.targetDir)) {
     input.reporter.blocked('target working tree is not clean')
