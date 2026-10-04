@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.24.0 — prepared 2026-10-04
+
+### Added
+- Give the full-repository benchmark its own npm dependency installation and input-bound readiness receipts. Record setup duration and structured installer failures; stop before model dispatch when setup fails.
+- Record durable, deduplicated failure observations at production execution, verification, completion and recovery boundaries, including failures without an active story attempt. Preserve unknown causes instead of inferring them from arbitrary messages or exit codes.
+
+### Validation and limits
+- Recheck the populated NEXUS desktop on Windows using project-local dependencies and immutable original assertions. Keep the original project untouched.
+- Record three fresh-download-cache/warm-download-cache setup pairs and controlled ChatGPT-authenticated Codex CLI version samples. Download-cache warmth is separate from provider caching; prices and unobserved approval waits remain unknown.
+- Dependency setup belongs to the benchmark, not Yoke core. Readiness receipts bind setup inputs and invocation, not the integrity of every installed byte. This release is prepared for independent review; publication is a separate action.
+
 ## 1.23.0 — 2026-10-04
 
 ### Added

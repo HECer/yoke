@@ -1,0 +1,79 @@
+{
+  "adaptation": "tests/run.mjs calls npm through Node/npm_execpath on Windows; immutable assertions and application unchanged",
+  "unit": {
+    "passed": 25
+  },
+  "browser": {
+    "passed": 6,
+    "populatedDesktop": {
+      "incidents": 7,
+      "cssViewport": [
+        1440,
+        900
+      ],
+      "documentScrollHeight": 900,
+      "inspectorBottom": 760,
+      "eventsBottom": 884,
+      "eventsWithTimestamp": 9
+    }
+  },
+  "build": "passed",
+  "strictPort": 5186,
+  "servedHashes": {
+    "/src/main.tsx": "5c4843311eb0c4cb6691e028287ae0737938a7f6bfbfc5b6a6035b84b1c88c83",
+    "/src/App.tsx": "5feb4107559b5e5cc9a6a1919e2f29c52cee14aee87833c5470fa196d898439d"
+  },
+  "sourceTestHashes": {
+    "src/App.tsx": "a91a84dfb197e9adfcf8c011f48d1462729ddfe9b38469e40ec97cffe1c5ccf8",
+    "src/data.ts": "c2af57f6d88c7ee5734701c857903984733e0c24759c36c9eb96b1fabc75de18",
+    "src/main.tsx": "3d8fb7debbe20fee59c07f843f7b0976417ec32908337ce936b785377dd3569f",
+    "src/simulation.ts": "2ec5295c8b04a5ed716a44134661894d358fc27075cc7a247f319c81c624a82b",
+    "src/styles.css": "e23cd1757c837298506008fe59e4e0f2e35b5e72ab37bec84212a1b1a224ffb5",
+    "src/topology.css": "2a189a328d7f64f7176c36358459ad9bcf5c97aaedd84aaf03af96371687c1c3",
+    "src/Topology.tsx": "82493cd2f74c76195d912a15242ff24e10ee07a93caa03e8b41fa3e588e49085",
+    "src/types.ts": "38c8017294f883f4bb2cb1950ef70bd8abe02d078ce602808ef83e1db338f048",
+    "src/useSimulation.ts": "a266479a08168ef25be05ac30f1fe9e3aacab402e833c0847b34f92bd392ce14",
+    "src/components/CommandPalette.tsx": "34ce6cb22c3f13172d12f67fc184744e2fae4e474c0985281bfb0fdf0566c914",
+    "src/components/EventFeed.tsx": "9a60c1ed2afc2fc67e93a3ecae17611f25482d0bf22a4ce52740dbf1377f0f1f",
+    "src/components/Fleet.css": "8d410d8bf31f34d553f1e31f104bc949a4bfbe5616541d1fa8546e4edc29e97a",
+    "src/components/Fleet.tsx": "c89c042a543d197dcf6144790023e15a89aab3e420567e338e6d695ed6420067",
+    "src/components/Inspector.css": "6087ed37ab4d96d144b21d88d678da5fb13171a6865ac21a4512b6d6ecc2e141",
+    "src/components/Inspector.tsx": "8be5db11d1073ba7aaf9d2b2cd4b4f2447a401a012de0a196cf655f571608317",
+    "src/components/KpiStrip.tsx": "37269f85317d3f7c96726c54578680a7a147c3293887725d0f265fd66c88e43d",
+    "src/components/TelemetryVisuals.tsx": "ff85e7fc8bf68ec5a4a1bb176c6bb3c7cb631ec5daf75d9ccec1c6d6a8cbf17d",
+    "tests/foundation.test.tsx": "2a8689e8500d173808950a1cced18f0ae6cf11176932d3b83b7d69e67a3885cd",
+    "tests/operations.test.tsx": "63b58b9f2fc795fd3e309aec1a610b35067a7af92fda01e063804aa1e27f1948",
+    "tests/panels.test.tsx": "abb58511cb344f87800273c3e275ffea72ee60e91c057821d6f011363370eecb",
+    "tests/run.mjs": "ffbcd9e40317bcb9b52c1cfd1ddd124994aa746600f135a0eaf2eb9f3ff6ddd5",
+    "tests/setup.ts": "268e7200d092daa3225eb06790ed72842e5d3234a53980c90ff463d7b81528d3",
+    "tests/simulation.test.tsx": "d3c84c847f47a33aacebde1f45afa9509b728f0257a0760dc535955510acb3c4",
+    "tests/topology.browser.mjs": "f1d382d4f0525f746f2f366a4c44a1516ce45ab0b53e52363a10f13c7b5bc7be",
+    "tests/topology.test.tsx": "11e350c447fc978724f2817a0f2402f6668071188fa91a89b720a61a11c6e7f3",
+    "tests/browser/benchmark.spec.mjs": "a67013d9013d46da70e64a4367d011a6aabd0846cfff59defa552e4bda44e155"
+  },
+  "proofPngDimensions": {
+    "fleet.png": [
+      1440,
+      900
+    ],
+    "incident.png": [
+      1440,
+      900
+    ],
+    "mobile.png": [
+      390,
+      844
+    ],
+    "overview.png": [
+      1440,
+      900
+    ],
+    "selected-machine.png": [
+      1440,
+      900
+    ]
+  },
+  "t3Screenshot": "C:/Users/HEC_e/.t3/userdata/browser-artifacts/browser-screenshot-127-0-0-1-mutuv530-3151a827.png",
+  "originalUnchanged": true,
+  "identityLimits": "Strict own port; served hashes captured after visual inspection, not a pre/post deployment attestation."
+}
