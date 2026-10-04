@@ -1,0 +1,8 @@
+story,title,passes,implementation_attempts,implementation_seconds,verification_seconds,integration_seconds,queue_wait_seconds,input_tokens,cached_input_tokens,output_tokens,measured_provider_calls
+STORY-1,Scaffold runnable typed NEXUS foundation and test infrastructure,True,1,565.898,3.058,6.301,0.007,1435585,1314176,12725,1
+STORY-2,"Implement deterministic telemetry, incidents and operator machine actions",True,1,367.382,2.816,8.723,0.011,698268,643968,8663,1
+STORY-3,Create visually distinctive interactive digital twin topology,True,1,696.314,5.19,9.183,0.007,2080455,1994752,15192,1
+STORY-4,"Build detailed machine inspector, Fleet and operational events/KPIs",True,1,505.759,4.124,11.815,0.004,921789,857088,12190,1
+STORY-5,Integrate complete operations interface and searchable keyboard command palette,True,2,566.104,11.58,35.665,0.014,1347301,1245568,11899,2
+STORY-6,"Verify integrated benchmark in browser, repair defects and save all visual proofs",True,1,683.215,28.821,28.292,0.005,2950211,2853888,13068,1
+STORY-7,Repair verified desktop containment and mobile priority; refresh visual proof,True,1,484.22,18.435,0,0.007,1800983,1712512,8456,1

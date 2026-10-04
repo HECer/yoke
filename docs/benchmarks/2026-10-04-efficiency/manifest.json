@@ -1,0 +1,125 @@
+{
+  "created": "2026-10-04",
+  "yoke_source_commit": "e2e3c18",
+  "measurement_cutoff_utc": "2026-10-04T09:27:32.214737+00:00",
+  "scope": "Selected evidence only; full model sessions, shell metrics, screenshots and status samples remain at source.",
+  "files": [
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\summary.json",
+      "copy": "raw\\summary.json",
+      "sha256": "229f334a465a6d04c1078202557d27ba1f34e91045251f574893977dac3d932b",
+      "bytes": 12888
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\stories.csv",
+      "copy": "raw\\stories.csv",
+      "sha256": "2065f027d1867431e9d0d2845106da14ba92cd38c3548fe3a4bbb27fddd1c90d",
+      "bytes": 1168
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\roles.csv",
+      "copy": "raw\\roles.csv",
+      "sha256": "6d9444e824ab15bad5450b254aa66f645e29ab7f3db48d3f7f9afae6ea430779",
+      "bytes": 378
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\yoke-phases.csv",
+      "copy": "raw\\yoke-phases.csv",
+      "sha256": "bbad66f4c3ba41781cf76222ea83d3c62070bbd7995e862ce48cc05e031b3cb8",
+      "bytes": 294
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\shell-categories.csv",
+      "copy": "raw\\shell-categories.csv",
+      "sha256": "9ff81a192ea799fcc51738087e37f612086cd5ca4ded00de6e06f44524f5e74a",
+      "bytes": 351
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\model-purpose-hints.csv",
+      "copy": "raw\\model-purpose-hints.csv",
+      "sha256": "2d1adacdc01cfb17e764ab84c2164ce5849dfb3c38240ef8b334b0fcf53f88f6",
+      "bytes": 1005
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\observer-command-phases.csv",
+      "copy": "raw\\observer-command-phases.csv",
+      "sha256": "08a4619844836497d6c9c98972bae759d07f15b10bdb337b1599d785627c1fa0",
+      "bytes": 476
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\yoke-history.jsonl",
+      "copy": "raw\\yoke-history.jsonl",
+      "sha256": "844dfabe11be010597b6694f4e86d84372cbc20ff7ed155733adcbe1da68fa12",
+      "bytes": 37522
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\observations.jsonl",
+      "copy": "raw\\observations.jsonl",
+      "sha256": "a594301f8b6fcc624db1e02c6eee42a20416c7db4f3f9994708cc13aa6670312",
+      "bytes": 10810
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\commands.jsonl",
+      "copy": "raw\\commands.jsonl",
+      "sha256": "a33e17d6c9fbbc679fd6b51ec152cf58c54e2b740473aeda703d372419e1069b",
+      "bytes": 9973
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\environment.json",
+      "copy": "raw\\environment.json",
+      "sha256": "c28c57bef5b0b02d9ec2b5a9946f4f5f7153876a81adc691054cc1445c284a5d",
+      "bytes": 786
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\final-yoke-smoke.json",
+      "copy": "raw\\final-yoke-smoke.json",
+      "sha256": "dd3ae282a5dae3cda9b6dc6a278d0086ef97acc794652d3a6e621401842fdb15",
+      "bytes": 1074
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\yoke-loop-1.log",
+      "copy": "raw\\yoke-loop-1.log",
+      "sha256": "33ae649658411fe5c5a2717a97244178ebae55b152bdb7f60e606f53b5c1e0e1",
+      "bytes": 4232
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\yoke-loop-2.log",
+      "copy": "raw\\yoke-loop-2.log",
+      "sha256": "36b62e1c4bbcafe6e7f1a8bea19f4ebe36d470f9c70dc60ef8b036bef6713a8f",
+      "bytes": 1906
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\yoke-loop-3.log",
+      "copy": "raw\\yoke-loop-3.log",
+      "sha256": "cddf9adb7482b91e8aace24b754daeea2df6895723041868797fcb7dc82e523f",
+      "bytes": 473
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\measurements\\yoke-loop-4.log",
+      "copy": "raw\\yoke-loop-4.log",
+      "sha256": "e3e6e099d98b1e4681503faab42446ffa1fa003bf4ef0cf3f0caeebb56dbc3e9",
+      "bytes": 1035
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\DEVELOPMENT_ANALYSIS.md",
+      "copy": "raw\\DEVELOPMENT_ANALYSIS.md",
+      "sha256": "f1f7ba9f901376809bddf43bfb4a3f0b2f9fe9d8f4893aa1fd8335aac6bd5dc0",
+      "bytes": 19452
+    },
+    {
+      "source": "G:\\NN-Developed\\ToolTesting\\Yoke\\YokeEfficiencyTest1\\benchmark-artifacts\\RESULT.md",
+      "copy": "raw\\RESULT.md",
+      "sha256": "b8ca35238a32fab4971ac1518afbc7991c7333f5f2f1f868bc1afaa850647807",
+      "bytes": 3110
+    }
+  ],
+  "checks": {
+    "copied_files": 18,
+    "history_events": 104,
+    "unique_history_ids": true,
+    "raw_phase_sums_match_summary": true,
+    "role_usage_sums_match_summary": true,
+    "all_seven_stories_pass": true,
+    "product_tests_run": false
+  }
+}

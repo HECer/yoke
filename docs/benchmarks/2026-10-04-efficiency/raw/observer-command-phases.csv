@@ -1,0 +1,12 @@
+phase,commands,failed,wall_seconds,child_cpu_seconds
+environment,4,1,0.9144000000000001,0.6464
+code-intelligence,3,0,1.9868000000000001,1.2511999999999999
+planning,5,1,61.429300000000005,11.0399
+dependency-setup,2,1,10.0491,6.7957
+yoke-smoke,1,1,0.4226,0.2707
+execution,4,2,3384.74,1277.8591999999999
+recovery,1,0,0.5313,0.3452
+dev-server,1,1,0.8258,0.5059
+browser-inspection,2,0,14.34,5.4323
+final-validation,1,0,19.997,30.0019
+final-yoke-smoke,2,2,5.5131,4.1831

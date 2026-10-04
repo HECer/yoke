@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "startedAt": "2026-10-04T09:28:19.236Z",
+  "generatedAt": "2026-10-04T09:28:21.392Z",
+  "durationMs": 2156,
+  "status": "passed",
+  "sourceFingerprint": "b75398d707bf14c97f8032a13a8be4bea197a6f0ea6169bad7b9c9fd8cc1c821",
+  "afterSourceFingerprint": "b75398d707bf14c97f8032a13a8be4bea197a6f0ea6169bad7b9c9fd8cc1c821",
+  "sourceStable": true,
+  "configDigest": "82535fa082b63b11ba8c0cb012f4f5e5775cd6d1bc2d062fb04a6b8cbc51eb1c",
+  "environment": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "nodeVersion": "v22.23.2",
+    "driver": "playwright-chromium",
+    "browserVersion": "153.0.8010.12",
+    "baseOrigin": "http://127.0.0.1:6317",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "flows": [
+    {
+      "name": "foundation",
+      "status": "passed",
+      "durationMs": 846,
+      "navigation": {
+        "status": "passed",
+        "durationMs": 183
+      },
+      "landmark": {
+        "status": "passed",
+        "durationMs": 182
+      },
+      "steps": [],
+      "screenshot": "foundation.png"
+    }
+  ]
+}

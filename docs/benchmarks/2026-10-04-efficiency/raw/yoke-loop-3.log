@@ -1,0 +1,5 @@
+Commits: Hermann Fischer <HEC_er@web.de> · co-authors: disabled
+Runner: codex · permissions: safe · routing: on · workers: 1 local / 3 shared maximum · isolation: on · cwd: .
+■ blocked on ?: change intake blocked by dirty worktree: git worktree is dirty — commit or stash before running the loop
+Loop blocked after 0 iteration(s): 6/7 stories pass
+Reason: change intake blocked by dirty worktree: git worktree is dirty — commit or stash before running the loop
