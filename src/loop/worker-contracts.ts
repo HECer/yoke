@@ -107,6 +107,6 @@ export type StoryWorkerInput = {
   readonly cancellation?: StoryWorkerCancellation
   readonly beforeGates?: (context: AgentContext) => string | null
   readonly pause?: () => boolean
-  readonly reporter?: Pick<LoopReporter, 'phase' | 'addTokens' | 'quality'>
+  readonly reporter?: Pick<LoopReporter, 'phase' | 'addTokens' | 'quality' | 'failure'>
   readonly callbacks?: StoryWorkerCallbacks
 }

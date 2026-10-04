@@ -125,7 +125,9 @@ describe('parallel incomplete worker recovery', () => {
             calls++
             if (calls > 1) {
               expect(input.worktree.path).toBe(firstPath)
-              expect(input.worktree.recovery).toEqual({ phase: 'implementation', feedback })
+              const saved = JSON.parse(readFileSync(record, 'utf8'))
+              expect(input.worktree.recovery).toEqual({ phase: 'implementation', feedback, ...(saved.observation ? { observation: saved.observation } : {}) })
+              if (scenario === 'thrown') expect(saved.observation).toMatchObject({ failureCategory: 'unknown', failureCause: 'unknown' })
               expect(readFileSync(join(input.worktree.path, 'implementation.txt'), 'utf8')).toBe('useful partial implementation')
               writeFileSync(join(input.worktree.path, 'implementation.txt'), 'repaired implementation')
               return candidate(input)

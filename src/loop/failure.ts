@@ -6,9 +6,11 @@ import { workspaceFingerprint } from '../workspace/fingerprint.js'
 import { statePath } from '../workspace/state.js'
 import type { Story } from './prd.js'
 import { currentContractKey, readPlanningFile } from '../routing/contracts.js'
+import { failureObservation, safeFailure, type FailureObservation } from '../observability/failure.js'
 
 export type FailureStage = 'implementation' | 'criterion' | 'verify' | 'design' | 'perf' | 'audit' | 'quality' | 'integration' | 'completion'
 export interface LoopFailure {
+  readonly observation?: FailureObservation
   readonly kind: 'completion-failed' | 'verification-failed' | 'no-progress'
   readonly stage: FailureStage
   readonly storyId?: string
@@ -44,9 +46,10 @@ function stableFailureSummary(summary: string): string {
 
 /** Per-story failure checkpoint, outside isolated workers and independent of provider. */
 export function observeFailure(input: {
-  root: string; directory: string; story?: Story; stage: FailureStage; summary: string; scope?: string
+  root: string; directory: string; story?: Story; stage: FailureStage; summary: string; scope?: string; observation?: FailureObservation
 }): { action: 'retry' | 'diagnose' | 'blocked'; feedback: string; failure: LoopFailure } {
   const base: LoopFailure = {
+    observation: safeFailure(input.observation) ?? failureObservation(),
     kind: input.stage === 'completion' ? 'completion-failed' : 'verification-failed',
     stage: input.stage, ...(input.story ? { storyId: input.story.id } : {}),
   }
@@ -84,7 +87,7 @@ export function observeFailure(input: {
     }
     return { action: 'retry', failure, feedback: input.summary }
   } catch (error) {
-    return { action: 'blocked', failure: { ...base, kind: 'no-progress' }, feedback: `Failure progress could not be verified; automatic continuation stopped: ${error instanceof Error ? error.message : String(error)}. Last failure: ${input.summary}` }
+    return { action: 'blocked', failure: { ...base, observation: failureObservation('storage'), kind: 'no-progress' }, feedback: `Failure progress could not be verified; automatic continuation stopped: ${error instanceof Error ? error.message : String(error)}. Last failure: ${input.summary}` }
   }
 }
 

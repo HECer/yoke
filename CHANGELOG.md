@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.24.0 — 2026-10-04
+
+### Added
+- Give the full-repository benchmark its own npm dependency installation and input-bound readiness receipts. Record setup duration and structured installer failures; stop before model dispatch when setup fails.
+- Record durable, deduplicated failure observations at production execution, verification, completion and recovery boundaries, including failures without an active story attempt. Preserve unknown causes instead of inferring them from arbitrary messages or exit codes.
+
+### Validation and limits
+- Recheck the populated NEXUS desktop on Windows using project-local dependencies and immutable original assertions. Keep the original project untouched.
+- Record three fresh-download-cache/warm-download-cache setup pairs and controlled ChatGPT-authenticated Codex CLI version samples. Download-cache warmth is separate from provider caching; prices and unobserved approval waits remain unknown.
+- Dependency setup belongs to the benchmark, not Yoke core. Readiness receipts bind setup inputs and invocation, not the integrity of every installed byte. Independent code and measurement reviews passed; no general speed, token or cost improvement is claimed.
+
 ## 1.23.0 — 2026-10-04
 
 ### Added
@@ -19,7 +30,7 @@
 - Existing browser smoke projects must pin an app-specific served source path and its lowercase SHA-256. Update the pin intentionally after source changes; a static byte pin establishes response identity, not an independent deployment attestation.
 - Shared package download stores remain allowed. Worktrees need their own `node_modules` root and writable `.vite-temp`, `.vite` and `.cache` directories. The guard covers these conventional roots, not arbitrary application-defined cache paths or concurrent changes after inspection.
 - No dependency installer or retry policy was added: Yoke does not own one. Full-product model speed/cost and genuine npm/provider cold/warm cache comparisons remain unmeasured. The paired help experiment is a local regression check only.
-- See the [analysis](docs/benchmarks/2026-10-04-efficiency/ANALYSE.md) and [validation record](docs/RELEASE-VALIDATION-1.23.0.md). Version metadata is prepared locally; publication requires independent review and release gates, followed by verified CI/npm evidence.
+- See the [analysis](docs/benchmarks/2026-10-04-efficiency/ANALYSIS.md) and [validation record](docs/RELEASE-VALIDATION-1.23.0.md). Version metadata is prepared locally; publication requires independent review and release gates, followed by verified CI/npm evidence.
 
 ## 1.22.0 — 2026-10-03
 

@@ -1,3 +1,4 @@
+import { executionFailure, type FailureObservation } from '../observability/failure.js'
 export interface MergeJob<Prepared> {
   storyId: string
   rebase(): Promise<Prepared> | Prepared
@@ -8,8 +9,8 @@ export interface MergeJob<Prepared> {
 
 export type MergeResult =
   | { readonly storyId: string; readonly status: 'integrated'; readonly integrated: true }
-  | { readonly storyId: string; readonly status: 'reopened'; readonly integrated: false; readonly reason: string }
-  | { readonly storyId: string; readonly status: 'integrated-but-blocked'; readonly integrated: true; readonly reason: string }
+  | { readonly storyId: string; readonly status: 'reopened'; readonly integrated: false; readonly reason: string; readonly failure?: FailureObservation }
+  | { readonly storyId: string; readonly status: 'integrated-but-blocked'; readonly integrated: true; readonly reason: string; readonly failure?: FailureObservation }
 
 export class MergeQueue {
   private tail: Promise<unknown> = Promise.resolve()
@@ -24,10 +25,10 @@ export class MergeQueue {
           await job.postIntegrateVerify?.(prepared)
           return { storyId: job.storyId, status: 'integrated', integrated: true }
         } catch (error) {
-          return { storyId: job.storyId, status: 'integrated-but-blocked', integrated: true, reason: error instanceof Error ? error.message : String(error) }
+          return { storyId: job.storyId, status: 'integrated-but-blocked', integrated: true, reason: error instanceof Error ? error.message : String(error), failure: executionFailure(error) }
         }
       } catch (error) {
-        return { storyId: job.storyId, status: 'reopened', integrated: false, reason: error instanceof Error ? error.message : String(error) }
+        return { storyId: job.storyId, status: 'reopened', integrated: false, reason: error instanceof Error ? error.message : String(error), failure: executionFailure(error) }
       }
     }
     const result = this.tail.then(run, run)

@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 1,
+  "helperCommit": "5a9e208",
+  "lifecycleScripts": false,
+  "hostLoad": "uncontrolled",
+  "order": "cold/warm, warm/cold, cold/warm; warm pair 2 uses populated pair 1 cache",
+  "samples": [
+    {
+      "pair": 1,
+      "temperature": "cold",
+      "cacheSourcePair": 1,
+      "cachePolicy": "fresh isolated cache; online",
+      "status": "installed",
+      "durationMs": 3580.5953,
+      "fingerprint": "4d3dca02d56225cad5e1cdd539643e181edc27043c3a5f5ba5653f5fbfe5319d",
+      "packageSha256": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+      "lockSha256": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636",
+      "receipt": {
+        "version": 1,
+        "status": "installed",
+        "fingerprint": "4d3dca02d56225cad5e1cdd539643e181edc27043c3a5f5ba5653f5fbfe5319d",
+        "identity": {
+          "inputs": {
+            "package.json": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+            "package-lock.json": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636"
+          },
+          "nodeVersion": "v24.13.0",
+          "platform": "win32",
+          "arch": "x64",
+          "npmVersion": "11.6.2",
+          "invocation": {
+            "commandHash": "9fc98d629f2c0874ab3eb8d89d492417a2a0b86a41510a7bb810f62ffca18290",
+            "prefixArgsHash": "42b648efda4cd32d6cb2001295aae16b61c2e1e7e841257c7b36befc350ddae3"
+          },
+          "args": [
+            "ci",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+            "--json",
+            "--fetch-retries=0",
+            "--cache",
+            "<download-cache-for-cold-pair-1>"
+          ]
+        },
+        "durationMs": 3579.0464
+      }
+    },
+    {
+      "pair": 1,
+      "temperature": "warm",
+      "cacheSourcePair": 1,
+      "cachePolicy": "cache populated by recorded cold sample; offline; fresh project install",
+      "status": "installed",
+      "durationMs": 2600.9947999999995,
+      "fingerprint": "abf93ed7d476525fb536e158ce4671e121970516957903748c1b11ee02bd889f",
+      "packageSha256": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+      "lockSha256": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636",
+      "receipt": {
+        "version": 1,
+        "status": "installed",
+        "fingerprint": "abf93ed7d476525fb536e158ce4671e121970516957903748c1b11ee02bd889f",
+        "identity": {
+          "inputs": {
+            "package.json": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+            "package-lock.json": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636"
+          },
+          "nodeVersion": "v24.13.0",
+          "platform": "win32",
+          "arch": "x64",
+          "npmVersion": "11.6.2",
+          "invocation": {
+            "commandHash": "9fc98d629f2c0874ab3eb8d89d492417a2a0b86a41510a7bb810f62ffca18290",
+            "prefixArgsHash": "42b648efda4cd32d6cb2001295aae16b61c2e1e7e841257c7b36befc350ddae3"
+          },
+          "args": [
+            "ci",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+            "--json",
+            "--fetch-retries=0",
+            "--cache",
+            "<download-cache-for-cold-pair-1>",
+            "--offline"
+          ]
+        },
+        "durationMs": 2600.4794
+      }
+    },
+    {
+      "pair": 2,
+      "temperature": "warm",
+      "cacheSourcePair": 1,
+      "cachePolicy": "cache populated by recorded cold sample; offline; fresh project install",
+      "status": "installed",
+      "durationMs": 2822.7496,
+      "fingerprint": "abf93ed7d476525fb536e158ce4671e121970516957903748c1b11ee02bd889f",
+      "packageSha256": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+      "lockSha256": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636",
+      "receipt": {
+        "version": 1,
+        "status": "installed",
+        "fingerprint": "abf93ed7d476525fb536e158ce4671e121970516957903748c1b11ee02bd889f",
+        "identity": {
+          "inputs": {
+            "package.json": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+            "package-lock.json": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636"
+          },
+          "nodeVersion": "v24.13.0",
+          "platform": "win32",
+          "arch": "x64",
+          "npmVersion": "11.6.2",
+          "invocation": {
+            "commandHash": "9fc98d629f2c0874ab3eb8d89d492417a2a0b86a41510a7bb810f62ffca18290",
+            "prefixArgsHash": "42b648efda4cd32d6cb2001295aae16b61c2e1e7e841257c7b36befc350ddae3"
+          },
+          "args": [
+            "ci",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+            "--json",
+            "--fetch-retries=0",
+            "--cache",
+            "<download-cache-for-cold-pair-1>",
+            "--offline"
+          ]
+        },
+        "durationMs": 2822.3563999999997
+      }
+    },
+    {
+      "pair": 2,
+      "temperature": "cold",
+      "cacheSourcePair": 2,
+      "cachePolicy": "fresh isolated cache; online",
+      "status": "installed",
+      "durationMs": 3366.437,
+      "fingerprint": "318aaa61dc852a6c8c10d3a513ef2ec0961a24d087ed98142328db1d20b5f99b",
+      "packageSha256": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+      "lockSha256": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636",
+      "receipt": {
+        "version": 1,
+        "status": "installed",
+        "fingerprint": "318aaa61dc852a6c8c10d3a513ef2ec0961a24d087ed98142328db1d20b5f99b",
+        "identity": {
+          "inputs": {
+            "package.json": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+            "package-lock.json": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636"
+          },
+          "nodeVersion": "v24.13.0",
+          "platform": "win32",
+          "arch": "x64",
+          "npmVersion": "11.6.2",
+          "invocation": {
+            "commandHash": "9fc98d629f2c0874ab3eb8d89d492417a2a0b86a41510a7bb810f62ffca18290",
+            "prefixArgsHash": "42b648efda4cd32d6cb2001295aae16b61c2e1e7e841257c7b36befc350ddae3"
+          },
+          "args": [
+            "ci",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+            "--json",
+            "--fetch-retries=0",
+            "--cache",
+            "<download-cache-for-cold-pair-2>"
+          ]
+        },
+        "durationMs": 3366.0841
+      }
+    },
+    {
+      "pair": 3,
+      "temperature": "cold",
+      "cacheSourcePair": 3,
+      "cachePolicy": "fresh isolated cache; online",
+      "status": "installed",
+      "durationMs": 7263.422699999999,
+      "fingerprint": "c3f7f9616b717c8b9d967b73d23fdd2a06b47eb9210090c943b4f9aa7950fd5a",
+      "packageSha256": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+      "lockSha256": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636",
+      "receipt": {
+        "version": 1,
+        "status": "installed",
+        "fingerprint": "c3f7f9616b717c8b9d967b73d23fdd2a06b47eb9210090c943b4f9aa7950fd5a",
+        "identity": {
+          "inputs": {
+            "package.json": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+            "package-lock.json": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636"
+          },
+          "nodeVersion": "v24.13.0",
+          "platform": "win32",
+          "arch": "x64",
+          "npmVersion": "11.6.2",
+          "invocation": {
+            "commandHash": "9fc98d629f2c0874ab3eb8d89d492417a2a0b86a41510a7bb810f62ffca18290",
+            "prefixArgsHash": "42b648efda4cd32d6cb2001295aae16b61c2e1e7e841257c7b36befc350ddae3"
+          },
+          "args": [
+            "ci",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+            "--json",
+            "--fetch-retries=0",
+            "--cache",
+            "<download-cache-for-cold-pair-3>"
+          ]
+        },
+        "durationMs": 7262.9905
+      }
+    },
+    {
+      "pair": 3,
+      "temperature": "warm",
+      "cacheSourcePair": 3,
+      "cachePolicy": "cache populated by recorded cold sample; offline; fresh project install",
+      "status": "installed",
+      "durationMs": 2854.4354999999996,
+      "fingerprint": "de142c0103fbb1c13a87225df96071e49dcad0093c1084c66410c7675fd66f0c",
+      "packageSha256": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+      "lockSha256": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636",
+      "receipt": {
+        "version": 1,
+        "status": "installed",
+        "fingerprint": "de142c0103fbb1c13a87225df96071e49dcad0093c1084c66410c7675fd66f0c",
+        "identity": {
+          "inputs": {
+            "package.json": "847908b18d9c03db91f315400c84212f1fb070514d90d16a0fdb33e333dfddae",
+            "package-lock.json": "8e10afae7f92eaa1161c362618920954dc5730b0e8d5947d6ed1853b4d359636"
+          },
+          "nodeVersion": "v24.13.0",
+          "platform": "win32",
+          "arch": "x64",
+          "npmVersion": "11.6.2",
+          "invocation": {
+            "commandHash": "9fc98d629f2c0874ab3eb8d89d492417a2a0b86a41510a7bb810f62ffca18290",
+            "prefixArgsHash": "42b648efda4cd32d6cb2001295aae16b61c2e1e7e841257c7b36befc350ddae3"
+          },
+          "args": [
+            "ci",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+            "--json",
+            "--fetch-retries=0",
+            "--cache",
+            "<download-cache-for-cold-pair-3>",
+            "--offline"
+          ]
+        },
+        "durationMs": 2853.8090999999986
+      }
+    }
+  ],
+  "sampleCountPerCondition": 3,
+  "note": "Public receipt cache paths are normalized; fingerprint binds original exact path. Originals remain local. Earlier5789f0e samples remain in repository history; these are new independent installs after5a9e208 fixes."
+}

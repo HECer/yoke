@@ -2,6 +2,7 @@ import { appendFileSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import type { LoopEvent } from './events.js'
+import { safeFailure } from './failure.js'
 
 // Persistent, compact measurements; no prompts, paths, summaries or status snapshots.
 // Each run owns its shard. Recent activity retention never deletes this history.
@@ -25,7 +26,8 @@ export function archiveMeasurement(root: string, event: LoopEvent): void {
   const data = event.data ?? {}
   const allowed = ['inputTokens', 'outputTokens', 'cachedInputTokens', 'cacheWriteInputTokens', 'reasoningOutputTokens', 'totalCostUsd', 'agent', 'provider', 'model', 'actualModel', 'requestedProvider', 'requestedModel', 'requestedReasoningEffort', 'requestedVariant', 'variant', 'role', 'callId', 'parentCallId', 'calls', 'measurementComplete', 'costMeasurementComplete', 'usageAvailable', 'prediction', 'errorMs', 'withinObservedRange', 'escalated']
   allowed.push('usageSource', 'usageMissingFields', 'usagePartialFields', 'failureCategory')
-  const compact = { ...event, data: Object.fromEntries(allowed.filter(key => data[key] !== undefined).map(key => [key, data[key]])) }
+  if (event.type === 'failure') allowed.splice(0, allowed.length)
+  const compact = { ...event, data: { ...Object.fromEntries(allowed.filter(key => data[key] !== undefined).map(key => [key, data[key]])), ...safeFailure(data) } }
   appendFileSync(file, JSON.stringify(compact) + '\n')
 }
 

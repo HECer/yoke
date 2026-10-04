@@ -15,12 +15,13 @@ import type { StoryWorkerCancellation, StoryWorkerProvider, StoryWorkerResult } 
 import { createWorkerCleanup } from './worker-cleanup.js'
 import type { PoolLease, PoolRole, SharedPoolStatus } from './resource-pool.js'
 import type { ParallelRecoveryPhase } from './recovery.js'
+import { executionFailure, failureObservation, observedError, type FailureObservation } from '../observability/failure.js'
 
 export type DispatcherWorktree = {
   readonly path: string
   readonly baseCommit: string
   readonly recovered?: true
-  readonly recovery?: { readonly phase: ParallelRecoveryPhase; readonly feedback: string }
+  readonly recovery?: { readonly phase: ParallelRecoveryPhase; readonly feedback: string; readonly observation?: FailureObservation }
 }
 export type DispatcherWorkerInput = {
   readonly story: Story
@@ -32,7 +33,7 @@ export type DispatcherWorkerInput = {
   readonly candidateRace?: true
 }
 export type DispatcherRebase = { readonly kind: 'rebased'; readonly expectedHead: string } | { readonly kind: 'reopen'; readonly reason: string }
-export type DispatcherGate = { readonly passed: boolean; readonly summary: string }
+export type DispatcherGate = VerifyResult
 export type DispatcherClock = () => Date
 export type DispatcherResourceRequest = { readonly story: Story; readonly provider: StoryWorkerProvider; readonly role: PoolRole; readonly units: number; readonly signal: AbortSignal }
 
@@ -47,7 +48,7 @@ export interface DispatcherWorktrees {
   create(input: Pick<DispatcherWorkerInput, 'story' | 'dispatcherId' | 'ownerToken' | 'provider'>): DispatcherWorktree
   remove(input: DispatcherWorkerInput): void
   cleanupProcess?(input: DispatcherWorkerInput): void
-  retain?(input: DispatcherWorkerInput, reason: string, phase?: ParallelRecoveryPhase): void
+  retain?(input: DispatcherWorkerInput, reason: string, phase?: ParallelRecoveryPhase, observation?: FailureObservation): void
 }
 
 export type DispatcherRecovery = { readonly reason: string; readonly worktree: string; readonly baseCommit: string; readonly ownerToken: string }
@@ -71,6 +72,7 @@ export type DispatcherGates = {
 }
 
 export type DispatcherOptions = {
+  readonly onFailure?: (observation: FailureObservation, storyId?: string) => void
   readonly targetDir: string
   readonly stories: Story[]
   readonly maxConcurrency: number
@@ -150,7 +152,7 @@ async function gateResult(gates: DispatcherGates, path: string, worker: Dispatch
   if (criteria.length > 0 && !gates.verifyCriterion) return { passed: false, summary: 'criterion verifier is not configured' }
   for (const criterion of criteria) {
     const result = withStoryContext(story.id, () => gates.verifyCriterion?.(path, story, criterion))
-    if (!result?.passed) return { passed: false, summary: result?.summary ?? 'criterion verification failed' }
+    if (!result?.passed) return { ...result, passed: false, summary: result?.summary ?? 'criterion verification failed' }
   }
   for (const gate of [gates.verify, gates.design, gates.perf, gates.audit]) {
     if (!gate) continue
@@ -172,6 +174,9 @@ function withStoryContext<T>(storyId: string, gate: () => T): T {
 }
 
 export function createDispatcher(options: DispatcherOptions): { readonly run: () => Promise<DispatcherResult>; readonly cancel: (reason: string) => void } {
+  const emitFailure = (observation: FailureObservation, storyId?: string) => {
+    try { options.onFailure?.(observation, storyId) } catch { /* preserve dispatch and recovery when telemetry fails */ }
+  }
   const dispatcherId = options.dispatcherId ?? randomUUID()
   const ids = options.id ?? randomUUID
   const clock = options.clock ?? (() => new Date())
@@ -263,7 +268,7 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
     let recorded = false
     try {
       // The trusted record must exist before relinquishing this worktree's claim.
-      options.worktrees.retain(input, reason, phase)
+      options.worktrees.retain(input, reason, phase, failureDetails.get(input.story.id)?.observation)
       recorded = true
     } finally {
       if (recorded) cleanupRetained(input)
@@ -297,15 +302,15 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
     const task = queue.enqueue({
       storyId: input.story.id,
       rebase: async () => {
-        if (cancellationReason) throw new Error(cancellationReason)
+        if (cancellationReason) throw observedError(cancellationReason, 'cancelled')
         options.onIntegrationMetrics?.(input, Date.now() - integrationQueuedAt, undefined)
         if (options.acquireResource) {
           options.gates.integrationPhase?.(input, 'waiting-resource')
           integrationLease = await options.acquireResource({ story: input.story, provider: input.provider, role: 'integration', units: 1, signal: integrationController.signal })
         }
         integrationStartedAt = Date.now()
-        if (cancellationReason) throw new Error(cancellationReason)
-        if (!options.git.isClean(options.targetDir)) throw new Error('target working tree is not clean')
+        if (cancellationReason) throw observedError(cancellationReason, 'cancelled')
+        if (!options.git.isClean(options.targetDir)) throw observedError('target working tree is not clean', 'source-changed')
         const rebase = await options.git.rebase(input)
         if (rebase.kind === 'reopen') { reason = rebase.reason; throw new Error(reason) }
         recoveryBaseCommit = rebase.expectedHead
@@ -315,18 +320,18 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
         if (cancellationReason) { reason = cancellationReason; return false }
         const gate = await gateResult(options.gates, input.worktree.path, input)
         reason = gate.summary
-        if (!gate.passed) throw new Error(gate.summary)
+        if (!gate.passed) throw Object.assign(new Error(gate.summary), { failure: gate.failure ?? failureObservation() })
         return true
       },
       integrate: async expectedHead => {
-        if (cancellationReason) throw new Error(cancellationReason)
+        if (cancellationReason) throw observedError(cancellationReason, 'cancelled')
         options.gates.integrationPhase?.(input, 'committing')
         persistPass(input)
         await options.git.commit(input)
         await options.git.integrate(input, expectedHead)
       },
       postIntegrateVerify: () => {
-        if (!options.git.isClean(options.targetDir)) throw new Error('target working tree is not clean after integration')
+        if (!options.git.isClean(options.targetDir)) throw observedError('target working tree is not clean after integration', 'source-changed')
       },
     }).then(merge => {
       switch (merge.status) {
@@ -338,6 +343,9 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
           clearFailureProgress(options.targetDir, input.story.id)
           return
         case 'integrated-but-blocked':
+          { const observation = merge.failure ?? failureObservation()
+            failureDetails.set(input.story.id, { kind: 'verification-failed', stage: 'integration', storyId: input.story.id, observation })
+            emitFailure(observation, input.story.id) }
           input.story.passes = true
           integrated.push(input.story.id)
           options.onAccepted?.(input.story)
@@ -348,12 +356,13 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
         case 'reopened':
           reopened.push(input.story.id)
           reason = merge.reason
-          const observed = existsSync(input.worktree.path) ? observeFailure({ root: options.targetDir, directory: input.worktree.path, story: input.story, stage: 'integration', summary: reason }) : undefined
+          const observed = existsSync(input.worktree.path) ? observeFailure({ root: options.targetDir, directory: input.worktree.path, story: input.story, stage: 'integration', summary: reason, observation: merge.failure }) : undefined
+          emitFailure(observed?.failure.observation ?? merge.failure ?? failureObservation(), input.story.id)
           if (observed) { failureDetails.set(input.story.id, observed.failure); if (observed.action !== 'retry') reason = observed.feedback }
           if (options.worktrees.retain) {
             // Retain first, then report/release. Recovery evidence must precede cleanup.
             retained = true
-            options.worktrees.retain({ ...input, worktree: { ...input.worktree, baseCommit: recoveryBaseCommit } }, reason, observed && observed.action !== 'retry' ? 'implementation' : 'integration')
+            options.worktrees.retain({ ...input, worktree: { ...input.worktree, baseCommit: recoveryBaseCommit } }, reason, observed && observed.action !== 'retry' ? 'implementation' : 'integration', observed?.failure.observation ?? merge.failure)
             retentionRecorded = true
             failed.push(input.story.id)
             failureReasons.set(input.story.id, `${reason}; candidate retained at ${input.worktree.path}`)
@@ -396,10 +405,14 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
     try { worktree = options.worktrees.create({ story, dispatcherId, ownerToken, provider }) }
     catch (error) {
       failed.push(story.id)
+      const observation = executionFailure(error)
+      failureDetails.set(story.id, { kind: 'verification-failed', stage: 'integration', storyId: story.id, observation })
+      emitFailure(observation, story.id)
       failureReasons.set(story.id, `worktree setup failed: ${error instanceof Error ? error.message : String(error)}`)
       reportProgress()
       return
     }
+    if (worktree.recovery?.observation) emitFailure(worktree.recovery.observation, story.id)
     const controller = new AbortController()
     const candidateRace = Boolean(!worktree.recovered && options.candidateCount && options.candidateCount > 1 && options.candidateCoordinator)
     const input: DispatcherWorkerInput = { story, worktree, provider, cancellation: { signal: controller.signal }, dispatcherId, ownerToken, ...(candidateRace ? { candidateRace: true } : {}) }
@@ -505,6 +518,9 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
       active.delete(story.id)
       failed.push(story.id)
       failureReasons.set(story.id, error instanceof Error ? error.message : String(error))
+      const observation = executionFailure(error)
+      failureDetails.set(story.id, { kind: 'verification-failed', stage: 'implementation', storyId: story.id, observation })
+      emitFailure(observation, story.id)
       try {
         if (workerStarted && !candidateDispatch) retainWorker(input, error instanceof Error ? error.message : String(error), 'implementation')
         else if (input.worktree.recovered) cleanupRetained(input)
@@ -549,9 +565,9 @@ export function createDispatcher(options: DispatcherOptions): { readonly run: ()
       }
       if (active.size > 0) { await Promise.race([...active.values()].map(worker => worker.task).concat([...queued.values()])); continue }
       if (queued.size > 0) { await Promise.race(queued.values()); continue }
-      if (cancellationReason) return { status: 'cancelled', reason: cancellationReason, iterations, integrated, reopened, failed }
+      if (cancellationReason) return { status: 'cancelled', reason: cancellationReason, failure: { kind: 'verification-failed', stage: 'implementation', observation: failureObservation('cancelled') }, iterations, integrated, reopened, failed }
       if (paused) return { status: 'paused', iterations, integrated, reopened, failed }
-      if (integrationBlocks.length > 0) return { status: 'blocked', reason: integrationBlocks[0], iterations, integrated, reopened, failed }
+      if (integrationBlocks.length > 0) return { status: 'blocked', reason: integrationBlocks[0], failure: [...failureDetails.values()].find(detail => integrated.includes(detail.storyId ?? '')), iterations, integrated, reopened, failed }
       if (options.stories.every(story => story.passes)) return { status: 'complete', iterations, integrated, reopened, failed }
       if (failed.length > 0) {
         const storyId = failed[0]

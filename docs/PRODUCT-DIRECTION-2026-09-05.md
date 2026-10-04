@@ -1,170 +1,170 @@
-# Yoke: Produktstand und Gesprächsgedächtnis
+# Yoke: Product status and discussion record
 
-Stand: 2026-09-05. Grundlage: Repository-Analyse und anschließende Produktdiskussion mit dem Nutzer.
+As of 2026-09-05. Based on repository analysis and the subsequent product discussion with the user.
 
-Dieses Dokument sichert die wesentlichen Befunde, Vorschläge und Nutzerpräferenzen der Sitzung. Die automatische claude-mem-Erinnerung meldete einen Ausfall; ihre Speicherung wurde nicht vorausgesetzt. Es ist kein Implementierungsnachweis und kein Auftrag, sämtliche Vorschläge ungefragt umzusetzen. Vor Implementierung den aktuellen Code und die Prioritäten prüfen.
+This document preserves the session's main findings, proposals, and user preferences. Automatic claude-mem memory reported a failure; its storage was not assumed to have worked. This is neither implementation evidence nor an instruction to implement every proposal without asking. Check the current code and priorities before implementation.
 
-## Nutzerabsicht und akzeptierte Richtung
+## User intent and accepted direction
 
-- Yoke soll gegenüber der Konkurrenz interessanter und ein regelmäßig genutztes Entwicklerwerkzeug werden.
-- Codex, Claude und Gemini sollen funktional gleichwertig integriert sein. Gleiche Modellintelligenz ist damit weder zugesagt noch messbar belegt.
-- Der Nutzer begrüßte die Richtung: überprüfbare Abnahme, Ziele, Wiederaufnahme und Anbieterwechsel.
-- Tokenverbrauch und Entwicklungszeit sollen sinken: deterministische Werkzeuge, kleine/schnelle Modelle, gezielte Eskalation und sinnvolle Parallelität.
-- Neue Nutzeridee: bessere Zeitschätzungen für alle Tasks; bestehende ETA verbessern.
-- Neue Nutzeridee: ein Dashboard für Yoke mit Übersicht und Detailansichten für jedes Projekt. Interesse ist festgehalten; Umfang und Gestaltung sind noch nicht beschlossen.
-- Der Nutzer bat ausdrücklich darum, die gesamte bisherige Diskussion dauerhaft zu sichern.
+- Yoke should become more attractive compared with competitors and a developer tool used regularly.
+- Codex, Claude, and Gemini should have functionally equivalent integrations. This neither promises equal model intelligence nor demonstrates it through measurement.
+- The user welcomed the direction: verifiable acceptance, goals, resumption, and switching providers.
+- Token consumption and development time should fall through deterministic tools, small/fast models, targeted escalation, and useful parallelism.
+- New user idea: better time estimates for all tasks; improve the existing ETA.
+- New user idea: a Yoke dashboard with an overview and detailed views for each project. Interest is recorded; scope and design have not yet been decided.
+- The user explicitly requested that the entire discussion so far be preserved permanently.
 
-## Ausgangsbefund der Prüfung
+## Initial review findings
 
-Geprüft: Yoke 1.6.2, Commit d066058. Keine Produktcodeänderungen oder neuen authentifizierten Modellbenchmarks während der Analyse.
+Reviewed: Yoke 1.6.2, commit d066058. No product code changes or new authenticated model benchmarks during the analysis.
 
-- Gesamtsuite: 1018 bestanden, 2 übersprungen, 1 Test-Timeout von insgesamt 1021 Tests.
-- Betroffen: tests/loop/parallel-cli.integration.test.ts, Test "does not integrate when the target rewinds during integrated gates". Gesamtlauf überschritt das 5-Sekunden-Limit; separater Lauf mit 20-Sekunden-Limit bestand in etwa 1,42 Sekunden Testzeit. Kein damit nachgewiesener Integrationsfehler; Testinstabilität untersuchen.
-- TypeScript-Prüfung und docs:check bestanden.
-- Vorhandene Nutzeränderungen wurden nicht angefasst: .gitignore, .omo/, .playwright-mcp/, docs/community-outreach-2026-08-20.md, docs/launch-copy-2026-08-21.md.
+- Full suite: 1018 passed, 2 skipped, 1 test timeout out of 1021 tests.
+- Affected: tests/loop/parallel-cli.integration.test.ts, test "does not integrate when the target rewinds during integrated gates". The full run exceeded the 5-second limit; a separate run with a 20-second limit passed in approximately 1.42 seconds of test time. This does not demonstrate an integration failure; investigate test instability.
+- TypeScript checking and docs:check passed.
+- Existing user changes were left untouched: .gitignore, .omo/, .playwright-mcp/, docs/community-outreach-2026-08-20.md, docs/launch-copy-2026-08-21.md.
 
-### Stärken
+### Strengths
 
-- Mechanische Prüfkommandos und strukturierte Akzeptanzkriterien; neue Standardkonfigurationen verlangen Kriteriennachweise.
-- Gemeinsamer Canon mit nativen Skill-Paketen und Werkzeugkonfiguration für drei Anbieter.
-- Abhängigkeiten, parallele Worker, Arbeitsbäume, Locks, Prozessüberwachung und Integrationswarteschlange.
-- Schema-validierte Reviews und optionaler Qualitätsvergleich mit vertauschter Kandidatenreihenfolge und Konsistenzprüfung.
-- Expliziter, versionierbarer Projektkontext und lokale Belege; kompakte Ausgabe mit Artefaktverweisen.
-- Benchmarkdokumentation benennt fehlende Telemetrie und fehlgeschlagene Läufe.
+- Mechanical verification commands and structured acceptance criteria; new default configurations require evidence for criteria.
+- Shared canon with native skill packages and tool configuration for three providers.
+- Dependencies, parallel workers, worktrees, locks, process monitoring, and an integration queue.
+- Schema-validated reviews and an optional quality comparison with reversed candidate order and a consistency check.
+- Explicit, versionable project context and local evidence; compact output with artifact references.
+- Benchmark documentation identifies missing telemetry and failed runs.
 
-### Konkrete Lücken und Grenzen
+### Specific gaps and limitations
 
-1. Serielles --isolate entfernt den Arbeitsbaum im finally auch bei Fehlern; GitOps verwendet worktree remove --force. Unfertige Änderungen können verloren gehen. Siehe src/loop/loop.ts und src/loop/git.ts.
-2. Ausgeführte Tests sind nicht automatisch unabhängige Abnahmetests: Implementierer kann im untersuchten Pfad Testdateien und Testskripte ändern. Geschützte Abnahmen bzw. Kontrolle von Testabschwächungen fehlen.
-3. Reviews, Audit, integrierte Abschlussprüfung und Browserbelege sind teils optional. README-Garantien müssen zwischen unterstützt, aktiviert und nachgewiesen unterscheiden.
-4. flow-smoke prüft Seitenaufruf, Fehler und optionale Selektoren; kein genereller Nachweis mehrstufiger Benutzerabläufe.
-5. repositoryFingerprint erfasst Inhalte bestehender unversionierter Dateien nicht; bei Git-Fehlern liefert es einen leeren String. Zusätzliche Reviewer-Schreibkontrolle ist damit unvollständig.
-6. Routing nutzt grobe Kostentiers und Erfolgsquoten. Fehlende Telemetrie wird teilweise als 0 aggregiert. Vollständige Kosten für Controller, Worker, Reviews, Reparaturen und Kandidaten fehlen als verlässlicher Gesamtvertrag.
-7. Design-Scan prüft Stilmerkmale wie Lila/Verläufe; kein allgemeiner UX-, Accessibility- oder KI-Autorschaftsnachweis.
-8. Bisherige Benchmarks belegen keine allgemeine Überlegenheit gegenüber nativen Agenten oder Konkurrenz.
+1. Serial --isolate removes the worktree in finally even on failure; GitOps uses worktree remove --force. Unfinished changes can be lost. See src/loop/loop.ts and src/loop/git.ts.
+2. Executed tests are not automatically independent acceptance tests: the implementer can change test files and test scripts in the examined path. Protected acceptance checks and controls against weakening tests are missing.
+3. Reviews, audits, integrated final verification, and browser evidence are partly optional. README guarantees must distinguish between supported, enabled, and demonstrated capabilities.
+4. flow-smoke checks page loading, errors, and optional selectors; it is not general evidence of multistep user flows.
+5. repositoryFingerprint does not capture the contents of existing untracked files; it returns an empty string on Git errors. Additional controls on reviewer writes are therefore incomplete.
+6. Routing uses broad cost tiers and success rates. Missing telemetry is partly aggregated as 0. Complete costs for controllers, workers, reviews, repairs, and candidates lack a reliable overall contract.
+7. The design scan checks style traits such as purple/gradients; it is not general evidence of UX, accessibility, or AI authorship.
+8. Existing benchmarks do not demonstrate general superiority over native agents or competitors.
 
-### Anbieterparität
+### Provider parity
 
-- Codex: Skills, Aufrufrichtlinie, Rollen, JSON-Ausgabe, Modell/Reasoning, RTK-Hook. Direkte Verbindung zum nativen Goal-Zustand fehlt im untersuchten Code. Adaptives Routing deaktiviert native Multi-Agent-Funktionalität bewusst.
-- Claude: Skills, manuelle Aufrufsteuerung, Streaming-JSON, Modell/Effort, RTK-Hook mit Plattformbedingungen. Native strukturierte Ausgabe und Teamfunktionen sind nicht durchgängig ausgenutzt.
-- Gemini: native Skills plus Slash-Commands vorhanden. Adapter fordert kein stream-json an, obwohl Auswertung JSON-Ereignisse erwartet und Reviews berichtete Modellidentität verlangen. Gemeinsame Reasoning-/Bare-Optionen werden nicht entsprechend umgesetzt. Installer-Annahme fehlender Rewrite-Hooks ist veraltet; BeforeTool unterstützt Argumentänderungen.
-- Native Provider-Funktionen einzeln nutzen und auf ein gemeinsames Ergebnisformat abbilden; nicht auf identische APIs aller Anbieter warten.
-- Reale Vertragsfälle je CLI/Version/Plattform: Implementierung, Review, Ausgabe, Modellidentität, Telemetrie, Rechte, Abbruch, Wiederaufnahme und Skill-Aufruf.
-- Lokal geprüft: codex-cli 0.153.4, Claude Code 2.1.200, Gemini CLI 0.33.1. Verfügbare CLI bedeutet keine nachgewiesene Authentifizierung oder erfolgreiche Modellaufgabe.
+- Codex: skills, invocation policy, roles, JSON output, model/reasoning, RTK hook. A direct connection to native goal state is missing in the examined code. Adaptive routing deliberately disables native multi-agent functionality.
+- Claude: skills, manual invocation control, streaming JSON, model/effort, RTK hook with platform conditions. Native structured output and team features are not used consistently.
+- Gemini: native skills and slash commands are available. The adapter does not request stream-json even though parsing expects JSON events and reviews require reported model identity. Shared reasoning/bare options are not implemented accordingly. The installer's assumption that rewrite hooks are missing is outdated; BeforeTool supports argument changes.
+- Use individual native provider features and map them to a shared result format; do not wait for identical APIs across all providers.
+- Real contract cases per CLI/version/platform: implementation, review, output, model identity, telemetry, permissions, cancellation, resumption, and skill invocation.
+- Checked locally: codex-cli 0.153.4, Claude Code 2.1.200, Gemini CLI 0.33.1. An available CLI does not demonstrate authentication or successful model task execution.
 
-### Benchmarkgrenzen
+### Benchmark limitations
 
-bench/RESULTS.md dokumentiert eine Codex-Routingstudie mit drei Vergleichspaaren. Alle versteckten Abnahmen bestanden; Median ungefähr 33,8 % weniger Laufzeit und 11 % weniger frische Eingabetokens. Vergleich: Routing an/aus innerhalb Yokes, nicht Yoke gegen natives Codex. Andere Architekturaufgaben blieben SELF und bezahlten Controller-Overhead. Keine allgemeinen Sparprozente versprechen.
+bench/RESULTS.md documents a Codex routing study with three comparison pairs. All hidden acceptance checks passed; the median was approximately 33.8% less runtime and 11% fewer fresh input tokens. The comparison is routing on/off within Yoke, not Yoke versus native Codex. Other architecture tasks remained SELF and incurred controller overhead. Do not promise general savings percentages.
 
-## Produktwette: täglicher Nutzen
+## Product bet: Daily usefulness
 
-Yoke beantwortet: "Kann ich diese Änderung übernehmen, und wie bekommen wir sie bei offenen Befunden fertig?"
+Yoke answers: "Can I accept this change, and how do we finish it when findings remain open?"
 
-Vorgeschlagene Positionierung: gemeinsame Abnahme- und Fortsetzungsschicht für Coding-Agenten. Native Agenten verfolgen Ziele; Yoke hält überprüfbaren Projektzustand, Kriterien und Abnahme stabil. Kein unnötiger zweiter Orchestrator über nativen Goals.
+Proposed positioning: a shared acceptance and continuation layer for coding agents. Native agents pursue goals; Yoke maintains verifiable project state, criteria, and acceptance. Avoid an unnecessary second orchestrator over native goals.
 
-### Einstieg: yoke check (Vorschlag, noch kein implementierter Befehl)
+### Entry point: yoke check (proposal, not yet an implemented command)
 
-- Bestehendes Repository, vorhandener Diff und konkrete Anforderung reichen für den Einstieg; vollständiger Retrofit soll nicht Voraussetzung sein.
-- Ausgabe unterscheidet bestanden, fehlgeschlagen und nicht überprüft.
-- Bevorzugt ausführbare Befunde: Testreproduktion, Browserablauf, Vertragsverletzung statt spekulativer Review-Kommentare.
-- Beispielvorführung: bestehende Tests grün, Yoke reproduziert eine doppelte Bestellung bei Doppelklick, Reparatur und erneute Abnahme belegen die Behebung.
-- Belege sind an den tatsächlich geprüften Codezustand gebunden.
-- Kritische Abnahmetests gegebenenfalls durch gezielte Mutation prüfen: erkennt der Test den passenden absichtlich eingebauten Fehler?
+- An existing repository, existing diff, and specific requirement are enough to start; a complete retrofit should not be a prerequisite.
+- Output distinguishes passed, failed, and not verified.
+- Prefer executable findings: test reproductions, browser flows, and contract violations rather than speculative review comments.
+- Example demonstration: existing tests are green, Yoke reproduces a duplicate order caused by a double-click, and repair followed by repeated acceptance checks demonstrates the fix.
+- Evidence is bound to the code state actually checked.
+- Where appropriate, verify critical acceptance tests through targeted mutation: does the test detect the corresponding deliberately introduced defect?
 
-### Wiederaufnahme und Anbieterwechsel
+### Resumption and switching providers
 
-Übergabepaket enthält Ziel, Kriterien, Patch/Arbeitsstand, Umgebung, bestandene Prüfungen, offene Fehler, verworfene Ansätze, Berechtigungen und verbleibendes Budget. Änderungen und Belege bleiben bei Fehlern erhalten. Anbieterwechsel erhält überprüften Zustand und verlangt keine erneute Erklärung durch den Nutzer.
+The handoff package contains the goal, criteria, patch/work in progress, environment, passed checks, open failures, rejected approaches, permissions, and remaining budget. Changes and evidence survive failures. Switching providers preserves verified state and does not require the user to explain it again.
 
-Blocker unterscheiden: Implementierungsfehler, Infrastruktur/Rate-Limit, fehlende Zugangsdaten, echte Produktentscheidung. Ein Anbieterwechsel löst nicht jede Blockade.
+Distinguish blockers: implementation failure, infrastructure/rate limit, missing credentials, or an actual product decision. Switching providers does not solve every blocker.
 
-### Zielmodell
+### Goal model
 
-Gemeinsamer Zielzustand verbindet PRD, Kriteriennachweise, Änderungs-Inbox, Budget, Blocker, Wiederaufnahme und integrierte Abschlussprüfung. Native Codex Goals integrieren, keine Abschlussgarantie allein aus Modelltext ableiten. Modell darf Lösungsweg wählen; verbindliche Abnahmebedingungen bleiben nachvollziehbar.
+A shared goal state connects the PRD, criteria evidence, change inbox, budget, blockers, resumption, and integrated final verification. Integrate native Codex goals; do not infer guaranteed completion from model text alone. The model may choose the solution approach; binding acceptance conditions remain traceable.
 
-### Zielgruppe und Differenzierung
+### Target audience and differentiation
 
-Vorgeschlagener erster Fokus: Entwickler und kleine Teams mit bestehenden TypeScript-Webprojekten und bereits genutzten Coding-Agenten. Erst dort Einrichtung und Abnahme zuverlässig machen.
+Proposed initial focus: developers and small teams with existing TypeScript web projects who already use coding agents. First make setup and acceptance reliable there.
 
-Skills, Autonomie, frischer Kontext und Zweitmeinungen sind kein exklusiver Vorsprung. Aktuelle Konkurrenz: native Codex Goals/Subagenten, Superpowers auch mit Codex/Gemini, gstack mit Codex/QA/Reviews, GSD Core mit mehreren Hosts und Phasenworkflow.
+Skills, autonomy, fresh context, and second opinions are not exclusive advantages. Current competitors: native Codex goals/subagents, Superpowers also with Codex/Gemini, gstack with Codex/QA/reviews, and GSD Core with multiple hosts and a phased workflow.
 
-Aufbauender Vorteil: robuste Projektintegration, wiederverwendbare Abnahmefälle, zuverlässige Wiederaufnahme, echte Erfolgsdaten nach Aufgabentyp und nützliche PR-Berichte. Team-Zahlungsbereitschaft ist eine unbestätigte Hypothese.
+An advantage to build: robust project integration, reusable acceptance cases, reliable resumption, actual success data by task type, and useful PR reports. Team willingness to pay is an unconfirmed hypothesis.
 
-Validierung: zehn passende Entwickler mit echten Änderungen; Zeit bis zum nützlichen Befund, Reproduzierbarkeit, Fehlalarme, eingesparte Nachprüfung und freiwillige Wiederverwendung messen.
+Validation: ten suitable developers with real changes; measure time to a useful finding, reproducibility, false alarms, saved follow-up checking, and voluntary reuse.
 
-## Token-, Kosten- und Geschwindigkeitsstrategie
+## Token, cost, and speed strategy
 
-Optimierungsziel: Kosten und Zeit pro unabhängig abgenommener Änderung, einschließlich Fehlversuchen und menschlicher Nacharbeit. Tokenzahl, Geldkosten und Wartezeit getrennt betrachten.
+Optimization target: cost and time per independently accepted change, including failed attempts and human rework. Treat token count, monetary costs, and waiting time separately.
 
-1. Deterministische Aktionen ohne Modell: Formatter/Linter, AST-/LSP-Renames, Schema-Generatoren, Logparser, Versionssynchronisierung, geprüfte Codemods und Symbolsuche. Voraussetzungen/Nachbedingungen prüfen.
-2. Regeln vor Routing-Modell: eindeutige Aufgaben ohne Controller-Aufruf zuordnen; unklare Fälle durch Modell entscheiden lassen.
-3. Ausführungsstufen Werkzeug / Schnell / Standard / Stark. Risiko, Testbarkeit, Umfang und beobachtete Ergebnisse bestimmen die Auswahl; Dateianzahl oder Modell-Selbstvertrauen reichen nicht.
-4. Günstiger Erstversuch nur bei geeigneten Aufgaben; Abnahme, begrenzte Reparatur, dann Eskalation mit Patch und Fehlerbelegen. Wiederholte Fehler erkennen. Erwartete Gesamtkosten inklusive Eskalation optimieren.
-5. Aufgabenbezogene Kontextpakete: Ziel, Kriterien, Symbole, Verträge, Tests und relevante Entscheidungen. Weitere Informationen bei Bedarf abrufen; Parent-Historie nicht standardmäßig kopieren.
-6. Gemeinsame Exploration/Indexierung wiederverwenden und per Codezustand/Dateihash invalidieren. Keine vier identischen Repository-Erkundungen durch vier Worker.
-7. Stabile Prompt-Präfixe, passende Modellkontinuität, gemessene Cache-Treffer. Caching reduziert nicht automatisch logischen Kontext; keine Cache-Übernahme zwischen Anbietern annehmen. CLI- und API-Fähigkeiten unterscheiden.
-8. Parallelität nach Abhängigkeiten, Schreibbereichen, kritischem Pfad und Ressourcen. Schnittstellen zuerst; danach unabhängige Implementierung. Ein gemeinsames Limit für Yoke-Worker und native Subagenten.
-9. Prüfungen stufenweise: schnelle deterministische Prüfungen, betroffene Tests, Integration, semantisches Review, erforderliche Gesamtprüfung. Ergebnisse nur bei passenden Code-/Umgebungs-/Konfigurationsständen wiederverwenden.
-10. Kleine verwandte Aufgaben bündeln; sichere Build-/Paket-Caches und vorbereitete Umgebungen nutzen. Veränderliche Worker-Arbeitsstände getrennt halten.
-11. Später direkte Modellaufrufe für eng begrenzte Klassifikation/Umformung erwägen, wenn CLI-Start unverhältnismäßig ist. Separate API-Abrechnung berücksichtigen.
-12. Vollständige Telemetrie für alle Rollen; unbekannte Nutzung niemals als gemessene Null darstellen.
+1. Deterministic actions without a model: formatters/linters, AST/LSP renames, schema generators, log parsers, version synchronization, verified codemods, and symbol search. Check preconditions and postconditions.
+2. Rules before a routing model: assign clear tasks without a controller call; let a model decide unclear cases.
+3. Execution tiers: Tool / Fast / Standard / Strong. Risk, testability, scope, and observed results determine the choice; file count or model confidence is insufficient.
+4. A cheap first attempt only for suitable tasks; acceptance checks, bounded repair, then escalation with the patch and failure evidence. Detect repeated failures. Optimize expected total cost including escalation.
+5. Task-specific context packages: goal, criteria, symbols, contracts, tests, and relevant decisions. Retrieve further information as needed; do not copy parent history by default.
+6. Reuse shared exploration/indexing and invalidate it by code state/file hash. Avoid four identical repository explorations by four workers.
+7. Stable prompt prefixes, suitable model continuity, and measured cache hits. Caching does not automatically reduce logical context; do not assume cache transfer between providers. Distinguish CLI and API capabilities.
+8. Parallelism based on dependencies, write areas, critical path, and resources. Interfaces first; independent implementation afterward. One shared limit for Yoke workers and native subagents.
+9. Staged checks: fast deterministic checks, affected tests, integration, semantic review, and required full verification. Reuse results only when code/environment/configuration states match.
+10. Batch small related tasks; use safe build/package caches and prepared environments. Keep mutable worker workspaces separate.
+11. Later, consider direct model calls for narrowly bounded classification/transformation when CLI startup is disproportionate. Account for separate API billing.
+12. Complete telemetry for all roles; never present unknown usage as a measured zero.
 
-Reihenfolge vorgeschlagen: Messung, deterministische Aktionen/Router, Kontextpakete, Eskalation, besserer Scheduler, inkrementelle Prüfungen und Cache-Optimierung.
+Proposed order: measurement, deterministic actions/router, context packages, escalation, improved scheduler, incremental checks, and cache optimization.
 
-## Zeitschätzungen: neuer Schwerpunkt
+## Time estimates: A new focus
 
-### Heutiger Codebefund
+### Current code findings
 
-src/loop/reporter.ts speichert bis zu 50 Story-Laufzeiten in .yoke/story-durations.json. Die ETA ist der arithmetische Durchschnitt abgeschlossener Stories multipliziert mit der Anzahl verbleibender Stories. Aktuelle Run-Dauern ersetzen die ältere Historie bereits nach dem ersten Abschluss. Gespeicherte StoryDuration enthält nur storyId und ms. Diese Formel berücksichtigt weder individuelle Aufgabengröße noch Modell, Ressourcen oder parallelen kritischen Pfad. Die Aussage bezieht sich auf diese ETA-Implementierung; nicht jede Parallelansicht wurde gesondert vermessen.
+src/loop/reporter.ts stores up to 50 story runtimes in .yoke/story-durations.json. ETA is the arithmetic mean of completed stories multiplied by the number of remaining stories. Current run durations replace older history after the first completion. Stored StoryDuration contains only storyId and ms. This formula does not account for individual task size, model, resources, or the parallel critical path. This statement concerns this ETA implementation; not every parallel view was measured separately.
 
-### Vorgeschlagene Verbesserung
+### Proposed improvement
 
-- Exakte vergangene Dauer messen; zukünftige Dauer als Schätzung mit Unsicherheit anzeigen. Keine sekundengenaue Vorhersage versprechen.
-- Phasen getrennt erfassen: Warteschlange, Kontext/Setup, Implementierung, Tests, Review, Reparatur, Integration. Aktive Ausführungszeit, Wartezeit und menschliche Blockade auseinanderhalten.
-- Alle Versuche inklusive Fehlern und Abbrüchen erfassen; nur erfolgreiche Story-Dauern würden Wiederholungsaufwand unterschätzen.
-- Vergleichbare Aufgaben nach Typ, Scope, Testumfang, Provider, tatsächlichem Modell, Effort, Umgebung und Parallelitätsgrad gruppieren. Mit wenigen Daten robuste gemeinsame Basis verwenden statt überfeine Gruppen.
-- Historie und neue Beobachtungen gewichten; ein einzelner schneller Abschluss darf nicht die ganze Prognose dominieren.
-- Zunächst Median und empirische Zeitspannen mit Stichprobenzahl; später kalibrierte Quantile, etwa P50/P80, wenn genug Daten vorliegen. Zielabdeckung und Prognosefehler messen.
-- Projekt-ETA aus verbleibenden Aufgaben, Abhängigkeiten, freien Slots, Integrationsengpass und Ressourcen berechnen; weder einfach aufsummieren noch blind durch Workeranzahl teilen.
-- Laufende Aufgaben anhand ihrer aktuellen Phase und verstrichenen Zeit aktualisieren. Wiederholungs-/Reparaturwahrscheinlichkeit und Modellwechsel berücksichtigen.
-- Bei unbekannter Dauer einer Nutzerentscheidung: "wartet auf Entscheidung" und bedingte Restlaufzeit ab Wiederaufnahme; keine erfundene Fertigstellungsuhrzeit.
-- Bei neuer Aufgabe/Modell unbekannte oder schwach gestützte Schätzung sichtbar kennzeichnen; Prognose selbst benötigt nicht zwingend einen LLM-Aufruf.
-- Szenarien anbieten: Zeit/Kosten bei anderer Parallelität oder anderem Modell. Als Prognose ausweisen, nicht als zugesagte Einsparung.
+- Measure exact past durations; display future durations as estimates with uncertainty. Do not promise predictions accurate to the second.
+- Record phases separately: queue, context/setup, implementation, tests, review, repair, and integration. Distinguish active execution time, waiting time, and human blockers.
+- Record all attempts, including failures and cancellations; using only successful story durations would underestimate retry effort.
+- Group comparable tasks by type, scope, test coverage, provider, actual model, effort, environment, and degree of parallelism. With limited data, use a robust shared baseline rather than excessively narrow groups.
+- Weight history and new observations; one fast completion must not dominate the entire forecast.
+- Initially use medians and empirical time ranges with sample counts; later use calibrated quantiles, such as P50/P80, when enough data is available. Measure target coverage and prediction errors.
+- Calculate project ETA from remaining tasks, dependencies, free slots, integration bottlenecks, and resources; neither simply sum durations nor blindly divide by worker count.
+- Update running tasks based on their current phase and elapsed time. Account for retry/repair probability and model changes.
+- When the duration of a user decision is unknown: show "waiting for a decision" and conditional remaining runtime after resumption; do not invent a completion time.
+- For a new task/model, clearly mark an unknown or weakly supported estimate; forecasting itself does not necessarily require an LLM call.
+- Offer scenarios: time/cost with different parallelism or a different model. Label these as forecasts, not promised savings.
 
-## Dashboard pro Projekt und projektübergreifend
+## Dashboard per project and across projects
 
-Status: Nutzerinteresse; folgende Ausgestaltung ist ein Vorschlag, noch keine freigegebene Implementierung.
+Status: user interest; the following design is a proposal, not yet an approved implementation.
 
-- Lokaler Einstieg, gleiche Datenbasis wie CLI. Zunächst registrierte Projektpfade und lesende Übersicht; kein Cloudkonto als Voraussetzung.
-- Projektübersicht: aktives Ziel, Zustand, abgenommene/offene Kriterien, laufende Worker, Blocker, Zeitspanne bis Abschluss, gemessener Verbrauch und Telemetrielücken.
-- Projektdetail: Task-Liste und Abhängigkeitsansicht, Phasen/Zeitleiste, kritischer Pfad, aktuelle Modelle, Reviews, Fehlerreproduktionen, Artefakte und Integrationsstand.
-- Aufmerksamkeit zuerst: Was braucht eine Entscheidung? Welcher Test blockiert? Welches Projekt ist seit wann still? Warum änderte sich die ETA?
-- Taskdetail: ursprüngliche/aktuelle Schätzung, tatsächliche Phasendauern, Versuchshistorie, Patch, Abnahmen, Kosten und Übergaben.
-- Spätere Steuerung: Pause/Wiederaufnahme, kritische Entscheidung beantworten, Anbieterwechsel am sicheren Übergang, Budget/Parallelität ändern. Existierende Locks und Sicherheitsgrenzen wiederverwenden; UI darf keine zweite Ausführungslogik besitzen.
-- Metriken: Zeit/Kosten pro abgenommener Änderung, Erstversuchserfolg, Eskalationsrate, Nacharbeit, Cache-Anteil, menschliche Eingriffe, Prognosefehler und Zeitspannen-Abdeckung.
-- Zuerst versionierte Ereignisse und vollständige Messung schaffen, dann Dashboard. Vorhandene loop-status.json, loop.log, Story-Dauern und Routing-Ereignisse sind Bausteine, aber noch keine vollständige projektübergreifende Ereignishistorie.
-- Telemetrie standardmäßig lokal; externe Team-/Cloudfunktion und Datenumfang später ausdrücklich entwerfen.
+- Start locally, using the same data as the CLI. Initially provide registered project paths and a read-only overview; do not require a cloud account.
+- Project overview: active goal, state, accepted/open criteria, running workers, blockers, time range to completion, measured usage, and telemetry gaps.
+- Project detail: task list and dependency view, phases/timeline, critical path, current models, reviews, failure reproductions, artifacts, and integration status.
+- Attention first: what needs a decision? Which test is blocking? Which project has been inactive, and since when? Why did the ETA change?
+- Task detail: original/current estimate, actual phase durations, attempt history, patch, acceptance checks, costs, and handoffs.
+- Later controls: pause/resume, answer a critical decision, switch providers at a safe transition, and change budget/parallelism. Reuse existing locks and safety boundaries; the UI must not have a second execution engine.
+- Metrics: time/cost per accepted change, first-attempt success, escalation rate, rework, cache share, human interventions, prediction error, and time-range coverage.
+- First create versioned events and complete measurement, then the dashboard. Existing loop-status.json, loop.log, story durations, and routing events are building blocks, but not yet a complete event history across projects.
+- Telemetry is local by default; explicitly design external team/cloud functionality and its data scope later.
 
-## Empfohlene Produktabfolge
+## Recommended product sequence
 
-1. Fehlerbehandlung und Provider-Parität stabilisieren; vollständige Ereignisse/Verbrauch/Dauern.
-2. Nützlichen yoke-check-Einstieg aus Review, Verify und Smoke entwickeln.
-3. Geschützte Abnahmen, kontrollierte Reparatur, Wiederaufnahme und Anbieterwechsel.
-4. Zeitprognosen und lesendes Projektdashboard auf derselben Ereignisbasis; anschließend gezielte Steuerung.
-5. Gemeinsames Zielmodell und Team-/CI-Berichte ausbauen; Optimierungen durch Vergleichsläufe validieren.
+1. Stabilize failure handling and provider parity; complete events/usage/durations.
+2. Develop a useful yoke-check entry point from review, verify, and smoke.
+3. Protected acceptance checks, controlled repair, resumption, and switching providers.
+4. Time forecasts and a read-only project dashboard on the same event foundation; targeted controls afterward.
+5. Extend the shared goal model and team/CI reports; validate optimizations through comparison runs.
 
-Nicht bereits beschlossen: UI-Technologie, Cloudhosting, API-Providerpreise, konkrete Modellrangliste, genauer Releaseumfang, verbindlicher Zeitplan, bezahltes Produkt oder vollständige Umsetzung aller Vorschläge.
+Not yet decided: UI technology, cloud hosting, API provider prices, specific model rankings, exact release scope, a binding schedule, a paid product, or complete implementation of all proposals.
 
-## Quellen und Wiederaufnahme
+## Sources and resumption
 
-### Umsetzungsstand nach Freigabe
+### Implementation status after authorization
 
-Der Nutzer hat anschließend ausdrücklich „ok setze alles akribisch und sicher um“ beauftragt. Die lokale Umsetzung umfasst jetzt unabhängige Checks, geschützte ausführbare Abnahmen, dauerhafte Ziele mit Anbieterwechsel und Verbrauchsgrenzen, sichere serielle Worktree-Wiederaufnahme, Gemini-Adapterkorrekturen, Ereignisse und empirische Zeitspannen, feste Routingregeln mit Eskalation, modellfreie Werkzeugaufgaben, begrenzte kontextbezogene Prompts, deklarierte Schreibbereiche und ein lokales Projektdashboard. Bedienung und Grenzen: [VERIFIED-PROJECTS.md](VERIFIED-PROJECTS.md).
+The user subsequently gave the explicit instruction, "OK, implement everything meticulously and safely." Local implementation now includes independent checks, protected executable acceptance checks, persistent goals with provider switching and usage limits, safe serial worktree resumption, Gemini adapter corrections, events and empirical time ranges, fixed routing rules with escalation, model-free tool tasks, bounded context-specific prompts, declared write areas, and a local project dashboard. Operation and limitations: [VERIFIED-PROJECTS.md](VERIFIED-PROJECTS.md).
 
-Weiterhin offen sind externe Nutzer-/Wettbewerbsversuche, authentifizierte Modellvergleiche, belastbare Kalibrierung der Zeitprognosen und kommerzielle/Cloud-Entscheidungen. Selektive Testwiederverwendung und webbasierter Start/Resume sind bewusst keine behaupteten Fähigkeiten dieses lokalen Ausbaus. Qualitätskontrollen werden vollständig ausgeführt. Die ursprünglichen Produktthesen bleiben als solche dokumentiert.
+External user/competitor trials, authenticated model comparisons, reliable calibration of time forecasts, and commercial/cloud decisions remain open. Selective test reuse and web-based start/resume are deliberately not claimed capabilities of this local expansion. Quality checks run in full. The original product hypotheses remain documented as hypotheses.
 
-Lokale Anker: src/agents/providers.ts, src/agents/telemetry.ts, src/retrofit/planners/, src/loop/loop.ts, src/loop/git.ts, src/loop/runner.ts, src/loop/reporter.ts, src/loop/scheduler.ts, src/routing/router.ts, src/routing/registry.ts, src/context/context.ts, src/smoke/command.ts, src/scan/design.ts, bench/RESULTS.md.
+Local anchors: src/agents/providers.ts, src/agents/telemetry.ts, src/retrofit/planners/, src/loop/loop.ts, src/loop/git.ts, src/loop/runner.ts, src/loop/reporter.ts, src/loop/scheduler.ts, src/routing/router.ts, src/routing/registry.ts, src/context/context.ts, src/smoke/command.ts, src/scan/design.ts, bench/RESULTS.md.
 
-Am 2026-09-05 gelesene Primärquellen; vor konkreten Versions-/Preisentscheidungen erneut prüfen:
+Primary sources read on 2026-09-05; check again before specific version/price decisions:
 
 - https://learn.chatgpt.com/use-cases/follow-goals
 - https://learn.chatgpt.com/docs/agent-configuration/subagents
@@ -180,48 +180,44 @@ Am 2026-09-05 gelesene Primärquellen; vor konkreten Versions-/Preisentscheidung
 - https://github.com/garrytan/gstack
 - https://github.com/open-gsd/gsd-core
 
-Provenienz der ursprünglichen README-Prüfung: kein C2PA gefunden, unterstützter Scan vollständig, Verifikation/Vertrauen/Metadatenprivatsphäre unbekannt. Unicode-Befund: Emoji-Variationszeichen, kein Nachweis eines KI-Wasserzeichens. Proprietäre Wasserzeichen nicht überprüfbar. Dieses Gesprächsdokument wurde vom KI-Assistenten aus der Sitzung zusammengefasst; es enthält keine unabhängige Bestätigung der Produktthesen.
+Provenance of the original README review: no C2PA found, supported scan complete, verification/trust/metadata privacy unknown. Unicode finding: emoji variation selectors, not evidence of an AI watermark. Proprietary watermarks could not be verified. The AI assistant summarized this discussion document from the session; it contains no independent confirmation of the product hypotheses.
 
+## Continuation on 2026-09-06: Defaults and dashboard
 
-## Fortsetzung am 2026-09-06: Defaults und Dashboard
+The user commissioned the combined implementation of automatic routing/parallelism and the three dashboard views Now, Usage & Time, and Results. The changes exist locally as an unpublished expansion; the package version and last published release remain 1.7.0.
 
-Der Nutzer hat die kombinierte Umsetzung von automatischem Routing/Parallelismus und den drei Dashboardansichten Jetzt, Verbrauch & Zeit sowie Ergebnisse beauftragt. Die Änderungen liegen lokal als unveröffentlichter Ausbau vor; Paketversion und zuletzt veröffentlichtes Release bleiben 1.7.0.
+Implemented: routing in the asynchronous worker path; new setups with routing on, parallelism auto, and isolation on; a conservative maximum of two Yoke workers with declared write areas; respect for explicit settings; persistent measurement history separate from the short activity list; daily/weekly/monthly analysis in UTC; model and project comparison; usage chart; current tasks and phases; acceptance checks and effort per acceptance check. Available reviewer, critic, and repair usage is also recorded. Details and limitations are in VERIFIED-PROJECTS.md.
 
-Umgesetzt: Routing im asynchronen Workerpfad; neue Setups mit Routing an, Parallelität auto und Isolation an; konservativ höchstens zwei Yoke-Worker bei deklarierten Schreibbereichen; Respektierung expliziter Einstellungen; dauerhafte Messhistorie getrennt von der kurzen Aktivitätsliste; Tages-/Wochen-/Monatsauswertung in UTC; Modell- und Projektvergleich; Verbrauchsdiagramm; aktuelle Aufgaben und Phasen; Abnahmen und Aufwand pro Abnahme. Verfügbare Reviewer-, Kritiker- und Reparaturnutzung wird mit erfasst. Details und Grenzen stehen in VERIFIED-PROJECTS.md.
+Still not claimed capabilities: dynamically sharing slots with native subagents (native delegation is disabled for loop invocations across all three providers), exact generation speed, complete reconstruction of old usage data, automatic monthly archive compaction, or calibrated time forecasts. Existing quality repair limits remain; competing candidates remain optional.
 
-Weiterhin keine behaupteten Fähigkeiten: dynamische gemeinsame Nutzung von Slots durch native Subagenten (native Delegation ist für Loop-Aufrufe bei allen drei Anbietern deaktiviert), exakte Generierungsgeschwindigkeit, vollständige Rekonstruktion alter Verbrauchsdaten, automatische monatliche Archivverdichtung oder kalibrierte Zeitprognosen. Bestehende Quality-Reparaturlimits bleiben erhalten; konkurrierende Kandidaten bleiben optional.
+The implementation was verified through tests and a local browser check; authenticated model benchmarks and publication were not part of this continuation. The AI assistant recorded this update from the ongoing implementation.
 
-Die Umsetzung wurde mit Tests und einer lokalen Browserprüfung geprüft; authentifizierte Modellbenchmarks und Veröffentlichung waren kein Bestandteil dieser Fortsetzung. Dieses Update wurde vom KI-Assistenten aus der laufenden Umsetzung festgehalten.
+### Release instruction on 2026-09-06
 
+The user subsequently requested a maximum of three workers in automatic mode and publication of the development. The release target is 1.8.0; this supersedes the earlier local intermediate state with two workers. Every new version must have a dated changelog entry before publication; the binding rule is in AGENTS.md. Actual publication status is verified through GitHub Release and npm.
 
-### Releaseauftrag am 2026-09-06
+## Task-specific model selection after release 1.8.0
 
-Der Nutzer hat anschließend maximal drei Worker im Automatikmodus und die Veröffentlichung der Weiterentwicklung beauftragt. Releaseziel ist 1.8.0; der frühere lokale Zwischenstand mit zwei Workern ist damit überholt. Jede neue Version muss vor Veröffentlichung einen datierten Changelogeintrag erhalten; die verbindliche Regel steht in AGENTS.md. Der tatsächliche Veröffentlichungsstatus wird über GitHub Release und npm geprüft.
+The user explicitly commissioned implementation of the proposed capability selection: planning with the starting model, stored task assessment, model/effort profiles for Codex, Claude, and Gemini, bounded repair/escalation, and a traceable dashboard display. The implementation is being developed locally after 1.8.0. Behavior, migration, and limitations are in CAPABILITY-ROUTING.md; this must not be confused with the published 1.8.0 defaults.
 
+### Release instruction for 1.9.0
 
-## Aufgabenbezogene Modellauswahl nach Release 1.8.0
+The user explicitly requested publication of the capability routing expansion. The release target is 1.9.0. The dated changelog and CAPABILITY-ROUTING.md describe behavior, migration, and limitations; earlier references to the local intermediate state remain historical session notes.
 
-Der Nutzer hat die Umsetzung der vorgeschlagenen Fähigkeitsauswahl ausdrücklich beauftragt: Planung mit dem Startmodell, gespeicherte Aufgabenbewertung, Modell-/Effort-Profile für Codex, Claude und Gemini, begrenzte Reparatur/Eskalation sowie nachvollziehbare Dashboardanzeige. Die Implementierung wird lokal nach 1.8.0 entwickelt. Verhalten, Migration und Grenzen stehen in CAPABILITY-ROUTING.md; die veröffentlichten 1.8.0-Defaults dürfen damit nicht verwechselt werden.
+## Dashboard use on 2026-09-06 after release 1.9.0
 
+The user commissioned complete further development of the dashboard through actual use of the latest Yoke version with routing. The globally installed version 1.9.0 was verified and used with capability routing in the separate checkout `G:/NN-Developed/Yoke-dashboard`; the related UI task was routed based on its stored assessment to `codex-strong` / `gpt-5.6-sol` with high reasoning effort. A single serial assignment avoids competing changes to the same frontend navigation; the general automatic maximum remains three workers.
 
-### Releaseauftrag 1.9.0
+The local expansion adds priority for blocked/running loop status even when the goal is complete, labeling of stale reports, project search and status filters, current task and blockers on project cards, restorable URL views and UTC periods, cancellable project comparisons with at most three concurrent requests, and previous-period comparisons with visible measurement gaps. Using Yoke also uncovered failures in handling Git runtime files; status/locks are excluded, and implementation files are safely staged even in ignored history folders. Operation and limitations: [DASHBOARD-EVOLUTION.md](DASHBOARD-EVOLUTION.md).
 
-Der Nutzer hat die Veröffentlichung des Capability-Routing-Ausbaus ausdrücklich beauftragt. Releaseziel ist 1.9.0. Der datierte Changelog und CAPABILITY-ROUTING.md beschreiben Verhalten, Migration und Grenzen; frühere Hinweise auf den lokalen Zwischenstand bleiben historische Sitzungsnotizen.
+Independent browser checks used synthetic projects against the real local HTTP server, including mobile rendering, history navigation, and delayed responses. This assignment covers local development; a new package version or publication was not commissioned. No model benchmark, calculated cost savings, or reconstruction of unknown usage data is claimed. The AI assistant created this session note.
 
-## Dashboard-Eigengebrauch am 2026-09-06 nach Release 1.9.0
+## Batch planning after 1.9.0 on 2026-09-06
 
-Der Nutzer hat eine vollständige Weiterentwicklung des Dashboards durch tatsächlichen Einsatz der neuesten Yoke-Version mit Routing beauftragt. Die global installierte Version 1.9.0 wurde verifiziert und im separaten Checkout `G:/NN-Developed/Yoke-dashboard` mit Capability-Routing eingesetzt; die zusammenhängende UI-Aufgabe wurde anhand ihrer gespeicherten Bewertung auf `codex-strong` / `gpt-5.6-sol` mit hoher Denktiefe geroutet. Ein einzelner serieller Auftrag vermeidet konkurrierende Änderungen an derselben Frontend-Navigation; das allgemeine Automatikmaximum bleibt drei Worker.
+The user commissioned the next expansion: fully prepared task packages, separate planning/execution models, bounded fallback, and targeted reassessment of changed contracts. Locally implemented: prd assess, assessmentFor bindings including dependencies/plan, planning settings, and routing boundaries. New setups require prepared assessments and block missing profiles; existing configurations remain compatible. An actual Yoke run checked the batch commands with a worker routed to Terra. Details, measurements, and limitations: [BATCH-PLANNING-VALIDATION.md](BATCH-PLANNING-VALIDATION.md).
 
-Der lokale Ausbau ergänzt Statusvorrang für blockierte/laufende Loops trotz abgeschlossenem Ziel, Kennzeichnung veralteter Meldungen, Projektsuche und Statusfilter, aktuelle Aufgabe und Blocker auf Projektkarten, wiederherstellbare URL-Ansichten und UTC-Zeiträume, abbrechbare Projektvergleiche mit maximal drei gleichzeitigen Anfragen sowie Vorperiodenvergleiche mit sichtbaren Messlücken. Der Eigengebrauch deckte außerdem Fehler beim Umgang mit Git-Laufzeitdateien auf; Status/Sperren werden ausgeschlossen und Implementierungsdateien auch bei ignorierten Historienordnern sicher gestagt. Bedienung und Grenzen: [DASHBOARD-EVOLUTION.md](DASHBOARD-EVOLUTION.md).
+The additional Windows runner handoff was read, issue #5 reviewed, and a partial correction to infrastructure classification with bounded cancellation added. Sandbox preflight and further process supervision explicitly remain open; no reproduction or resolution of the original Windows cause is claimed. No new version was published. The AI assistant created this note.
 
-Unabhängige Browserprüfungen verwendeten synthetische Projekte gegen den echten lokalen HTTP-Server, einschließlich mobiler Darstellung, History-Navigation und verzögerter Antworten. Dieser Auftrag umfasst lokale Entwicklung; eine neue Paketversion oder Veröffentlichung wurde dabei nicht beauftragt. Kein behaupteter Modellbenchmark, keine berechnete Kostenersparnis und keine Rekonstruktion unbekannter Verbrauchsdaten. Diese Sitzungsnotiz wurde vom KI-Assistenten erstellt.
+## Complete runner follow-up instruction on 2026-09-06
 
-## Batch-Planung nach 1.9.0 am 2026-09-06
-
-Der Nutzer hat den nächsten Ausbau beauftragt: vollständig vorbereitete Aufgabenpakete, getrennte Planungs-/Ausführungsmodelle, begrenzter Fallback und gezielte Neubewertung geänderter Verträge. Lokal implementiert sind prd assess, assessmentFor-Bindungen einschließlich Abhängigkeiten/Plan, planning-Einstellungen und Routing-Grenzen. Neue Setups verlangen vorbereitete Assessments und blockieren fehlende Profile; bestehende Konfigurationen bleiben kompatibel. Ein tatsächlicher Yoke-Lauf prüfte die Batch-Befehle mit einem auf Terra gerouteten Worker. Details, Messwerte und Grenzen: [BATCH-PLANNING-VALIDATION.md](BATCH-PLANNING-VALIDATION.md).
-
-Der zusätzliche Windows-Runner-Handoff wurde gelesen, Issue #5 geprüft und eine Teilkorrektur der Infrastrukturklassifikation samt begrenztem Abbruch ergänzt. Sandbox-Preflight und weitergehende Prozessaufsicht bleiben ausdrücklich offen; keine Reproduktion oder Behebung der ursprünglichen Windows-Ursache wird behauptet. Keine neue Version veröffentlicht. Diese Notiz wurde vom KI-Assistenten erstellt.
-
-## Vollständiger Runner-Folgeauftrag am 2026-09-06
-
-Auf ausdrücklichen Nutzerauftrag wurde Issue #5 weiterbearbeitet. Der Store-PowerShell-Fehler wurde modellfrei mit dem exakten Fehlercode reproduziert; native PowerShell bestand denselben Sandbox-Test. Der lokale Ausbau prüft den Shell-Start vor dem Modell, entfernt ungeeignete Store-Aliase nur aus der Provider-Umgebung, nutzt argv-sichere Windows-Starts und überwacht Laufzeit, Ausgabe, erfolgreichen Tool-Fortschritt und Prozessidentität getrennt. Ein echter Yoke-Lauf mit Luna, Routing und sicherer Isolation endete nach 3m8s erfolgreich einschließlich Abnahmetests und Commit-Integration. Protokoll, Grenzen und Konfiguration: [WINDOWS-RUNNER-VALIDATION.md](WINDOWS-RUNNER-VALIDATION.md). Die alte DeviceLane-Instanz wurde nicht verändert; Veröffentlichung oder rückwirkende Instrumentierung wird nicht behauptet. Diese Notiz wurde vom KI-Assistenten erstellt.
+Issue #5 was addressed further at the user's explicit request. The Store PowerShell failure was reproduced without a model using the exact error code; native PowerShell passed the same sandbox test. The local expansion checks shell startup before the model, removes unsuitable Store aliases only from the provider environment, uses argv-safe Windows launches, and monitors runtime, output, successful tool progress, and process identity separately. An actual Yoke run with Luna, routing, and safe isolation completed successfully after 3m8s, including acceptance tests and commit integration. Record, limitations, and configuration: [WINDOWS-RUNNER-VALIDATION.md](WINDOWS-RUNNER-VALIDATION.md). The old DeviceLane instance was not changed; publication or retrospective instrumentation is not claimed. The AI assistant created this note.

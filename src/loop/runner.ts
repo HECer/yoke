@@ -18,6 +18,7 @@ import { formatReviewContract, formatReviewStdoutContract, parseReviewVerdict, t
 import { prepareWindowsInvocation } from '../agents/windows-launch.js'
 import { readSupervision } from '../agents/supervision.js'
 import type { ReviewOutcome } from '../quality/repair.js'
+import { executionFailure, type FailureObservation } from '../observability/failure.js'
 
 export interface AgentContext {
   attempt?: number
@@ -27,6 +28,7 @@ export interface AgentContext {
 }
 
 export interface AgentResult {
+  failure?: FailureObservation
   success: boolean
   infrastructureFailure?: boolean
   summary: string
@@ -442,7 +444,7 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
         const partial = (e as { stdout?: unknown }).stdout
         const tokens = partial == null ? undefined : providerTelemetryUsage(parseProviderTelemetry(agent, String(partial).split(/\r?\n/)))
         const reason = readSupervision(ctx.targetDir, new Date(started).toISOString())[0]?.reason
-        return { success: false, infrastructureFailure: true, summary: `${agent} failed on ${ctx.story.id}: ${reason ?? (e as Error).message}`, tokens: attributed(tokens) }
+        return { success: false, infrastructureFailure: true, failure: executionFailure(e), summary: `${agent} failed on ${ctx.story.id}: ${reason ?? (e as Error).message}`, tokens: attributed(tokens) }
       }
     }
     try {
@@ -451,7 +453,7 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
       ;(opts.exec ?? runCli)(inv)
       return { success: true, summary: `${agent} implemented ${ctx.story.id}` }
     } catch (e) {
-      return { success: false, infrastructureFailure: true, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}` }
+      return { success: false, infrastructureFailure: true, failure: executionFailure(e), summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}` }
     }
   }
 }
