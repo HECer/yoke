@@ -370,6 +370,9 @@ async function runWorkerImplementation(input: StoryWorkerInput, context: AgentCo
     }
     result.routing.recordOutcome(false)
     const observed = input.failureRoot ? observeFailure({ root: input.failureRoot, scope: input.failureScope, directory: context.targetDir, story: context.story, stage: gates.stage, summary: gates.summary, observation: gates.observation }) : undefined
+    if (observed?.failure.observation) {
+      try { input.reporter?.failure?.(observed.failure.observation, context.story.id) } catch { /* telemetry must preserve routing and the original gate outcome */ }
+    }
     if (observed?.action === 'blocked') return { result: { ...result, success: false, summary: observed.feedback, routing: { ...result.routing, blocked: true, canRetry: false } }, failure: observed.failure }
     if (result.tokens) input.reporter?.addTokens(result.tokens)
     feedback = observed?.feedback ?? gates.summary

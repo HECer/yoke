@@ -244,3 +244,35 @@ it.each(['serial', 'parallel'] as const)('retains assertion metadata after a %s 
   if (mode === 'parallel') reporter.blocked('rerun failed', result.failure)
   expect(localUsageReport(dir, period()).failures).toMatchObject({ product: 1, unknown: 0 })
 })
+
+it('archives the failed routed worker gate even when the retry succeeds', async () => {
+  const dir = root(); const reporter = makeReporter(dir, { quiet: true })
+  const observation = { failureId: '12345678-1234-1234-1234-123456789abc', failureCategory: 'product', failureCause: 'assertion' } as const
+  let checks = 0
+  const result = await runStoryWorker({ story: { id: 'S1', title: 'first', priority: 1, acceptance: ['done'], passes: false },
+    worktree: dir, baseCommit: 'base', provider: { provider: 'codex', role: 'implementation' }, failureRoot: dir, reporter,
+    runner: () => ({ success: true, summary: 'implemented', routing: { canRetry: true, recordOutcome: () => {} } }),
+    verify: () => ++checks === 1 ? { passed: false, summary: 'verified assertion', failure: observation } : { passed: true, summary: 'green retry' } })
+  expect(result.kind).toBe('candidate')
+  expect(checks).toBe(2)
+  const events = readMeasurements(dir, period().from, period().to).events
+  expect(events.find(event => event.type === 'failure')?.data).toEqual(observation)
+  expect(localUsageReport(dir, period()).failures).toMatchObject({ product: 1, unknown: 0 })
+})
+
+it.each(['serial', 'parallel'] as const)('keeps a successful routed %s retry when the optional failure sink throws', async mode => {
+  const dir = root(); mkdirSync(join(dir, '.yoke'))
+  const story = { id: 'S1', title: 'first', priority: 1, acceptance: ['done'], passes: false }
+  writeFileSync(join(dir, '.yoke/prd.yaml'), JSON.stringify([story]))
+  const reporter = makeReporter(dir, { quiet: true }); reporter.failure = () => { throw Error('telemetry unavailable') }
+  const observation = { failureId: '12345678-1234-1234-1234-123456789abc', failureCategory: 'product', failureCause: 'assertion' } as const
+  let checks = 0
+  const input = { story, targetDir: dir, worktree: dir, baseCommit: 'base', prdPath: join(dir, '.yoke/prd.yaml'), maxIterations: 1,
+    provider: { provider: 'codex', role: 'implementation' } as const, failureRoot: dir, reporter,
+    runner: () => ({ success: true, summary: 'implemented', routing: { canRetry: true, recordOutcome: () => {} } }),
+    verify: () => ++checks === 1 ? { passed: false, summary: 'verified assertion', failure: observation } : { passed: true, summary: 'green retry' },
+    git: { isClean: () => true, commitAll: () => {}, addWorktree: () => {}, removeWorktree: () => {}, integrate: () => {} } }
+  const result = mode === 'serial' ? runLoop(input) : await runStoryWorker(input)
+  expect(mode === 'serial' ? (result as any).status : (result as any).kind).toBe(mode === 'serial' ? 'complete' : 'candidate')
+  expect(checks).toBe(2)
+})

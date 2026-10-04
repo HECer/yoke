@@ -697,7 +697,7 @@ function runImplementation(opts: LoopOptions, dir: string, story: Story, reporte
     }
     result.routing.recordOutcome(false)
     const observed = observeFailure({ root: opts.targetDir, directory: dir, story, stage: failedStage, summary: verdict.summary, observation: verdict.failure })
-    reporter.failure?.(observed.failure.observation!, story.id)
+    try { reporter.failure?.(observed.failure.observation!, story.id) } catch { /* telemetry must preserve routing and the original gate outcome */ }
     if (observed.action === 'blocked') return { result: { ...result, success: false, summary: observed.feedback, routing: { ...result.routing, blocked: true, canRetry: false } }, failure: observed.failure }
     if (result.tokens) reporter.addTokens(result.tokens)
     feedback = observed.feedback
