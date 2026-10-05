@@ -6,11 +6,12 @@ import type { Story } from '../loop/prd.js'
 import { AssessmentSchema, assessmentKey, requiredTier, tiers, type TaskAssessment } from './assessment.js'
 import { projectHash, readRoutingObservations, type RoutingObservation } from './registry.js'
 import { currentContractKey } from './contracts.js'
-import { readRoutingAttempts } from './attempts.js'
+import { readRoutingAttempts, routingAttemptBudget } from './attempts.js'
+import { safeFailure } from '../observability/failure.js'
 import { optimizeCapability, type RoutingOptimization } from './optimization.js'
 
-export function knownInfrastructureFailure(summary: string): boolean {
-  return /\bENOENT\b|\bECONNREFUSED\b|\bETIMEDOUT\b|CreateProcess(?:AsUserW|W)? failed|Failed to create unified exec process|command not found|is not recognized as|Missing script:|rate limit exceeded|authentication failed|AuthRequired|No access token was provided|invalid api key|credentials (?:missing|not found)|quota exceeded/i.test(summary)
+export function knownInfrastructureFailure(observation: unknown): boolean {
+  return safeFailure(observation)?.failureCategory === 'infrastructure'
 }
 
 function statePath(root: string, key: string, create = false): string {
@@ -65,7 +66,8 @@ export function chooseCapability(input: {
   const baseTier = requiredTier(input.assessment, role)
   const level = Math.min(3, tiers.indexOf(baseTier) + Math.max(0, failures.length - 1, (input.repairRound ?? 1) - 1))
   const attemptLimit = Math.min(input.maxAttempts ?? 5, 5 - tiers.indexOf(baseTier))
-  const exhausted = attempts.length >= attemptLimit
+  const budget = routingAttemptBudget(attempts, attemptLimit)
+  const exhausted = budget.semanticExhausted || budget.infrastructureExhausted
   const candidates = input.workers.filter(w => w.tier && tiers.indexOf(w.tier) >= level && (!input.maxTier || tiers.indexOf(w.tier) <= tiers.indexOf(input.maxTier)) && (!w.roles || w.roles.includes(role)) && (!input.story.agent || w.agent === input.story.agent) && (input.available?.(w.agent) ?? true))
   const history = readRoutingObservations().filter(e => e.projectHash === projectHash(input.root) && e.taskClass === input.assessment.taskClass && e.requiredTier === baseTier && e.role === role && Date.now() - Date.parse(e.recordedAt) < 30 * 86400000)
   const evidence = (w: RoutingWorker) => {
@@ -84,7 +86,7 @@ export function chooseCapability(input: {
   const selection: ModelSelection = worker ? { provider: worker.provider, model: worker.model, reasoningEffort: worker.reasoningEffort, variant: worker.variant, nativeMultiAgent: false, ...(provider !== 'gemini' && provider !== 'qwen' && provider !== 'pi' && provider !== 'hermes' && input.parentSelection?.bare !== undefined ? { bare: input.parentSelection.bare } : {}) }
     : { ...(provider === input.parent ? input.parentSelection : {}), nativeMultiAgent: false }
   const reason = `${role}: ${tiers[level]}; ${input.assessment.reason}${failures.length ? `; ${failures.length} verified failure(s), ${failures.length === 1 ? 'one targeted repair' : 'escalated'}` : ''}${worker ? '' : '; no eligible profile, parent/provider fallback'}${economic.reason ? `; ${economic.reason}` : ''}`
-  return { worker, provider, selection, reason: blocked ? `${role}: no eligible profile within routing limits; execution blocked` : reason, blocked, requiredTier: baseTier, selectedTier: tiers[level], failures: failures.length, usedAttempts: attempts.length, attemptLimit, exhausted, next: input.maxTier && level >= tiers.indexOf(input.maxTier) ? 'stop at configured tier limit' : level < 3 ? tiers[level + 1] : 'stop after bounded attempts' }
+  return { worker, provider, selection, reason: blocked ? `${role}: no eligible profile within routing limits; execution blocked` : reason, blocked, requiredTier: baseTier, selectedTier: tiers[level], failures: failures.length, usedAttempts: budget.semanticAttempts, attemptLimit, exhausted, next: input.maxTier && level >= tiers.indexOf(input.maxTier) ? 'stop at configured tier limit' : level < 3 ? tiers[level + 1] : 'stop after bounded attempts' }
 }
 
 /** Explicit role models are resolved by callers before consulting this fallback. */

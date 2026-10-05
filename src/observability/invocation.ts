@@ -29,7 +29,7 @@ export function measureInvocation<T extends AgentResult>(options: {
     let salvaged: AgentResult['tokens']
     try {
       const stdout = failure && typeof failure === 'object' && 'stdout' in failure ? failure.stdout : undefined
-      salvaged = stdout == null ? undefined : providerTelemetryUsage(parseProviderTelemetry(options.agent, String(stdout).split(/\r?\n/u)))
+      salvaged = stdout == null ? undefined : providerTelemetryUsage(parseProviderTelemetry(options.agent, String(stdout).split(/\r?\n/u)), options.agent)
     } catch { /* Failed measurement must not replace the original provider error. */ }
     const usage = result?.tokens ?? salvaged
     const complete = usage !== undefined && usage.measurementComplete !== false

@@ -15,7 +15,9 @@ import { historyForWorkers, projectHash, readRoutingObservations, recordRoutingO
 import { assessmentInstructions, parseAssessment, tiers, type CapabilityTier } from './assessment.js'
 import { chooseCapability, readAssessment, saveAssessment, routingAssessmentKey, knownInfrastructureFailure } from './capability.js'
 import { readPlanningFile } from './contracts.js'
-import { finishRoutingAttempt, markRoutingAttemptUsageIncomplete, readRoutingAttempts, recordRoutingAttemptUsage, reserveRoutingAttempt, routingEpisodeSummary, type RoutingAttemptReservation } from './attempts.js'
+import { referencePacket } from '../context/packet.js'
+import { finishRoutingAttempt, markRoutingAttemptUsageIncomplete, readRoutingAttempts, routingAttemptBudget, recordRoutingAttemptUsage, reserveRoutingAttempt, routingEpisodeSummary, type RoutingAttemptReservation } from './attempts.js'
+import { executionFailure } from '../observability/failure.js'
 import { assessmentSignature } from './optimization.js'
 
 export interface RouteDecision {
@@ -61,7 +63,7 @@ export interface AdaptiveRunnerOptions {
 
 export function buildAssessmentPrompt(root: string, ctx: AgentContext): string {
   return [assessmentInstructions, 'Use the supplied task contract and project context to produce a bounded plan. Do not implement or change files.',
-    'Approved planning brief:', readPlanningFile(root, '.yoke/plan.md', 80_000) ?? '',
+    'Approved planning brief (secondary reference; the task and objective remain binding):', referencePacket('.yoke/plan.md', readPlanningFile(root, '.yoke/plan.md', 80_000) ?? '', ctx.story.title),
     contextBlockFor(ctx.targetDir, ctx.story), JSON.stringify(ctx.story), 'Return exactly one line: YOKE_ASSESS {"taskClass":"implementation","difficulty":"medium","uncertainty":"low","risk":"low","scope":"low","testability":"high","reason":"evidence","approach":"steps and tests"}'].join('\n')
 }
 
@@ -159,6 +161,7 @@ function callUsage(role: ModelCallUsage['role'], provider: Agent, selection: Mod
     usageMissingFields: tokens?.usageMissingFields ?? (!tokens ? ['inputTokens', 'outputTokens', 'cachedInputTokens', 'reasoningOutputTokens', 'totalCostUsd'] : []),
     ...(tokens?.usagePartialFields ? { usagePartialFields: tokens.usagePartialFields } : {}),
     inputTokens: tokens?.inputTokens ?? 0,
+    ...(tokens?.freshInputTokens !== undefined ? { freshInputTokens: tokens.freshInputTokens } : {}),
     ...(tokens?.cachedInputTokens !== undefined ? { cachedInputTokens: tokens.cachedInputTokens } : {}),
     ...(tokens?.cacheWriteInputTokens !== undefined ? { cacheWriteInputTokens: tokens.cacheWriteInputTokens } : {}),
     outputTokens: tokens?.outputTokens ?? 0,
@@ -239,7 +242,7 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
       try { result = yield work }
       catch (error) {
         const reported = error && typeof error === 'object' ? (error as { tokens?: TokenUsage }).tokens : undefined
-        result = { success: false, infrastructureFailure: true, summary: (error as Error)?.message ?? String(error), output: '', ...(reported ? { tokens: reported } : {}) }
+        result = { success: false, infrastructureFailure: true, failure: executionFailure(error), summary: (error as Error)?.message ?? String(error), output: '', ...(reported ? { tokens: reported } : {}) }
       }
       const durationMs = Math.max(0, now() - started)
       const callId = result.tokens?.callId ?? (result.tokens?.calls?.length === 1 ? result.tokens.calls[0].callId : undefined) ?? request.callId
@@ -261,7 +264,7 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
       if (accountingError) {
         if (reservation) {
           try { markRoutingAttemptUsageIncomplete(root, reservation.id) } catch { /* unreadable state cannot provide a complete sample */ }
-          try { finishRoutingAttempt(root, reservation, { verificationSuccess: false, failureKind: 'infrastructure', actualModel: result.tokens?.model }) } catch { /* reservation remains charged and unresolved */ }
+          try { finishRoutingAttempt(root, reservation, { verificationSuccess: false, failureKind: 'infrastructure', actualModel: result.tokens?.model, failure: result.failure }) } catch { /* reservation remains charged and unresolved */ }
         }
         return { blocked: `Call accounting failed: ${(accountingError as Error).message}` }
       }
@@ -313,16 +316,16 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
       if (choice.exhausted) return blocked('Routing attempt budget exhausted; replan this task before retrying')
       let runner: ReturnType<typeof makeWorker>
       const implementation = yield* perform(choice.worker ? 'worker' : 'parent', choice.provider, choice.selection,
-        () => runner({ ...ctx, attempt: reservation!.ordinal, story: { ...ctx.story, assessment } }), choice.worker?.id ?? 'SELF',
+        () => runner({ ...ctx, attempt: reservation!.semanticOrdinal ?? reservation!.ordinal, story: { ...ctx.story, assessment } }), choice.worker?.id ?? 'SELF',
         () => { runner = makeWorker(choice.provider, choice.selection); reserveWorker(choice.provider, choice.selection, choice.worker?.id ?? 'SELF', choice.attemptLimit) })
       if (implementation.blocked) return blocked(implementation.blocked)
       const result = implementation.result!
       let recorded = false
-      const infrastructureFailure = result.infrastructureFailure || (!result.success && knownInfrastructureFailure(result.summary))
+      const infrastructureFailure = result.infrastructureFailure || (!result.success && knownInfrastructureFailure(result.failure))
       const recordOutcome = (verified: boolean, failureKind?: 'implementation' | 'infrastructure'): void => {
         if (recorded) return
         const kind = infrastructureFailure ? 'infrastructure' : failureKind ?? 'implementation'
-        const measured = finishRoutingAttempt(root, reservation!, { verificationSuccess: infrastructureFailure ? false : verified, failureKind: kind, actualModel: result.tokens?.model })
+        const measured = finishRoutingAttempt(root, reservation!, { verificationSuccess: infrastructureFailure ? false : verified, failureKind: kind, actualModel: result.tokens?.model, failure: result.failure })
         const episode = routingEpisodeSummary(root, reservation!)
         recorded = true
         recordRoutingObservation({ projectHash: projectHash(root), storyHash: storyHash(projectHash(root), ctx.story.id), assessmentKey: reservation!.contractKey, taskClass: assessment!.taskClass, requiredTier: choice.requiredTier,
@@ -341,7 +344,7 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
       return { ...result, summary: `route=${choice.worker?.id ?? 'SELF'} (${choice.reason}); ${result.summary}`,
         ...(infrastructureFailure ? { success: false, infrastructureFailure: true } : {}),
         tokens: { ...aggregateCalls(calls), storyId: ctx.story.id, routingAttemptId: reservation!.id, escalated: choice.failures > 1 },
-        routing: { blocked: infrastructureFailure || undefined, canRetry: !infrastructureFailure && reservation!.ordinal < choice.attemptLimit, recordOutcome } }
+        routing: { blocked: infrastructureFailure || undefined, canRetry: !infrastructureFailure && (reservation!.semanticOrdinal ?? reservation!.ordinal) < choice.attemptLimit, recordOutcome } }
     }
     const rule = options.rules?.find(rule => (!rule.area || rule.area === ctx.story.area) && (!rule.storyId || rule.storyId === ctx.story.id) && (rule.area || rule.storyId))
     const bounded = options.strategy === 'capability' || options.maxAttempts !== undefined
@@ -351,7 +354,8 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
       try {
         failureKey = routingAssessmentKey(root, ctx.story)
         priorAttempts = readRoutingAttempts(root, ctx.story.id, failureKey)
-        if (priorAttempts.length >= (options.maxAttempts ?? 5)) return blocked('Routing attempt budget exhausted; replan this task before retrying')
+        const budget = routingAttemptBudget(priorAttempts, options.maxAttempts ?? 5)
+        if (budget.semanticExhausted || budget.infrastructureExhausted) return blocked('Routing attempt budget exhausted; replan this task before retrying')
       } catch (error) { return blocked(`Cannot read routing attempt state: ${(error as Error).message}`) }
     }
     if (rule) {
@@ -376,18 +380,18 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
       })
       if (execution.blocked) return blocked(execution.blocked)
       const result = execution.result!
-      const infrastructureFailure = result.infrastructureFailure || (!result.success && knownInfrastructureFailure(result.summary))
+      const infrastructureFailure = result.infrastructureFailure || (!result.success && knownInfrastructureFailure(result.failure))
       let recorded = false
       const recordOutcome = (verified: boolean, failureKind?: 'implementation' | 'infrastructure'): void => {
         if (recorded) return
         const kind = infrastructureFailure ? 'infrastructure' : failureKind ?? 'implementation'
-        if (reservation) finishRoutingAttempt(root, reservation, { verificationSuccess: infrastructureFailure ? false : verified, failureKind: kind, actualModel: result.tokens?.model })
+        if (reservation) finishRoutingAttempt(root, reservation, { verificationSuccess: infrastructureFailure ? false : verified, failureKind: kind, actualModel: result.tokens?.model, failure: result.failure })
         recorded = true
       }
       if (infrastructureFailure) recordOutcome(false, 'infrastructure')
       return { ...result, ...(infrastructureFailure ? { success: false, infrastructureFailure: true } : {}),
         tokens: { ...aggregateCalls(calls), storyId: ctx.story.id, ...(reservation ? { routingAttemptId: reservation.id } : {}) },
-        routing: { recordOutcome, ...(infrastructureFailure ? { blocked: true } : {}), ...(bounded ? { canRetry: !infrastructureFailure && reservation!.ordinal < (options.maxAttempts ?? 5) } : {}) } }
+        routing: { recordOutcome, ...(infrastructureFailure ? { blocked: true } : {}), ...(bounded ? { canRetry: !infrastructureFailure && (reservation!.semanticOrdinal ?? reservation!.ordinal) < (options.maxAttempts ?? 5) } : {}) } }
     }
     const orchestratorSelection = { ...(options.parentSelection ?? {}), ...(options.orchestratorSelection ?? {}), nativeMultiAgent: false }
     let routeRun: RunValue = { success: true, summary: 'Explicit rule', output: '' }
@@ -416,11 +420,13 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
     })
     if (execution.blocked) return blocked(execution.blocked)
     const result = execution.result!
+    const infrastructureFailure = result.infrastructureFailure || (!result.success && knownInfrastructureFailure(result.failure))
     const tokens = { ...aggregateCalls(calls), storyId: ctx.story.id, escalated: Boolean(rule && failedStories.has(failureKey)), ...(reservation ? { routingAttemptId: reservation.id } : {}) }
     let recorded = false
     const recordOutcome = (verificationSuccess: boolean, failureKind?: 'implementation' | 'infrastructure'): void => {
       if (recorded) return
-      if (reservation) finishRoutingAttempt(root, reservation, { verificationSuccess, failureKind, actualModel: result.tokens?.model })
+      if (infrastructureFailure) { verificationSuccess = false; failureKind = 'infrastructure' }
+      if (reservation) finishRoutingAttempt(root, reservation, { verificationSuccess, failureKind, actualModel: result.tokens?.model, failure: result.failure })
       recorded = true
       if (!verificationSuccess && failureKind !== 'infrastructure') failedStories.add(failureKey); else if (verificationSuccess) failedStories.delete(failureKey)
       const project = projectHash(root)
@@ -433,21 +439,27 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
         totalCostUsd: tokens.totalCostUsd, costMeasurementComplete: tokens.costMeasurementComplete,
       })
     }
-    if (result.infrastructureFailure) recordOutcome(false, 'infrastructure')
+    if (infrastructureFailure) recordOutcome(false, 'infrastructure')
     const routeSummary = decision ? `route=${selected} (${decision.reason})` : `route=SELF (${routeRun.success ? 'invalid routing response' : 'orchestrator failed'})`
-    return { ...result, summary: `${routeSummary}; ${result.summary}`, tokens, routing: { recordOutcome, ...(result.infrastructureFailure ? { blocked: true } : {}),
-      ...(bounded ? { canRetry: !result.infrastructureFailure && reservation!.ordinal < (options.maxAttempts ?? 5) } : {}) } }
+    return { ...result, ...(infrastructureFailure ? { success: false, infrastructureFailure: true } : {}), summary: `${routeSummary}; ${result.summary}`, tokens, routing: { recordOutcome, ...(infrastructureFailure ? { blocked: true } : {}),
+      ...(bounded ? { canRetry: !infrastructureFailure && (reservation!.semanticOrdinal ?? reservation!.ordinal) < (options.maxAttempts ?? 5) } : {}) } }
   }
 }
 
 function aggregateCalls(calls: ModelCallUsage[]): TokenUsage {
   const optional: Partial<TokenUsage> = {}
+  const freshComplete = calls.length > 0 && calls.every(call => typeof call.freshInputTokens === 'number'
+    && Number.isFinite(call.freshInputTokens) && call.freshInputTokens >= 0)
+  if (freshComplete) optional.freshInputTokens = calls.reduce((sum, call) => sum + call.freshInputTokens!, 0)
   for (const field of ['cachedInputTokens', 'cacheWriteInputTokens', 'reasoningOutputTokens', 'totalCostUsd'] as const) {
     if (calls.some(call => call[field] !== undefined)) optional[field] = calls.reduce((sum, call) => sum + (call[field] ?? 0), 0)
   }
   const model = calls.at(-1)?.actualModel
   return { inputTokens: calls.reduce((sum, call) => sum + call.inputTokens, 0), outputTokens: calls.reduce((sum, call) => sum + call.outputTokens, 0),
     ...optional, ...(model ? { model } : {}), calls,
+    usageMissingFields: [...new Set([...calls.flatMap(call => call.usageMissingFields ?? []),
+      ...(!freshComplete && calls.length ? ['freshInputTokens'] : [])])].sort(),
+    usagePartialFields: [...new Set(calls.flatMap(call => call.usagePartialFields ?? []))].sort(),
     measurementComplete: calls.every(call => call.usageAvailable !== false),
     costMeasurementComplete: calls.every(call => call.totalCostUsd !== undefined && call.costMeasurementComplete !== false) }
 }

@@ -689,7 +689,7 @@ function runImplementation(opts: LoopOptions, dir: string, story: Story, reporte
       if (!verdict.passed) break
     }
     if (verdict.passed) return { result, gates: snapshotGates(dir, story, before, evidence) }
-    if (knownInfrastructureFailure(verdict.summary)) {
+    if (knownInfrastructureFailure(verdict.failure)) {
       result.routing.recordOutcome(false, 'infrastructure')
       const observation = verdict.failure ?? failureObservation()
       return { result: { ...result, success: false, infrastructureFailure: true, failure: observation, summary: verdict.summary, routing: { ...result.routing, blocked: true, canRetry: false } },

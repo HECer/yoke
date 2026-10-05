@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { spawn } from 'node:child_process'
 import { readRoutingAttempts, reserveRoutingAttempt, recordRoutingAttemptUsage, routingAttemptSummary, recordActiveRoutingUsage, finishRoutingAttempt } from '../../src/routing/attempts.js'
 import { chooseCapability, routingAssessmentKey } from '../../src/routing/capability.js'
 import { makeAdaptiveRunner } from '../../src/routing/router.js'
@@ -9,6 +10,7 @@ import { readRoutingObservations, recordRoutingObservation } from '../../src/rou
 import { runLoop } from '../../src/loop/loop.js'
 import { savePrd } from '../../src/loop/prd.js'
 import type { Story } from '../../src/loop/prd.js'
+import { failureObservation } from '../../src/observability/failure.js'
 
 let root: string
 const assessment = { taskClass: 'mechanical', difficulty: 'low', uncertainty: 'low', risk: 'low', scope: 'low', testability: 'high', reason: 'Known rename', approach: 'Rename then verify' } as const
@@ -97,3 +99,124 @@ it('retains known partial numbers while refusing to call their aggregate complet
     measurementComplete: false, costMeasurementComplete: false })
   expect(routingAttemptSummary(root, reservation)).toMatchObject({ inputTokens: 40, totalCostUsd: 0.03, usageComplete: false, costComplete: false })
 })
+
+it('retains proven pre-model failures while preserving semantic admission on resume', () => {
+  const first = reserve()
+  recordRoutingAttemptUsage(root, first.id, { callId: 'preflight', role: 'worker', inputTokens: 0, outputTokens: 0, totalCostUsd: 0 })
+  finishRoutingAttempt(root, first, { verificationSuccess: false, failureKind: 'infrastructure', failure: failureObservation('spawn', 'not-started') })
+  const second = reserve()
+  expect(second.semanticOrdinal).toBe(1)
+  finishRoutingAttempt(root, second, { verificationSuccess: false })
+  expect(reserve().semanticOrdinal).toBe(2)
+  expect(readRoutingAttempts(root, story.id, routingAssessmentKey(root, story))).toHaveLength(3)
+  expect(() => reserve()).toThrow(/budget exhausted/u)
+})
+
+it.each(['missing', 'paid', 'post-model'] as const)('charges %s infrastructure evidence conservatively', evidence => {
+  const first = reserve()
+  if (evidence !== 'missing') recordRoutingAttemptUsage(root, first.id, { callId: 'worker', role: 'worker', inputTokens: evidence === 'paid' ? 10 : 0, outputTokens: 0, totalCostUsd: 0 })
+  finishRoutingAttempt(root, first, { verificationSuccess: false, failureKind: 'infrastructure', failure: failureObservation('spawn', evidence === 'post-model' ? 'started' : 'not-started') })
+  expect(reserve().semanticOrdinal).toBe(2)
+  expect(() => reserve()).toThrow(/budget exhausted/u)
+})
+
+it.each(['missing', 'partial'] as const)('charges pre-model failures with %s worker cost evidence', costEvidence => {
+  const first = reserve()
+  recordRoutingAttemptUsage(root, first.id, { callId: 'preflight', role: 'worker', inputTokens: 0, outputTokens: 0,
+    ...(costEvidence === 'partial' ? { totalCostUsd: 0, costMeasurementComplete: false } : {}) })
+  finishRoutingAttempt(root, first, { verificationSuccess: false, failureKind: 'infrastructure', failure: failureObservation('spawn', 'not-started') })
+  expect(readRoutingAttempts(root, story.id, first.contractKey)[0].outcome?.semanticCharge).toBe(true)
+  expect(reserve().semanticOrdinal).toBe(2)
+  expect(() => reserve()).toThrow(/budget exhausted/u)
+})
+
+it('bounds durable infrastructure restarts independently of semantic candidates', () => {
+  for (let retry = 0; retry < 4; retry++) {
+    const attempt = reserve()
+    recordRoutingAttemptUsage(root, attempt.id, { callId: `preflight-${retry}`, role: 'worker', inputTokens: 0, outputTokens: 0, totalCostUsd: 0 })
+    finishRoutingAttempt(root, attempt, { verificationSuccess: false, failureKind: 'infrastructure', failure: failureObservation('spawn', 'not-started') })
+  }
+  expect(() => reserve()).toThrow(/infrastructure restart budget exhausted/u)
+})
+
+it('retains reported token subsets and explicit missing subset fields in the ledger', () => {
+  const attempt = reserve()
+  recordRoutingAttemptUsage(root, attempt.id, { callId: 'subsets', role: 'worker', inputTokens: 100, outputTokens: 20,
+    cachedInputTokens: 60, cacheWriteInputTokens: 4, reasoningOutputTokens: 8, usageMissingFields: ['freshInputTokens'] })
+  expect(routingAttemptSummary(root, attempt)).toMatchObject({ cachedInputTokens: 60, cacheWriteInputTokens: 4,
+    reasoningOutputTokens: 8, usageMissingFields: ['freshInputTokens'] })
+})
+
+it.each([undefined, 12])('reports fresh ledger totals only with complete per-call evidence: second=%s', secondFresh => {
+  const attempt = reserve()
+  recordRoutingAttemptUsage(root, attempt.id, { callId: 'first', role: 'worker', inputTokens: 10, outputTokens: 1, freshInputTokens: 6 })
+  recordRoutingAttemptUsage(root, attempt.id, { callId: 'second', role: 'worker', inputTokens: 20, outputTokens: 2,
+    ...(secondFresh !== undefined ? { freshInputTokens: secondFresh } : {}) })
+  const summary = routingAttemptSummary(root, attempt)
+  expect(summary.freshInputTokens).toBe(secondFresh === undefined ? undefined : 18)
+  if (secondFresh === undefined) expect(summary.usageMissingFields).toContain('freshInputTokens')
+  expect(summary.inputTokens).toBe(30)
+})
+
+it('rejects a corrupt durable outcome that releases a semantic slot without structured proof', () => {
+  const attempt = reserve()
+  finishRoutingAttempt(root, attempt, { verificationSuccess: false })
+  const [task, contract, ordinal] = attempt.id.split('.')
+  const path = join(root, '.yoke', 'routing-attempts', task, contract, `outcome-${ordinal}.json`)
+  const outcome = JSON.parse(readFileSync(path, 'utf8'))
+  writeFileSync(path, JSON.stringify({ ...outcome, semanticCharge: false }))
+  expect(() => reserve()).toThrow()
+})
+
+it('resumes the same profile after proven preflight failure without weakening the budget', () => {
+  let calls = 0
+  const create = () => makeAdaptiveRunner({ parent: 'codex', projectRoot: root, workers: mutableWorkers(), strategy: 'capability', maxCandidates: 1, maxAttempts: 1,
+    makeWorker: () => () => ++calls === 1
+      ? { success: false, infrastructureFailure: true, failure: failureObservation('spawn', 'not-started'), summary: 'preflight failed', tokens: { inputTokens: 0, outputTokens: 0, totalCostUsd: 0 } }
+      : { success: true, summary: 'implemented', tokens: { inputTokens: 10, outputTokens: 2, totalCostUsd: 0.01 } } })
+  expect(create()({ targetDir: root, story }).infrastructureFailure).toBe(true)
+  expect(create()({ targetDir: root, story }).success).toBe(true)
+  expect(calls).toBe(2)
+})
+
+it('does not infer infrastructure from product diagnostic text', () => {
+  const result = makeAdaptiveRunner({ parent: 'codex', projectRoot: root, workers: mutableWorkers(), strategy: 'capability', maxCandidates: 1,
+    makeWorker: () => () => ({ success: false, summary: 'assertion: ENOENT handling is incorrect', tokens: { inputTokens: 10, outputTokens: 2 } }) })({ targetDir: root, story })
+  expect(result.infrastructureFailure).not.toBe(true)
+  expect(result.routing?.blocked).not.toBe(true)
+})
+
+it('preserves typed preflight attribution for an explicitly routed profile', () => {
+  const result = makeAdaptiveRunner({ parent: 'codex', projectRoot: root, workers: mutableWorkers(), strategy: 'cost', maxCandidates: 1, maxAttempts: 1,
+    rules: [{ storyId: story.id, worker: 'cheap' }],
+    makeWorker: () => () => ({ success: false, summary: 'preflight failed', failure: failureObservation('preflight', 'not-started'),
+      tokens: { inputTokens: 0, outputTokens: 0, totalCostUsd: 0 } }) })({ targetDir: root, story })
+  expect(result.infrastructureFailure).toBe(true)
+  expect(result.routing?.blocked).toBe(true)
+  expect(readRoutingAttempts(root, story.id, routingAssessmentKey(root, story))[0].outcome?.semanticCharge).toBe(false)
+})
+
+it('admits semantic slots atomically across competing processes after a preflight failure', async () => {
+  const first = reserve()
+  recordRoutingAttemptUsage(root, first.id, { callId: 'preflight', role: 'worker', inputTokens: 0, outputTokens: 0, totalCostUsd: 0 })
+  finishRoutingAttempt(root, first, { verificationSuccess: false, failureKind: 'infrastructure', failure: failureObservation('spawn', 'not-started') })
+  const moduleUrl = new URL('../../src/routing/attempts.ts', import.meta.url).href
+  const script = `import { reserveRoutingAttempt } from ${JSON.stringify(moduleUrl)};
+    try { console.log(JSON.stringify({ admitted: reserveRoutingAttempt(JSON.parse(process.argv[1])) })); }
+    catch (error) { console.log(JSON.stringify({ error: error.message })); }`
+  const input = JSON.stringify({ root, contractKey: first.contractKey, storyId: story.id, limit: 2, profile: 'cheap', provider: 'codex' })
+  const results = await Promise.all(Array.from({ length: 4 }, () => new Promise<{ admitted?: { semanticOrdinal: number }; error?: string }>((resolve, reject) => {
+    const child = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', script, input], { windowsHide: true })
+    let stdout = '', stderr = ''
+    child.stdout.on('data', data => { stdout += data })
+    child.stderr.on('data', data => { stderr += data })
+    child.on('error', reject)
+    child.on('close', code => {
+      if (code !== 0) { reject(new Error(stderr)); return }
+      try { resolve(JSON.parse(stdout)) } catch (error) { reject(error) }
+    })
+  })))
+  expect(results.flatMap(result => result.admitted ? [result.admitted.semanticOrdinal] : []).sort()).toEqual([1, 2])
+  expect(results.filter(result => result.error).every(result => /budget exhausted/u.test(result.error!))).toBe(true)
+  expect(readRoutingAttempts(root, story.id, first.contractKey)).toHaveLength(3)
+}, 20_000)

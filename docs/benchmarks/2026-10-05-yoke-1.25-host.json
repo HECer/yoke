@@ -1,0 +1,42 @@
+{
+  "kind": "synthetic-host-regression",
+  "node": "v24.13.0",
+  "platform": "win32",
+  "samples": 5,
+  "reference": {
+    "originalCharacters": 82489,
+    "packetCharacters": 6000
+  },
+  "feedback": {
+    "originalCharacters": 30000,
+    "packetCharacters": 2400
+  },
+  "repeatedControlledChecks": {
+    "requestedPerSample": 5,
+    "executedPerSample": 1,
+    "reusedPerSample": 4,
+    "elapsedMilliseconds": [
+      1245.5802999999999,
+      1261.2852,
+      1148.5290999999997,
+      1317.5572000000002,
+      1592.5456000000004
+    ],
+    "min": 1148.5290999999997,
+    "max": 1592.5456000000004
+  },
+  "eventHandoff": {
+    "modelCalls": 0,
+    "fixtureDelayMilliseconds": 20,
+    "elapsedMilliseconds": [
+      30.066100000000006,
+      25.197299999999814,
+      29.578700000000026,
+      27.5662999999995,
+      26.877399999999398
+    ],
+    "min": 25.197299999999814,
+    "max": 30.066100000000006
+  },
+  "limits": "No provider calls, billed tokens, real-project delivery quality, or end-to-end speedup measured. Identity overhead included. Reuse is opt-in for pure commands only."
+}

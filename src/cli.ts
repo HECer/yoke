@@ -11,6 +11,7 @@ import type { Agent, CodeIntelligenceMode, DecisionPolicy } from './retrofit/con
 import { runRetrofit } from './retrofit/command.js'
 import { setLoopEnabled, loopStatus, runLoopCommand } from './loop/run-command.js'
 import { requestLoopPause } from './loop/loop.js'
+import { waitForLoop } from './loop/wait.js'
 import { runContextInit, runContextStatus } from './context/command.js'
 import { runReview } from './review/command.js'
 import { scanDir } from './scan/design.js'
@@ -165,7 +166,7 @@ export function main(argv: string[]): number | Promise<number> {
     goal: ['--objective=', '--attempts=', '--minutes=', '--wall-minutes=', '--tokens=', '--criteria=', '--clear-token-budget', '--runner=', '--model=', '--effort=', '--bare', '--native-goal', '--no-native-goal'],
     check: ['--json', '--protect', '--refresh', '--requirement='],
     change: ['--idea='],
-    loop: ['--compact', '--remove-worktrees', '--discard-stale-recovery', '--discard', '--explore', '--explore-interval=', '--explore-limit=', '--quality', '--no-quality', '--quality-rounds=', '--quality-minutes=', '--quality-policy=', '--quality-unbounded', '--candidates=', '--choice=', '--rationale=', '--no-resume', '--max=', '--runner=', '--reviewer=', '--review', '--allow-self-review', '--routing', '--no-routing', '--isolate', '--no-isolate', '--unsafe', '--timeout=', '--decision-policy=', '--parallel=', '--json', '--on-ambiguity=', '--resume-worktree'],
+    loop: ['--compact', '--remove-worktrees', '--discard-stale-recovery', '--discard', '--explore', '--explore-interval=', '--explore-limit=', '--quality', '--no-quality', '--quality-rounds=', '--quality-minutes=', '--quality-policy=', '--quality-unbounded', '--candidates=', '--choice=', '--rationale=', '--no-resume', '--max=', '--runner=', '--reviewer=', '--review', '--allow-self-review', '--routing', '--no-routing', '--isolate', '--no-isolate', '--unsafe', '--timeout=', '--until=', '--since=', '--decision-policy=', '--parallel=', '--json', '--on-ambiguity=', '--resume-worktree'],
     new: ['--idea=', '--agent=', '--runner=', '--loop'],
     prd: ['--idea=', '--runner=', '--story=', '--apply', '--reassess', '--force', '--timeout='],
     review: ['--reviewer=', '--base=', '--focus=', '--allow-self-review', '--json', '--timeout='],
@@ -442,6 +443,16 @@ export function main(argv: string[]): number | Promise<number> {
       if (sub === 'on') { setLoopEnabled(targetDir, true); console.log('Loop enabled.'); return 0 }
       if (sub === 'off') { setLoopEnabled(targetDir, false); console.log('Loop disabled.'); return 0 }
       if (sub === 'status') { console.log(loopStatus(targetDir, undefined, { compact: rest.includes('--compact') })); return 0 }
+      if (sub === 'wait') {
+        const timeout = rest.find(arg => arg.startsWith('--timeout='))?.slice('--timeout='.length)
+        const until = rest.find(arg => arg.startsWith('--until='))?.slice('--until='.length)
+        const since = rest.find(arg => arg.startsWith('--since='))?.slice('--since='.length)
+        if (until !== undefined && until !== 'terminal' && until !== 'change') { console.error('Loop wait condition must be terminal or change.'); return 1 }
+        return waitForLoop(targetDir, { timeoutMs: timeout === undefined ? undefined : Number(timeout) * 1000, until, since }).then(result => {
+          console.log(rest.includes('--json') ? JSON.stringify(result) : `Loop wait ${result.outcome}: ${result.status?.state ?? 'no state'}; cursor=${result.cursor}`)
+          return result.outcome === 'timeout' ? 3 : result.outcome === 'cancelled' ? 130 : 0
+        }).catch(error => { console.error(`Loop wait failed: ${error instanceof Error ? error.message : String(error)}`); return 1 })
+      }
       if (sub === 'pause') { requestLoopPause(targetDir); console.log('Pause requested at the next safe story or exploration boundary.'); return 0 }
       if (sub === 'cleanup') return runLoopCleanup(targetDir, {
         removeWorktrees: rest.includes('--remove-worktrees'),
@@ -615,6 +626,7 @@ export function main(argv: string[]): number | Promise<number> {
         return runLoopCommand(targetDir, { maxIterations: rawMax, agent, isolate, resumeWorktree: rest.includes('--resume-worktree'), parallel, parallelAuto: parallelArg === '--parallel=auto', reviewer, review, allowSelfReview, timeoutMinutes, json, routing, onAmbiguity: oaArg as 'resolve' | 'abort' | undefined, decisionPolicy: dpArg as DecisionPolicy | undefined, permissions, ...(explore ? { explore: true } : {}), ...(exploreIntervalMinutes !== undefined ? { exploreIntervalMinutes } : {}), ...(exploreLimit.milliseconds !== undefined ? { exploreLimitMs: exploreLimit.milliseconds } : {}), ...qualityFlags.options })
       }
       console.log(`usage: yoke loop <on|off|status [--compact]|pause|decision|answer|resume [--discard] [--explore] [--explore-interval=<minutes>] [--explore-limit=<Nh|Nd|Nw>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N]|cleanup [--remove-worktrees] [--discard-stale-recovery]|run [--max=N] [--explore] [--explore-interval=<minutes>] [--explore-limit=<Nh|Nd|Nw>] [--parallel=<auto|N>] [--runner=<${AGENT_LIST}>] [--reviewer=<${AGENT_LIST}>] [--review] [--allow-self-review] [--routing|--no-routing] [--isolate|--no-isolate] [--unsafe] [--timeout=<minutes>] [--decision-policy=<auto|critical>] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=<blocking|advisory>] [--quality-unbounded] [--candidates=N] [--json]> [targetDir]`)
+      console.log('usage: yoke loop wait [targetDir] [--timeout=<seconds>] [--until=terminal|change] [--since=<cursor>] [--json]')
       return 1
     }
     case 'new': {

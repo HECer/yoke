@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node.js 20+](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 
-<!-- yoke:version:start -->1.24.0<!-- yoke:version:end --> · <!-- yoke:tests:start -->1761<!-- yoke:tests:end --> test cases · <!-- yoke:skills:start -->34<!-- yoke:skills:end --> skills
+<!-- yoke:version:start -->1.25.0<!-- yoke:version:end --> · <!-- yoke:tests:start -->1881<!-- yoke:tests:end --> test cases · <!-- yoke:skills:start -->34<!-- yoke:skills:end --> skills
 
 <!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi | Hermes<!-- yoke:agents:end -->
 
@@ -51,6 +51,14 @@ Each story carries observable acceptance criteria and targeted test commands. Pa
 | **Optional Pi efficiency** | An opt-in SoL-Pi integration exposes per-project mechanism settings for Pi. It is off by default; benchmark results are not a savings guarantee. |
 
 ## Quick start
+
+### Efficiency and reliability in 1.25
+
+Use `yoke loop wait [dir] --timeout=60 --json` to wait for a terminal handoff without a model call. Use `--until=change --since=<cursor>` for a resumable semantic update. Timeouts return exit code 3; waiting does not start a run.
+
+New PRD drafts include objective-bound requirement and invariant coverage, executable proof references, and explicit write ownership. Keep their requirements ledger and approved plan with the PRD. Secondary references are bounded; binding requirements remain intact. Independent review still needs to judge whether the criteria and tests satisfy the original intent.
+
+Criterion reuse is off by default. Set `verify.reusableCommands` only for exact pure commands whose inputs are local and stable. Yoke hashes local inputs, including ignored files; linked/large inputs disable reuse. Full verification, integration and completion stay fresh. See [validation and migration limits](docs/YOKE-1.25-VALIDATION.md).
 
 Requires Node.js 20+ and Git. Install Yoke and create a project with a draft backlog:
 

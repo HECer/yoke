@@ -63,6 +63,18 @@ describe('routing control prompt', () => {
 })
 
 describe('adaptive runner', () => {
+  it.each([undefined, 12])('reports fresh input only when every routed call knows it: worker=%s', workerFresh => {
+    const runner = makeAdaptiveRunner({ parent: 'codex', workers, strategy: 'cost', maxCandidates: 1,
+      captureRoute: () => ({ success: true, summary: '', output: 'YOKE_ROUTE {"worker":"claude-fast"}',
+        tokens: { inputTokens: 10, outputTokens: 1, freshInputTokens: 6 } }),
+      makeWorker: () => () => ({ success: true, summary: 'done', tokens: { inputTokens: 20, outputTokens: 2,
+        ...(workerFresh !== undefined ? { freshInputTokens: workerFresh } : {}) } }) })
+    const result = runner({ targetDir: registry, story })
+    expect(result.tokens?.freshInputTokens).toBe(workerFresh === undefined ? undefined : 18)
+    if (workerFresh === undefined) expect(result.tokens?.usageMissingFields).toContain('freshInputTokens')
+    expect(result.tokens?.inputTokens).toBe(30)
+  })
+
   it('preserves partial provider measurements in routed per-call report evidence', () => {
     const run = makeAdaptiveRunner({ parent: 'codex', workers, strategy: 'cost', maxCandidates: 1,
       rules: [{ storyId: 'S1', worker: 'claude-fast' }],

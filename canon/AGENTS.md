@@ -13,6 +13,7 @@ This file is the portable baseline. Agent-specific instructions are generated al
 
 - Use only tools and skills actually installed in the host. Legacy `superpowers:` references in adapted skills refer to the corresponding local skill; `test-driven-development` maps to `tdd`. Do not install another plugin just to resolve a namespace.
 - When Yoke owns the loop, worker concurrency, verification, and integration remain under its control. Do not start nested loops or native subagents from a worker. Without native delegation, work serially and expose missing independent-review evidence.
+- External controllers should keep the loop's blocking command attached. When the host needs a separate handoff, use `yoke loop wait [dir] --timeout=60 --json`, handle its explicit result, and inspect detailed evidence only for terminal/actionable states. Continue timeout waits in host code; see `loop/loop-spec.md` for cursors and exit codes.
 - Run focused checks for quick feedback, but never skip required acceptance, protected, integration, or release gates. Cache evidence only when code, configuration, and environment still match.
 - Distinguish observed durations from future estimates. Report the sample count, empirical range, and unknown waiting time; a timeout is a budget, not a promised completion time. Do not reduce reasoning or test scope merely to meet an estimate.
 

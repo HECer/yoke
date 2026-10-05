@@ -1,6 +1,6 @@
 {
   "name": "@hecer/yoke",
-  "version": "1.24.0",
+  "version": "1.25.0",
   "description": "One harness, eight agents, zero trust in \"done\" — cross-agent coding harness for Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, Kilo, Pi and Hermes: one skill canon, mechanical safety gates, an autonomous loop with screenshot/video proofs.",
   "type": "module",
   "bin": {
@@ -16,6 +16,7 @@
     "hooks",
     "bench/README.md",
     "bench/output-compaction.mjs",
+    "bench/efficiency-regression.mjs",
     "bench/RESULTS.md",
     "bench/result-schema.mjs",
     "bench/run.mjs",
@@ -75,6 +76,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "bench:efficiency": "npm run build && node bench/efficiency-regression.mjs",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "docs:check": "node scripts/release-metadata.mjs --check",

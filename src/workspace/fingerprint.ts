@@ -31,7 +31,7 @@ export function workspaceFingerprint(directory: string): string {
   function digest(files: string[]): string {
     // Runtime status and evidence change during checks. Executable project policy
     // must still belong to the identity, even when globally ignored by Git.
-    for (const name of [...new Set([...files, '.yoke/acceptance.yaml', '.yoke/config.yaml', '.yoke/prd.json', '.yoke/prd.yaml'])].sort()) {
+    for (const name of [...new Set([...files, '.yoke/acceptance.yaml', '.yoke/config.yaml', '.yoke/prd.json', '.yoke/prd.yaml', '.yoke/requirements.yaml', '.yoke/plan.md'])].sort()) {
       const full = resolve(root, name)
       const rel = relative(root, full)
       if (isAbsolute(rel) || rel === '..' || rel.startsWith('..\\') || rel.startsWith('../')) throw new Error('Fingerprint path escapes workspace')
