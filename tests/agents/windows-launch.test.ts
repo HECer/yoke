@@ -81,7 +81,7 @@ it('fails explicitly when source watchdog exists but its tsx prerequisite is abs
   expect(error).toMatchObject({ failure: { failureCause: 'missing-executable', modelExecution: 'not-started' } })
 })
 
-it.skipIf(process.platform !== 'win32')('returns measured zero model usage and structured evidence for provider preflight failure', async () => {
+it.runIf(process.platform === 'win32' || process.env.YOKE_INCLUDE_PLATFORM_TESTS === '1')('returns measured zero model usage and structured evidence for provider preflight failure', async () => {
   const cwd = root()
   const result = await startProviderProcess('codex', { command: join(cwd, 'missing.exe'), args: [], input: '', cwd }).completion
   expect(result).toMatchObject({ kind: 'spawn-failed', failure: { failureCause: 'missing-executable', modelExecution: 'not-started' }, telemetry: { usageAvailable: true, tokens: { inputTokens: 0, outputTokens: 0, totalCostUsd: 0 } } })

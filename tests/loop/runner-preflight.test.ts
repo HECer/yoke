@@ -19,7 +19,7 @@ it('retains a prepared environment when wrapping the provider in the watchdog', 
   expect(buildWatchdogInvocation({ command: 'native', args: [], input: '', cwd, env }, 10)).toMatchObject({ env })
 })
 
-it.skipIf(process.platform !== 'win32')('preflights the original provider before the synchronous watchdog launch', () => {
+it.runIf(process.platform === 'win32' || process.env.YOKE_INCLUDE_PLATFORM_TESTS === '1')('preflights the original provider before the synchronous watchdog launch', () => {
   const cwd = root()
   vi.mocked(prepareWindowsInvocation).mockImplementation((inv, env) => ({ command: inv.command === 'codex' ? 'native-codex.exe' : process.execPath, args: inv.args, cwd: inv.cwd, env: { ...env, YOKE_PREPARED: 'yes' } }))
   vi.mocked(execFileSync).mockReturnValue('{"usage":{"input_tokens":4,"output_tokens":2}}')
@@ -31,7 +31,7 @@ it.skipIf(process.platform !== 'win32')('preflights the original provider before
   expect(call[2]).toMatchObject({ cwd, env: { YOKE_PREPARED: 'yes' } })
 })
 
-it.skipIf(process.platform !== 'win32')('returns complete zero usage when original provider preflight proves no model started', () => {
+it.runIf(process.platform === 'win32' || process.env.YOKE_INCLUDE_PLATFORM_TESTS === '1')('returns complete zero usage when original provider preflight proves no model started', () => {
   const cwd = root()
   vi.mocked(prepareWindowsInvocation).mockImplementation(inv => {
     if (inv.command === 'codex') throw observedError('missing provider', 'missing-executable', 'not-started')
@@ -67,7 +67,7 @@ it('retains ambiguous execution failures as unmeasured', () => {
   expect(result.tokens).toBeUndefined()
 })
 
-it.skipIf(process.platform !== 'win32')('preserves reviewer preflight evidence and returns an infrastructure review outcome', () => {
+it.runIf(process.platform === 'win32' || process.env.YOKE_INCLUDE_PLATFORM_TESTS === '1')('preserves reviewer preflight evidence and returns an infrastructure review outcome', () => {
   const cwd = root()
   vi.mocked(prepareWindowsInvocation).mockImplementation(inv => {
     if (inv.command === 'codex') throw observedError('missing provider', 'missing-executable', 'not-started')

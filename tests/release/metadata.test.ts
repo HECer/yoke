@@ -2,9 +2,32 @@ import { describe, expect, it } from 'vitest'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
 import { collectMetadata, discoverTestCount, updateReadme } from '../../scripts/release-metadata.mjs'
 
 describe('release metadata', () => {
+  it('discovers Windows execution regressions on another platform when metadata includes platform tests', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'yoke-platform-discovery-'))
+    const files = ['tests/check/child-environment.test.ts', 'tests/loop/runner-preflight.test.ts', 'tests/agents/windows-launch.test.ts']
+    const expected = [
+      'uses a normalized child PATH for asynchronous acceptance without changing the parent',
+      'preflights the original provider before the synchronous watchdog launch',
+      'returns complete zero usage when original provider preflight proves no model started',
+      'preserves reviewer preflight evidence and returns an infrastructure review outcome',
+      'returns measured zero model usage and structured evidence for provider preflight failure',
+    ]
+    try {
+      const config = join(fixture, 'vitest.config.mjs')
+      // Simulate Linux only in test registration; keep Node/Vite's host platform intact.
+      writeFileSync(config, `export default { plugins: [{ name: 'registration-platform', enforce: 'pre', transform(code, id) { if (${JSON.stringify(files)}.some(file => id.replaceAll('\\\\', '/').endsWith(file))) return code.replaceAll('process.platform', "'linux'"); } }], test: { include: ['tests/**/*.test.ts'], fileParallelism: false } };`)
+      const count = discoverTestCount(process.cwd(), (command: string, args: string[], options: Parameters<typeof execFileSync>[2]) => {
+        const tests = JSON.parse(String(execFileSync(command, [...args.filter(arg => arg !== '--json'), ...files, '--config', config, '--json'], options))) as { name: string }[]
+        return JSON.stringify(tests.filter(test => expected.includes(test.name)))
+      })
+      expect(count).toBe(5)
+    } finally { rmSync(fixture, { recursive: true, force: true }) }
+  }, 30_000)
+
   it('lists every platform test through a host-independent discovery environment', () => {
     let receivedEnv: NodeJS.ProcessEnv | undefined
     const execute = (_command: string, _args: string[], options: { env?: NodeJS.ProcessEnv }) => {

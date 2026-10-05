@@ -13,6 +13,7 @@
 - Separate bounded infrastructure restarts from semantic attempts only when pre-model execution and complete zero usage/cost are proved. Unknown, interrupted and post-model calls remain charged; retain durable history.
 - Bound secondary planning references and repair feedback while preserving binding criteria, objectives, invariants, ownership and artifact references. Review instructions cover preserved behavior, boundaries, state transitions and test adequacy.
 - Request the smallest coherent decomposition rather than a minimum of five stories. Protect planning contracts against isolated worker changes and invalidate stale assessments.
+- Keep registered test counts consistent across platforms during release metadata discovery while preserving normal Windows-only execution.
 
 ### Migration and limits
 - Legacy unbound PRDs remain supported. New drafts must retain `.yoke/requirements.yaml`, `.yoke/plan.md` and story `requirementsFor` markers. Forced host-authorized redrafting can establish a new objective; ordinary workers cannot. Change intake blocks active-ledger extensions until coverage can be safely updated.

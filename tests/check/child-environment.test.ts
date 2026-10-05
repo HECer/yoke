@@ -7,7 +7,7 @@ import { checkProjectAsync } from '../../src/check/command.js'
 const roots: string[] = []
 afterEach(() => { roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); vi.unstubAllEnvs() })
 
-it.skipIf(process.platform !== 'win32')('uses a normalized child PATH for asynchronous acceptance without changing the parent', async () => {
+it.runIf(process.platform === 'win32' || process.env.YOKE_INCLUDE_PLATFORM_TESTS === '1')('uses a normalized child PATH for asynchronous acceptance without changing the parent', async () => {
   const root = mkdtempSync(join(tmpdir(), 'yoke-check-child-env-')); roots.push(root)
   mkdirSync(join(root, '.yoke'))
   vi.stubEnv('YOKE_STATE_DIR', join(root, 'state'))
