@@ -4,8 +4,22 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runNew } from '../../src/new/command.js'
 import type { Invocation } from '../../src/loop/runner.js'
+import { loadPrd, savePrd, type Story } from '../../src/loop/prd.js'
+import { readRequirements, requirementObjective } from '../../src/prd/requirements.js'
+import { writeDraftCoverage } from '../prd/draft-fixture.js'
 
-const VALID_PRD = `- id: STORY-1\n  title: scaffold project\n  priority: 1\n  acceptance:\n    - "verify command exits 0"\n  passes: false\n`
+const VALID_PRD: Story[] = [{
+  id: 'STORY-1', title: 'scaffold project', priority: 1, writes: ['src'], passes: false,
+  acceptance: [
+    { id: 'suite-runs', text: 'verify command exits 0', verify: ['npm run test:suite-runs'] },
+    { id: 'app-starts', text: 'application starts', verify: ['npm run test:app-starts'] },
+  ],
+}]
+function writeValidDraft(dir: string, invocation: Invocation) {
+  savePrd(join(dir, '.yoke', 'prd.yaml'), VALID_PRD)
+  writeDraftCoverage(dir, invocation, VALID_PRD)
+  return { success: true, summary: 'ok' }
+}
 
 let parent: string
 beforeEach(() => { parent = mkdtempSync(join(tmpdir(), 'yoke-new-')) })
@@ -43,7 +57,7 @@ describe('runNew', { timeout: 15_000 }, () => {
 
   it('seeds PROJECT.md with the idea', () => {
     const dir = join(parent, 'app')
-    runNew(dir, { ...noGit, idea: 'a todo cli', isAvailable: () => true, run: (inv: Invocation) => { writeFileSync(join(dir, '.yoke', 'prd.yaml'), VALID_PRD); return { success: true, summary: 'ok' } } })
+    expect(runNew(dir, { ...noGit, idea: 'a todo cli', isAvailable: () => true, run: inv => writeValidDraft(dir, inv) })).toBe(0)
     expect(readFileSync(join(dir, '.yoke', 'context', 'PROJECT.md'), 'utf8')).toContain('a todo cli')
   })
 
@@ -54,11 +68,18 @@ describe('runNew', { timeout: 15_000 }, () => {
       idea: 'a todo cli',
       git: (args) => { gitCalls.push(args) },
       isAvailable: () => true,
-      run: (_inv: Invocation) => { writeFileSync(join(dir, '.yoke', 'prd.yaml'), VALID_PRD); return { success: true, summary: 'ok' } },
+      run: inv => writeValidDraft(dir, inv),
     })
     expect(code).toBe(0)
     const commits = gitCalls.filter(a => a.includes('commit'))
     expect(commits).toHaveLength(2)
+    const ledger = readRequirements(dir)!
+    expect(ledger.objective).toEqual(requirementObjective('a todo cli'))
+    expect(ledger.requirements.flatMap(item => item.criteria)).toEqual([
+      { story: 'STORY-1', criterion: 'suite-runs' },
+      { story: 'STORY-1', criterion: 'app-starts' },
+    ])
+    expect(loadPrd(join(dir, '.yoke', 'prd.yaml'))[0].requirementsFor).toBe(ledger.objective.sha256)
   })
 
   it('keeps the template and returns non-zero when the draft fails', () => {

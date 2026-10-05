@@ -13,7 +13,8 @@ import { processIncarnation } from './process-incarnation.js'
 import { prepareWindowsInvocation, resolveWindowsCommand } from './windows-launch.js'
 import { createSupervision, supervisionLimits, assertPreviousProvidersStopped } from './supervision.js'
 import { prepareSolPiTemporaryConfig } from './sol-pi-runtime.js'
-import { failureObservation, type FailureObservation } from '../observability/failure.js'
+import { executionFailure, failureObservation, type FailureObservation } from '../observability/failure.js'
+import { prepareChildEnvironment } from './child-environment.js'
 
 export type ProviderProcessOutput = {
   readonly stream: 'stdout' | 'stderr'
@@ -89,7 +90,20 @@ export function providerSpawnOptions(invocation: AgentInvocation, platform: Node
   }
 }
 
+function preflightFailureHandle(invocation: AgentInvocation, error: unknown, message = error instanceof Error ? error.message : String(error)): ProviderProcessHandle {
+  const failure = executionFailure(error)
+  const telemetry: ProviderTelemetry = failure.modelExecution === 'not-started'
+    ? { usageAvailable: true, tokens: { inputTokens: 0, outputTokens: 0, totalCostUsd: 0 } }
+    : { usageAvailable: false }
+  return { pid: undefined, invocation, recordPath: '', cancel: () => false, completion: Promise.resolve({ kind: 'spawn-failed', error: message, failure, invocation, pid: undefined, stdout: '', stderr: '', stdoutTruncated: false, stderrTruncated: false, telemetry }) }
+}
+
 export function startProviderProcess(agent: Agent, invocation: AgentInvocation, options: ProviderProcessOptions = {}): ProviderProcessHandle {
+  let childEnvironment
+  try {
+    childEnvironment = prepareChildEnvironment(invocation.cwd)
+    invocation = { ...invocation, cwd: childEnvironment.cwd }
+  } catch (error) { return preflightFailureHandle(invocation, error) }
   let failure: (reason: string) => void = () => {}
   let progress: () => void = () => {}
   const limits = supervisionLimits(invocation.cwd)
@@ -99,15 +113,15 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   try {
     if (agent === 'pi') restoreSolPiConfig = prepareSolPiTemporaryConfig(invocation.cwd)
     assertPreviousProvidersStopped(invocation.cwd)
-    prepared = process.platform === 'win32' ? prepareWindowsInvocation(invocation) : { command: invocation.command, args: invocation.args, env: process.env }
+    prepared = process.platform === 'win32' ? prepareWindowsInvocation(invocation, childEnvironment.env) : { command: invocation.command, args: invocation.args, ...childEnvironment }
   }
   catch (error) {
     let message = (error as Error).message
     try { restoreSolPiConfig() } catch (cleanupError) { message = (cleanupError as Error).message }
     supervision.stop(message)
-    return { pid: undefined, invocation, recordPath: '', cancel: () => false, completion: Promise.resolve({ kind: 'spawn-failed', error: message, invocation, pid: undefined, stdout: '', stderr: '', stdoutTruncated: false, stderrTruncated: false, telemetry: { usageAvailable: false } }) }
+    return preflightFailureHandle(invocation, error, message)
   }
-  const spawnOptions = { ...prepared, cwd: invocation.cwd, shell: false, detached: process.platform !== 'win32' }
+  const spawnOptions = { ...prepared, shell: false, detached: process.platform !== 'win32' }
   let child
   try {
     child = spawn(spawnOptions.command, [...spawnOptions.args], {

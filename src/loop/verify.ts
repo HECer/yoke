@@ -3,6 +3,8 @@ import { compactCommandOutput } from '../output/compact.js'
 import { writeOutputArtifact } from '../output/artifact.js'
 import { DEFAULT_OUTPUT_POLICY, type OutputPhase, type OutputPolicy } from '../output/types.js'
 import { executionFailure, type FailureObservation } from '../observability/failure.js'
+import type { VerificationSession } from './verification-cache.js'
+import { prepareChildEnvironment } from '../agents/child-environment.js'
 
 export interface VerifyResult {
   failure?: FailureObservation
@@ -13,6 +15,9 @@ export interface VerifyResult {
 export type Verifier = (targetDir: string) => VerifyResult
 
 export interface CommandVerifierOptions {
+  /** Operator-approved pure commands only: no network, external state or side effects. */
+  readonly reusableCommands?: readonly string[]
+  readonly session?: VerificationSession
   readonly phase?: OutputPhase
   readonly policy?: OutputPolicy
   readonly timeoutMs?: number
@@ -42,11 +47,13 @@ const COMMAND_CAPTURE_BYTES = 16 * 1024 * 1024
 // Runs a shell command in the target dir; passed = exit 0. The explicit capture quota
 // avoids Node's 1 MiB default without allowing noisy commands to consume unbounded memory.
 export function commandVerifier(command: string, options: CommandVerifierOptions = {}): Verifier {
-  return (targetDir: string): VerifyResult => {
+  const execute = (targetDir: string): VerifyResult => {
     const phase = options.phase ?? 'verify'
     try {
+      const child = prepareChildEnvironment(targetDir)
       execSync(command, {
-        cwd: targetDir,
+        cwd: child.cwd,
+        env: child.env,
         stdio: 'pipe',
         timeout: options.timeoutMs ?? 600_000,
         maxBuffer: COMMAND_CAPTURE_BYTES,
@@ -83,6 +90,13 @@ export function commandVerifier(command: string, options: CommandVerifierOptions
       }
       return { passed: false, summary: parts.join('\n'), failure: executionFailure(e) }
     }
+  }
+  return targetDir => {
+    if (!options.session || !options.reusableCommands?.includes(command)) return execute(targetDir)
+    try {
+      const child = prepareChildEnvironment(targetDir)
+      return options.session.run(child.cwd, command, options.phase ?? 'verify', () => execute(child.cwd), { env: child.env, policyKey: JSON.stringify({ timeout: options.timeoutMs ?? 600_000, policy: options.policy ?? DEFAULT_OUTPUT_POLICY }) })
+    } catch { return execute(targetDir) }
   }
 }
 

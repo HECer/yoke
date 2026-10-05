@@ -16,6 +16,10 @@ import { DEFAULT_OUTPUT_POLICY } from '../output/types.js'
 import { createProviderProcessRecord, filesystemProviderProcessRecordAdapter } from '../agents/process-record.js'
 import { trackProcessRecordIdentity } from '../agents/process-record-identity.js'
 import { DeliverySchema, startDelivery, finishDelivery, type DeliveryEvidence } from './delivery.js'
+import { MAX_REQUIREMENTS_BYTES } from '../prd/requirements.js'
+import { planningSourceDigest } from '../routing/planning-source.js'
+import { prepareChildEnvironment } from '../agents/child-environment.js'
+import { executionFailure } from '../observability/failure.js'
 
 const Criterion = z.object({ id: z.string().min(1).max(120), text: z.string().min(1).max(8000), commands: z.array(z.string().min(1).max(8000)).max(30) }).strict()
 const Acceptance = z.object({ version: z.literal(1), criteria: z.array(Criterion).max(200), protected: z.array(z.string().min(1)).max(500).default([]), delivery: DeliverySchema.optional() }).strict().superRefine((value, ctx) => {
@@ -71,7 +75,14 @@ export async function checkProjectAsync(directory: string, options: AsyncCheckOp
 function verifyCommandAsync(command: string, root: string, signal?: AbortSignal): Promise<AsyncVerifyResult> {
   if (signal?.aborted) return Promise.resolve({ passed: false, summary: 'Verification cancelled or deadline reached' })
   return new Promise(resolveResult => {
-    const child = spawn(command, { cwd: root, shell: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    let child
+    try {
+      const prepared = prepareChildEnvironment(root)
+      child = spawn(command, { cwd: prepared.cwd, env: prepared.env, shell: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    } catch (error) {
+      resolveResult({ passed: false, summary: `verify failed: ${command} (${error instanceof Error ? error.message : String(error)})`, failure: executionFailure(error) })
+      return
+    }
     const record = child.pid ? createProviderProcessRecord(realpathSync(root), child.pid, 'verification', `unverified:${new Date().toISOString()}`) : undefined
     let publishFailed = false
     if (record) { try { filesystemProviderProcessRecordAdapter.publish(record) } catch { publishFailed = true } }
@@ -147,13 +158,38 @@ function baselinePath(root: string): string {
   return join(process.env.YOKE_STATE_DIR ?? join(homedir(), '.yoke', 'state'), 'acceptance', `${id}.json`)
 }
 function protectedHashes(root: string, paths: string[]): Record<string, string> {
-  return Object.fromEntries(paths.map(path => [path, createHash('sha256').update(readFileSync(protectedPath(root, path))).digest('hex')]))
+  return Object.fromEntries(paths.map(path => {
+    const bytes = readFileSync(protectedPath(root, path))
+    return [path, path === '.yoke/requirements.yaml' || path === '.yoke/plan.md' ? planningSourceDigest(bytes) : createHash('sha256').update(bytes).digest('hex')]
+  }))
+}
+const planningContracts = ['requirements.yaml', 'plan.md'] as const
+/** Compare bounded original bytes even when no acceptance manifest was pinned. */
+function planningContractHash(root: string, name: typeof planningContracts[number], requiredRawDigest?: string): string | null {
+  const file = statePath(root, name)
+  if (!existsSync(file)) return null
+  const limit = name === 'requirements.yaml' ? MAX_REQUIREMENTS_BYTES : 80_000
+  const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0))
+  try {
+    const before = fstatSync(fd)
+    if (!before.isFile() || before.size > limit) throw Error(`Planning contract ${name} exceeds its regular-file limit`)
+    const bytes = Buffer.alloc(before.size + 1)
+    let length = 0
+    while (length < bytes.length) { const count = readSync(fd, bytes, length, bytes.length - length, null); if (!count) break; length += count }
+    const after = fstatSync(fd), named = lstatSync(statePath(root, name))
+    if (length !== before.size || after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs ||
+      named.ino !== before.ino || named.dev !== before.dev || named.size !== before.size || named.mtimeMs !== before.mtimeMs || named.ctimeMs !== before.ctimeMs) throw Error(`Planning contract ${name} changed while loading`)
+    const content = bytes.subarray(0, length)
+    if (requiredRawDigest !== undefined && createHash('sha256').update(content).digest('hex') !== requiredRawDigest) throw Error(`Original planning contract ${name} differs from its protected raw baseline`)
+    return planningSourceDigest(content)
+  } finally { closeSync(fd) }
 }
 /** Explicitly pin acceptance outside the worker workspace. Never refreshed by check. */
 export function protectAcceptance(root: string, refresh = false): string {
   const manifest = loadAcceptance(root)
   if (!manifest) throw new Error('Create .yoke/acceptance.yaml before protecting acceptance')
-  const paths = [...new Set(['.yoke/acceptance.yaml', ...manifest.protected, ...['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'].filter(p => existsSync(join(root, p)))])]
+  const planningPaths = planningContracts.filter(name => planningContractHash(root, name) !== null).map(name => `.yoke/${name}`)
+  const paths = [...new Set(['.yoke/acceptance.yaml', ...planningPaths, ...manifest.protected, ...['package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'].filter(p => existsSync(join(root, p)))])]
   const file = baselinePath(root)
   const hashes = protectedHashes(root, paths)
   mkdirSync(dirname(file), { recursive: true })
@@ -161,13 +197,23 @@ export function protectAcceptance(root: string, refresh = false): string {
   return file
 }
 export function acceptanceProtectionProblem(root: string, baselineRoot = root): string | null {
-  const file = baselinePath(baselineRoot)
-  if (!existsSync(file)) return null
   try {
+    const planningChanged = planningContracts.filter(name => planningContractHash(root, name) !== planningContractHash(baselineRoot, name))
+    if (planningChanged.length) return `Protected planning contract changed: ${planningChanged.map(name => `.yoke/${name}`).join(', ')}`
+    const file = baselinePath(baselineRoot)
+    if (!existsSync(file)) return null
     const baseline = z.object({ version: z.literal(1), hashes: z.record(z.string().regex(/^[a-f0-9]{64}$/)) }).strict().parse(JSON.parse(readFileSync(file, 'utf8')))
     if (!Object.keys(baseline.hashes).includes('.yoke/acceptance.yaml')) return 'Invalid protected acceptance baseline'
     const actual = protectedHashes(root, Object.keys(baseline.hashes))
-    const changed = Object.keys(actual).filter(path => actual[path] !== baseline.hashes[path])
+    const changed = Object.keys(actual).filter(path => {
+      if (actual[path] === baseline.hashes[path]) return false
+      const planning = planningContracts.find(name => path === `.yoke/${name}`)
+      if (!planning) return true
+      // Legacy version-1 baselines may contain raw CRLF hashes. Verify their
+      // original bytes and candidate equivalence from the same bounded snapshot.
+      try { return planningContractHash(baselineRoot, planning, baseline.hashes[path]) !== actual[path] }
+      catch { return true }
+    })
     return changed.length ? `Protected acceptance changed: ${changed.join(', ')}` : null
   } catch (error) { return `Protected acceptance cannot be verified: ${(error as Error).message}` }
 }

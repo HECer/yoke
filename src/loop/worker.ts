@@ -354,7 +354,7 @@ async function runWorkerImplementation(input: StoryWorkerInput, context: AgentCo
     const cacheProblem = input.failureRoot && input.failureRoot !== context.targetDir ? cacheIsolationProblem(context.targetDir) : undefined
     if (cacheProblem) return { result: { ...result, success: false, infrastructureFailure: true, summary: cacheProblem } }
     if (!result.routing?.canRetry || result.routing.blocked || attempt >= 7 || cancellationReason(input.cancellation) || input.pause?.()) return { result }
-    if (["decision-request.yaml", "ambiguity.md", "loop.pause"].some(name => existsSync(join(context.targetDir, ".yoke", name))) || acceptanceProtectionProblem(context.targetDir)) return { result }
+    if (["decision-request.yaml", "ambiguity.md", "loop.pause"].some(name => existsSync(join(context.targetDir, ".yoke", name))) || acceptanceProtectionProblem(context.targetDir, input.failureRoot ?? context.targetDir)) return { result }
     const before = gateIdentity(context.targetDir, context.story)
     let gates: MechanicalGateResult
     try { gates = runMechanicalGates(input, context, evidence) }
@@ -362,7 +362,7 @@ async function runWorkerImplementation(input: StoryWorkerInput, context: AgentCo
     if (gates.kind !== 'failed') {
       return { result, ...(gates.kind === 'passed' ? { gates: snapshotGates(context.targetDir, context.story, before, gates) } : {}) }
     }
-    if (knownInfrastructureFailure(gates.summary)) {
+    if (knownInfrastructureFailure(gates.observation)) {
       result.routing.recordOutcome(false, 'infrastructure')
       const observation = gates.observation ?? failureObservation()
       return { result: { ...result, success: false, infrastructureFailure: true, failure: observation, summary: gates.summary, routing: { ...result.routing, blocked: true, canRetry: false } },

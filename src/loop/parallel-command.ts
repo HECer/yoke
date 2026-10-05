@@ -411,7 +411,7 @@ function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider,
 }
 
 export function providerProcessResultToAgentResult(agent: Agent, storyId: string, result: ProviderProcessResult): AgentResult {
-  const tokens = providerTelemetryUsage(result.telemetry)
+  const tokens = providerTelemetryUsage(result.telemetry, agent)
   const telemetry = tokens ? { tokens } : {}
   switch (result.kind) {
     case 'succeeded': return { success: true, summary: `${agent} implemented ${storyId}`, ...telemetry }

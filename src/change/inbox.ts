@@ -3,6 +3,7 @@ import { bindAssessments, preparedProblems } from '../prd/assess.js'
 import { loadConfig } from '../retrofit/config.js'
 import { resolvePlanner } from '../routing/planning.js'
 import { readPlanningFile } from '../routing/contracts.js'
+import { requirementsDigest } from '../prd/requirements.js'
 import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -184,8 +185,12 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
   if (!request) return { ok: true, added: 0, summary: 'inbox empty' }
 
   const prdPath = join(targetDir, '.yoke', 'prd.yaml')
-  const existingText = readFileSync(prdPath, 'utf8')
-  const existing = loadPrd(prdPath)
+  let existingText: string, existing: Story[], requirementDigest: string
+  try {
+    existingText = readFileSync(prdPath, 'utf8')
+    existing = loadPrd(prdPath)
+    requirementDigest = requirementsDigest(targetDir)
+  } catch (error) { return { ok: false, added: 0, summary: `invalid original requirement contract: ${(error as Error).message}`, changeId: request.id } }
   if (existing.some(story => story.sourceChange === request.id)) {
     if (!prdIsCommitted(targetDir)) {
       return {
@@ -205,6 +210,11 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
       }
     }
     return { ok: true, added: 0, summary: `recovered applied change ${request.id}`, changeId: request.id }
+  }
+  if (requirementDigest) return { ok: false, added: 0, summary: 'Change intake for an active requirement ledger is unsupported; retain this request until the approved objective and coverage can be updated together', changeId: request.id }
+  const requirementsChanged = (): boolean => {
+    try { return requirementsDigest(targetDir) !== requirementDigest }
+    catch { return true }
   }
   const available = opts.isAvailable ?? isAgentAvailable
   if (!available(opts.runner)) return { ok: false, added: 0, summary: `planner CLI "${opts.runner}" is unavailable`, changeId: request.id }
@@ -228,7 +238,7 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
     execute: opts.run ?? (item => runCapturedAgent(opts.runner, item)),
   })
   if (!result.success) return { ok: false, added: 0, summary: `planner failed: ${result.summary}`, changeId: request.id }
-  if (readFileSync(prdPath, 'utf8') !== existingText || (readPlanningFile(targetDir, '.yoke/plan.md', 80_000) ?? '') !== brief) {
+  if (readFileSync(prdPath, 'utf8') !== existingText || (readPlanningFile(targetDir, '.yoke/plan.md', 80_000) ?? '') !== brief || requirementsChanged()) {
     return {
       ok: false,
       added: 0,
@@ -246,6 +256,7 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
   const existingIds = new Set(existing.map(story => story.id))
   const proposedIds = new Set<string>()
   for (const story of proposed) {
+    if (story.requirementsFor) return { ok: false, added: 0, summary: `proposed story ${story.id} cannot introduce an unsupported requirement binding`, changeId: request.id }
     if (!NewStoryId.test(story.id)) {
       return { ok: false, added: 0, summary: `proposed story id must be one safe path segment: ${story.id}`, changeId: request.id }
     }
@@ -272,10 +283,10 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
     return { ok: false, added: 0, summary: `invalid combined dependency graph: ${dependencyIssues.join('; ')}`, changeId: request.id }
   }
   const reviewPath = reviewFile(targetDir, request.id)
-  const bound = bindAssessments([...existing, ...appended], brief)
+  const bound = bindAssessments([...existing, ...appended], brief, requirementDigest)
   appended = bound.slice(existing.length).map(s => ({ ...s, sourceChange: request.id }))
   if (config?.routing?.assessmentPolicy === 'prepared') {
-    const issues = preparedProblems(bound, brief).filter(issue => appended.some(s => issue.startsWith(s.id + ':')))
+    const issues = preparedProblems(bound, brief, requirementDigest).filter(issue => appended.some(s => issue.startsWith(s.id + ':')))
     if (issues.length) return { ok: false, added: 0, summary: issues.join('; '), changeId: request.id }
   }
   rmSync(reviewPath, { force: true })
@@ -293,7 +304,7 @@ export function runChangeApply(targetDir: string, opts: ChangeApplyOptions): Cha
   if (!reviewResult.success) {
     return { ok: false, added: 0, summary: `coverage review failed: ${reviewResult.summary}`, changeId: request.id }
   }
-  if (readFileSync(prdPath, 'utf8') !== existingText || (readPlanningFile(targetDir, '.yoke/plan.md', 80_000) ?? '') !== brief) {
+  if (readFileSync(prdPath, 'utf8') !== existingText || (readPlanningFile(targetDir, '.yoke/plan.md', 80_000) ?? '') !== brief || requirementsChanged()) {
     return {
       ok: false, added: 0,
       summary: 'PRD changed while the coverage reviewer was running; refusing to overwrite concurrent or out-of-contract edits',

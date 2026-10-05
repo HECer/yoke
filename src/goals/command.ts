@@ -134,7 +134,7 @@ async function executeAgent(input: GoalExecutionInput): Promise<GoalExecutionRes
   const handle = startProviderProcess(input.provider, buildProviderInvocation(input.provider, input.prompt, input.root, 'safe', input.selection), { signal: input.signal, idleTimeoutMs: 20 * 60_000 })
   const result = await handle.completion
   if (handle.recordPath && existsSync(handle.recordPath)) throw Object.assign(new Error('Provider process cleanup could not be confirmed'), { cleanupUnconfirmed: true })
-  const tokens = providerTelemetryUsage(result.telemetry)
+  const tokens = providerTelemetryUsage(result.telemetry, input.provider)
   return { success: result.kind === 'succeeded', summary: result.kind === 'succeeded' ? 'Agent finished; independently checked below' : `${result.kind}: ${result.stderr.slice(-3000)}`, ...tokens, provider: input.provider, tokens }
 }
 export async function assessProjectGoal(root: string, options: GoalAssessOptions = {}): Promise<GoalAssessResult> {
@@ -295,7 +295,7 @@ async function operateProjectGoal(root: string, options: GoalRunOptions, assessm
       const handle = startProviderProcess(input.provider, buildProviderInvocation(input.provider, input.prompt, root, 'read-only', { ...input.selection, nativeMultiAgent: false }), { signal: input.signal, idleTimeoutMs: 20 * 60_000 })
       const run = await handle.completion
       if (handle.recordPath && existsSync(handle.recordPath)) throw Object.assign(new Error('Planner process cleanup could not be confirmed'), { cleanupUnconfirmed: true })
-      return { success: run.kind === 'succeeded', summary: run.kind, output: run.stdout, tokens: providerTelemetryUsage(run.telemetry) }
+      return { success: run.kind === 'succeeded', summary: run.kind, output: run.stdout, tokens: providerTelemetryUsage(run.telemetry, input.provider) }
     })
     if (assessmentOnly) {
       const story = goalRoutingStory(goal, manifest, provider)

@@ -14,6 +14,16 @@ codex implemented dashboard-shell
 ## 2026-09-08 — dashboard-live-view: Build project live operations view
 codex implemented dashboard-live-view
 
+## 2026-10-05 — Yoke 1.25 efficiency and accepted-result reliability
+
+Extend the existing deterministic loop and gates instead of introducing another orchestrator. Newly drafted stories retain a host-written original-objective marker and an executable requirements/invariant ledger. Compare isolated worker planning contracts against the stable root; refuse active-ledger change intake until atomic coverage updates are supported.
+
+Criterion reuse is opt-in for operator-approved pure commands, run-local, and bound to framed hashes of all local inputs including ignored files and installed tools. Linked or oversized inputs disable reuse. Required full verification, integration and completion remain fresh. Identity hashing has measured overhead and is not a general speedup claim.
+
+Release a semantic attempt reservation only for structured pre-model failure with complete measured zero tokens and cost. Preserve unknown charges, partial usage and durable history. Fresh-token derivation requires provider semantics; keep unknown subsets unknown and never label partial sums as exact totals.
+
+Validation and remaining real-project measurement work: docs/YOKE-1.25-VALIDATION.md. Synthetic character/work reductions do not establish full NEXUS token/time or semantic quality improvement.
+
 ## 2026-09-27 — STORY-1: model optional SoL-Pi project settings
 codex implemented STORY-1
 

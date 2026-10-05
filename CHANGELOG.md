@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.25.0 — 2026-10-05
+
+### Added
+- Add model-free `yoke loop wait` with terminal/change conditions, bounded JSON, semantic cursors, timeout and cancellation.
+- Bind new drafts to their original objective with host-written story markers and a requirements/invariant ledger. Require executable coverage references and ordered shared-file ownership. Reject missing, rewritten or stale contracts.
+- Add opt-in `verify.reusableCommands` for operator-approved pure criterion commands within one loop invocation. Identity covers local ignored inputs, source, contracts, environment, installed tools and runtime. Full verification, integration and completion remain fresh.
+- Retain measured fresh/cached input and reasoning subsets with unknown/partial evidence explicit; account for provider-specific input semantics. Add a synthetic host regression benchmark.
+
+### Fixed
+- Prepare absolute child cwd and Windows PATH without changing parent environment or permissions. Validate provider/watchdog prerequisites before model start; propagate structured failure evidence through synchronous and asynchronous launches.
+- Separate bounded infrastructure restarts from semantic attempts only when pre-model execution and complete zero usage/cost are proved. Unknown, interrupted and post-model calls remain charged; retain durable history.
+- Bound secondary planning references and repair feedback while preserving binding criteria, objectives, invariants, ownership and artifact references. Review instructions cover preserved behavior, boundaries, state transitions and test adequacy.
+- Request the smallest coherent decomposition rather than a minimum of five stories. Protect planning contracts against isolated worker changes and invalidate stale assessments.
+- Keep registered test counts consistent across platforms during release metadata discovery while preserving normal Windows-only execution.
+- Reject retained isolated worktrees with changed planning contracts before resuming implementation, including parallel recovery after parent HEAD advances.
+- Preserve textual planning contracts across LF/CRLF checkout conversion on Windows while rejecting substantive contract changes.
+
+### Migration and limits
+- Legacy unbound PRDs remain supported. New drafts must retain `.yoke/requirements.yaml`, `.yoke/plan.md` and story `requirementsFor` markers. Forced host-authorized redrafting can establish a new objective; ordinary workers cannot. Change intake blocks active-ledger extensions until coverage can be safely updated.
+- Criterion reuse is disabled by default. Allow only commands without side effects, network, time dependencies or external state. Linked, unavailable or oversized local identities disable reuse. Hashing can cost more than a short check.
+- `loop wait --timeout` uses seconds; `loop run --timeout` retains minutes. Wait exit codes are changed 0, timeout 3 and error 1. The API returns `outcome: 'cancelled'`; the CLI maps that result to 130. It observes the currently stored loop, including an existing terminal state.
+- Mechanical coverage does not prove semantic completeness. No real-project token, time or cost reduction is claimed. See [validation and remaining work](docs/YOKE-1.25-VALIDATION.md).
+
 ## 1.24.0 — 2026-10-04
 
 ### Added

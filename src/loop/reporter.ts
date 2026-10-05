@@ -130,6 +130,7 @@ export interface ModelCallUsage {
   actualModel?: string
   inputTokens: number
   cachedInputTokens?: number
+  freshInputTokens?: number
   cacheWriteInputTokens?: number
   outputTokens: number
   reasoningOutputTokens?: number
@@ -152,6 +153,7 @@ export interface TokenUsage {
   costMeasurementComplete?: boolean
   inputTokens: number
   cachedInputTokens?: number
+  freshInputTokens?: number
   cacheWriteInputTokens?: number
   outputTokens: number
   reasoningOutputTokens?: number
@@ -507,7 +509,7 @@ export function makeReporter(
     addTokens(usage) {
       if (![usage.inputTokens, usage.outputTokens].every(value => Number.isFinite(value) && value >= 0)) return
       usage = { ...usage }
-      for (const key of ['cachedInputTokens', 'cacheWriteInputTokens', 'reasoningOutputTokens', 'totalCostUsd'] as const) {
+      for (const key of ['cachedInputTokens', 'freshInputTokens', 'cacheWriteInputTokens', 'reasoningOutputTokens', 'totalCostUsd'] as const) {
         const value = usage[key]
         if (value !== undefined && (!Number.isFinite(value) || value < 0)) delete usage[key]
       }
@@ -537,6 +539,7 @@ export function makeReporter(
         ...((tokens?.measurementComplete !== undefined || usage.measurementComplete !== undefined) ? { measurementComplete: tokens?.measurementComplete !== false && usage.measurementComplete !== false } : {}),
         ...((tokens?.costMeasurementComplete !== undefined || usage.costMeasurementComplete !== undefined) ? { costMeasurementComplete: tokens?.costMeasurementComplete !== false && usage.costMeasurementComplete !== false } : {}),
         inputTokens: (tokens?.inputTokens ?? 0) + usage.inputTokens,
+        ...((usage.freshInputTokens !== undefined && (!tokens || tokens.freshInputTokens !== undefined)) ? { freshInputTokens: (tokens?.freshInputTokens ?? 0) + usage.freshInputTokens } : {}),
         ...((tokens?.cachedInputTokens !== undefined || usage.cachedInputTokens !== undefined) ? { cachedInputTokens } : {}),
         ...((tokens?.cacheWriteInputTokens !== undefined || usage.cacheWriteInputTokens !== undefined) ? { cacheWriteInputTokens } : {}),
         outputTokens: (tokens?.outputTokens ?? 0) + usage.outputTokens,

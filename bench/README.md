@@ -87,6 +87,10 @@ timeout failures have separate causes; unsupported and lifecycle failures remain
 The helper performs no automatic retry and records no raw npm output or environment secrets.
 It provisions benchmark projects only; Yoke core does not install unmanaged project dependencies.
 
+### Yoke 1.25 host efficiency regression
+
+Run `npm run bench:efficiency` for five deterministic local samples of bounded planning references/repair feedback, invocation-local pure check reuse and event-based terminal handoff. It asserts packet bounds and logical execution counts. Timings include identity hashing; a short command may be cheaper to rerun. The benchmark invokes no model and measures no billed tokens or complete product quality. See [validation](../docs/YOKE-1.25-VALIDATION.md) for compatibility and unmeasured real-project outcomes.
+
 ### Gate-output compaction benchmark
 
 `output-compaction.mjs` exercises only Yoke's deterministic failure-preview and artifact path.

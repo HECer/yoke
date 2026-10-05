@@ -6,6 +6,9 @@ import { runPrdDraft, runPrdCheck, buildPrdDraftPrompt, PRD_TEMPLATE } from '../
 import { loadPrd } from '../../src/loop/prd.js'
 import { saveConfig } from '../../src/retrofit/config.js'
 import type { Invocation } from '../../src/loop/runner.js'
+import { writeDraftCoverage } from './draft-fixture.js'
+import { parse } from 'yaml'
+import type { Story } from '../../src/loop/prd.js'
 
 let dir: string
 beforeEach(() => {
@@ -14,12 +17,13 @@ beforeEach(() => {
 })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-const VALID_PRD = `- id: STORY-1\n  title: scaffold project\n  priority: 1\n  acceptance:\n    - "verify command exits 0"\n  passes: false\n`
+const VALID_PRD = `- id: STORY-1\n  title: scaffold project\n  priority: 1\n  writes: [src]\n  acceptance:\n    - { id: suite-runs, text: verify command exits 0, verify: [npm run test:suite-runs] }\n    - { id: app-starts, text: application starts, verify: [npm run test:app-starts] }\n  passes: false\n`
 
 function writingRun(content: string, calls: Invocation[] = []) {
   return (inv: Invocation) => {
     calls.push(inv)
     writeFileSync(join(dir, '.yoke', 'prd.yaml'), content)
+    if (content === VALID_PRD) writeDraftCoverage(dir, inv, parse(content) as Story[])
     return { success: true, summary: 'exited 0' }
   }
 }
@@ -35,7 +39,7 @@ describe('buildPrdDraftPrompt', () => {
   it('contains the idea, the story band, the scaffold rule and the write-only rule', () => {
     const p = buildPrdDraftPrompt('a todo cli')
     expect(p).toContain('a todo cli')
-    expect(p).toContain('5-12')
+    expect(p).toContain('1-12')
     expect(p).toContain('STORY-1')
     expect(p).toContain('.yoke/prd.yaml')
     expect(p).toContain('Do not commit')

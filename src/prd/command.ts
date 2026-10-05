@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:
 import { join } from 'node:path'
 import type { Agent } from '../retrofit/config.js'
 import { loadConfig } from '../retrofit/config.js'
-import { acceptanceText, criterionCommandProblem, isAcceptanceCriterion, loadPrd, savePrd, progress, type Story } from '../loop/prd.js'
+import { acceptanceText, criterionCommandProblem, isAcceptanceCriterion, loadPrd, parsePrd, savePrd, progress, validateDependencies, type Story } from '../loop/prd.js'
 import { assessmentInstructions } from '../routing/assessment.js'
 import { bindAssessments, preparedProblems } from './assess.js'
 import { resolvePlanner } from '../routing/planning.js'
@@ -20,6 +20,7 @@ import { resolveIdleMs } from '../loop/run-command.js'
 import { detectHostAgent, resolveRunnerAgent } from '../agents/host.js'
 import { measureInvocation } from '../observability/invocation.js'
 import { statePath } from '../workspace/state.js'
+import { MAX_REQUIREMENTS_BYTES, readRequirements, requirementObjective, requirementsDigest, validateRequirements } from './requirements.js'
 
 export const PRD_TEMPLATE = `# Yoke PRD — the loop picks the lowest-priority open story each iteration.
 # Story format (see canon/loop/prd.schema.md):
@@ -60,7 +61,8 @@ export function buildPrdDraftPrompt(idea: string, planningBrief?: string): strin
   }
   lines.push(
     '',
-    'Break the idea into 5-12 small, independently shippable stories; each must fit one loop iteration.',
+    'Use the smallest coherent decomposition into 1-12 stories; each must fit one loop iteration.',
+    'Give shared contracts/files one explicit owner, stabilize interfaces first, and make parallel components depend on that owner. Order overlapping write scopes through needs.',
     'Each story needs:',
     '- id: STORY-1, STORY-2, ... (unique)',
     '- title: one imperative sentence',
@@ -72,6 +74,7 @@ export function buildPrdDraftPrompt(idea: string, planningBrief?: string): strin
     '  Each criterion is an object with a stable id, behavioral text, and verify: [one or more approved test commands].',
     '  Every criterion id must appear in every verify command; use one test command without shell control operators.',
     '- passes: false',
+    '- requirementsFor: host-owned original-objective binding; preserve existing bindings on retained stories and omit it on new stories. Yoke activates bindings after validating this draft.',
     '- writes: explicit relative write scopes for safe scheduling',
     assessmentInstructions,
     'Include a complete assessment on every story in this same planning pass. Do not choose worker model names; the scheduler does that.',
@@ -80,8 +83,13 @@ export function buildPrdDraftPrompt(idea: string, planningBrief?: string): strin
     'test suite, and its acceptance must include that the verify command (verify.command in',
     '.yoke/config.yaml) exits 0.',
     '',
-    'Write ONLY the file .yoke/prd.yaml as a YAML array of stories in exactly that shape.',
-    'Do not modify any other file. Do not commit.',
+    'Write .yoke/prd.yaml as a YAML array of stories in exactly that shape.',
+    'Also write .yoke/requirements.yaml as a version: 1 requirement ledger.',
+    `Copy this exact objective object without summarizing or changing it: ${JSON.stringify(requirementObjective(idea, planningBrief))}`,
+    'requirements: 1-100 entries; invariants: 0-50 entries. Every entry has a globally unique id, text (maximum 2000 characters), and criteria: [{story: STORY-1, criterion: criterion-id}] with 1-50 unique references.',
+    'Extract every approved requirement and preserved invariant from the original idea and approved brief; map them to executable criteria. Do not redefine requirements through story summaries.',
+    'The ledger must be at most 200000 bytes. Complete mechanical coverage does not prove semantic completeness: review original intent, preserved capabilities and boundary behavior.',
+    'Modify only these two files. Do not commit.',
   )
   return lines.join('\n')
 }
@@ -100,9 +108,13 @@ export function prdFile(targetDir: string): string {
 }
 
 export function runPrdDraft(targetDir: string, opts: PrdDraftOptions): number {
-  const idea = opts.idea?.trim()
-  if (!idea) {
+  const idea = opts.idea
+  if (!idea?.trim()) {
     console.error('yoke prd draft requires --idea="..."')
+    return 1
+  }
+  if (idea.length > MAX_PLANNING_BRIEF_CHARS) {
+    console.error(`Original idea is too large (${idea.length} characters; maximum ${MAX_PLANNING_BRIEF_CHARS}).`)
     return 1
   }
   const path = prdFile(targetDir)
@@ -142,11 +154,20 @@ export function runPrdDraft(targetDir: string, opts: PrdDraftOptions): number {
   if (!lock.acquired) { console.error('A loop or planner already owns this project'); return 1 }
   try {
   const before = readPlanningFile(targetDir, '.yoke/prd.yaml')
+  const beforeRequirements = readPlanningFile(targetDir, '.yoke/requirements.yaml', MAX_REQUIREMENTS_BYTES)
+  const priorBindings = new Map<string, string>()
+  if (before !== undefined) {
+    try { for (const story of parsePrd(path)) if (story.requirementsFor) priorBindings.set(story.id, story.requirementsFor) }
+    catch { /* Explicit force may replace malformed legacy planning state. */ }
+  }
   const rollback = () => {
     const destination = join(statePath(targetDir), 'prd.yaml')
     // Unlink a provider-created file link instead of writing through it.
     rmSync(destination, { force: true })
     if (before !== undefined) writeFileSync(destination, before, { flag: 'wx' })
+    const requirementsDestination = join(statePath(targetDir), 'requirements.yaml')
+    rmSync(requirementsDestination, { force: true })
+    if (beforeRequirements !== undefined) writeFileSync(requirementsDestination, beforeRequirements, { flag: 'wx' })
   }
   const inv = agentInvocation(agent, buildPrdDraftPrompt(idea, planningBrief), targetDir, 'safe', planner.selection)
   console.log(`Drafting PRD with ${agent}...`)
@@ -166,11 +187,25 @@ export function runPrdDraft(targetDir: string, opts: PrdDraftOptions): number {
   let count: number
   try {
     if (readPlanningFile(targetDir, '.yoke/plan.md', MAX_PLANNING_BRIEF_BYTES) !== planningBrief) throw Error('Approved planning brief changed during drafting')
-    const drafted = bindAssessments(loadPrd(path), planningBrief)
+    const requirementDigest = requirementsDigest(targetDir)
+    // A forced draft may intentionally replace the objective. Validate provider
+    // marker continuity before the host activates that newly authorized binding.
+    let drafted = parsePrd(path)
+    const graphProblems = validateDependencies(drafted)
+    if (graphProblems.length) throw Error(`Invalid PRD dependency graph: ${graphProblems.join('; ')}`)
+    for (const story of drafted) if (priorBindings.has(story.id) && story.requirementsFor !== priorBindings.get(story.id)) throw Error(`Planner changed or removed original objective binding for ${story.id}`)
+    const ledger = readRequirements(targetDir)
+    if (!ledger) throw Error('New drafts require .yoke/requirements.yaml coverage')
+    for (const story of drafted) if (!priorBindings.has(story.id) && story.requirementsFor !== undefined && story.requirementsFor !== ledger.objective.sha256) throw Error(`Planner supplied an invalid original objective binding for ${story.id}`)
+    drafted = drafted.map(story => ({ ...story, requirementsFor: ledger.objective.sha256 }))
+    validateRequirements(ledger, drafted, planningBrief, idea)
+    drafted = bindAssessments(drafted, planningBrief, requirementDigest)
     count = drafted.length
+    if (count > 12) throw Error('New drafts must use 1-12 coherent stories')
+    if (drafted.some(s => s.passes)) throw Error('New stories must not already be passed')
     if (config?.routing?.assessmentPolicy === 'prepared') {
       if (drafted.some(s => s.passes)) throw Error('New stories must not already be passed')
-      const issues = preparedProblems(drafted, planningBrief)
+      const issues = preparedProblems(drafted, planningBrief, requirementDigest)
       if (issues.length) throw Error(issues.join('; '))
     }
     if (count) savePrd(path, drafted)
@@ -203,7 +238,7 @@ export function runPrdCheck(targetDir: string): number {
     return 1
   }
   const errors: string[] = []
-  if (loadConfig(targetDir)?.routing?.assessmentPolicy === 'prepared') errors.push(...preparedProblems(stories, readPlanningFile(targetDir, '.yoke/plan.md', 80_000) ?? ''))
+  if (loadConfig(targetDir)?.routing?.assessmentPolicy === 'prepared') errors.push(...preparedProblems(stories, readPlanningFile(targetDir, '.yoke/plan.md', 80_000) ?? '', requirementsDigest(targetDir)))
   const requireCriteria = loadConfig(targetDir)?.verify?.requireCriteria ?? false
   if (stories.length === 0) errors.push('PRD has no stories')
   const seen = new Set<string>()
@@ -229,5 +264,6 @@ export function runPrdCheck(targetDir: string): number {
   }
   const p = progress(stories)
   console.log(`✓ PRD valid — ${p.total} stories, ${p.passed} pass`)
+  if (!readRequirements(targetDir)) console.log('Legacy PRD: original-objective, requirement and invariant coverage are not checked. Add .yoke/requirements.yaml for the stronger contract.')
   return 0
 }

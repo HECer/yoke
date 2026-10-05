@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { dirname } from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { parse, stringify } from 'yaml'
 import { z } from 'zod'
@@ -6,6 +7,8 @@ import { AgentSchema } from '../agents/contracts.js'
 import { StoryQualityDeclarationSchema } from '../quality/types.js'
 import { validWriteScope } from './scheduler.js'
 import { AssessmentSchema } from '../routing/assessment.js'
+import { readRequirements, validateRequirements } from '../prd/requirements.js'
+import { readPlanningFile } from '../routing/contracts.js'
 
 export const AcceptanceCriterionSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
@@ -68,6 +71,8 @@ export const StorySchema = z.object({
   assessment: AssessmentSchema.optional(),
   /** Binding to the task, upstream contracts and approved planning brief. */
   assessmentFor: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  /** Host-owned original-objective binding; its presence requires the ledger. */
+  requirementsFor: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 }).superRefine((story, ctx) => {
   const structured = story.acceptance.filter(isAcceptanceCriterion)
   const ids = structured.map(criterion => criterion.id)
@@ -111,6 +116,10 @@ export function loadPrd(file: string): Story[] {
   const stories = parsePrd(file)
   const issues = validateDependencies(stories)
   if (issues.length) throw new Error(`Invalid PRD dependency graph:\n${issues.join('\n')}`)
+  const root = dirname(dirname(file))
+  const ledger = readRequirements(root)
+  if (!ledger && stories.some(story => story.requirementsFor)) throw Error('Bound PRD requires its original requirement ledger')
+  if (ledger) validateRequirements(ledger, stories, readPlanningFile(root, '.yoke/plan.md', 80_000) ?? '')
   return stories
 }
 

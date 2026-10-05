@@ -11,6 +11,7 @@ import type { Story } from '../../src/loop/prd.js'
 import { runStoryWorker } from '../../src/loop/worker.js'
 import { runLoop } from '../../src/loop/loop.js'
 import { savePrd } from '../../src/loop/prd.js'
+import { failureObservation } from '../../src/observability/failure.js'
 
 let root: string
 const assessment: TaskAssessment = { taskClass: 'mechanical', difficulty: 'low', uncertainty: 'low', risk: 'low', scope: 'low', testability: 'high', reason: 'Known rename with executable checks', approach: 'Rename the symbol and run its tests' }
@@ -87,7 +88,7 @@ it.each(['CreateProcessAsUserW failed: -1073283067', 'AuthRequired: No access to
     attempts++; return { success: true, summary: 'provider exited zero' }
   } })
   const result = await runStoryWorker({ story: planned, worktree: root, baseCommit: 'base', provider: { provider: 'codex', role: 'worker' }, runner,
-    verify: () => ({ passed: false, summary: failure }) })
+    verify: () => ({ passed: false, summary: failure, failure: failureObservation('spawn') }) })
   expect(result.kind).toBe('mechanical-failure')
   expect(attempts).toBe(1)
   expect(chooseCapability({ root, story: planned, assessment, workers, parent: 'codex' }).failures).toBe(0)
@@ -166,7 +167,7 @@ it('stops an infrastructure gate failure without spending a repair or escalating
   const planned = { ...story, assessment }
   const runner = makeAsyncAdaptiveRunner({ ...options(), captureRoute: async () => { throw new Error('already planned') }, makeWorker: () => async () => { attempts++; return { success: true, summary: 'done' } } })
   await runStoryWorker({ story: planned, worktree: root, baseCommit: 'base', provider: { provider: 'codex', role: 'worker' }, runner,
-    verify: () => ({ passed: false, summary: 'command not found: test-runtime' }) })
+    verify: () => ({ passed: false, summary: 'command not found: test-runtime', failure: failureObservation('missing-executable') }) })
   expect(attempts).toBe(1)
   expect(chooseCapability({ root, story: planned, assessment, workers, parent: 'codex' }).failures).toBe(0)
 })

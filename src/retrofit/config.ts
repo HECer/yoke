@@ -165,6 +165,7 @@ export const YokeConfigSchema = z.object({
     suppressions: z.array(z.object({ ruleId: z.string().min(1), file: z.string().min(1).optional(), reason: z.string(), expires: z.string().optional() })).optional(),
   }).optional(),
   verify: z.object({
+    reusableCommands: z.array(z.string().min(1)).max(50).optional(),
     command: z.string().min(1).optional(),
     retries: z.number().int().nonnegative().optional(),
     requireCriteria: z.boolean().optional(),
@@ -230,7 +231,7 @@ export interface YokeConfig {
   }
   commit?: { authorName?: string; authorEmail?: string; allowCoAuthors?: boolean }
   audit?: { enabled: boolean; command?: string; suppressionsVersion?: 1; suppressions?: Array<{ ruleId: string; file?: string; reason: string; expires?: string }> }
-  verify?: { command?: string; retries?: number; requireCriteria?: boolean }
+  verify?: { command?: string; retries?: number; requireCriteria?: boolean; reusableCommands?: string[] }
   completion?: { command: string; retries?: number }
   perf?: { command: string; retries?: number }
   design?: { mode: 'off' | 'auto' | 'on'; max: number }

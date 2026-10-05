@@ -4,6 +4,7 @@ The autonomous loop is optional and toggle-able:
 
 - `yoke loop on` / `yoke loop off` — enable or disable it in `.yoke/config.yaml`.
 - `yoke loop status` — show enabled state and backlog progress.
+- `yoke loop wait [dir] --timeout=<seconds> --json` — wait for a terminal state using filesystem notifications without starting an agent. Exit 0 means `changed`, 3 means `timeout`, and 1 means an error. The API returns `cancelled` for an AbortSignal; the CLI maps that result to 130. An existing terminal state is returned immediately; waiting does not create a new run.
 - `yoke loop run [--max=N] [--parallel=N] [--isolate] [--explore] [--explore-interval=N] [--decision-policy=auto|critical] [--quality|--no-quality] [--quality-rounds=N] [--quality-minutes=N] [--quality-policy=blocking|advisory] [--quality-unbounded] [--candidates=N]` — run until the backlog is green or a gate blocks; `--explore` opts into persistent discovery and recovery after each backlog drains.
 - `yoke loop pause` — request a safe-boundary pause from a running loop or exploration supervisor.
 - `yoke change add --idea="..."` — queue a product change at any time, including while the loop is running.
@@ -13,6 +14,13 @@ Pass `--isolate` to implement each story in a fresh git worktree. Only a verifie
 story is fast-forwarded to the main tree. Pass `--review` or `--reviewer=<provider>` to require
 a separate, schema-validated review. Pass `--parallel=N` to dispatch ready, non-colliding stories
 concurrently. Pass `--json` for NDJSON status on stdout.
+
+External controllers should consume a blocking loop run directly. If the host detaches it, use
+`loop wait` for handoff and handle timeout in host code without replaying project context through
+a model. For semantic change notification, pass `--until=change --since=<previous-cursor>`;
+timestamp and token-only updates do not change the cursor. The bounded response carries current
+state, progress and relevant failure metadata. Load detailed failure artifacts when a terminal
+or actionable state requires work. The wait timeout is seconds; `loop run --timeout` stays minutes.
 
 With `--explore`, `--explore-limit=12h|3d|2w` optionally stops one invocation after the selected
 duration. The default is unbounded. Expiry stops new work and pauses after active stories complete

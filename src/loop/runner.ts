@@ -1,21 +1,21 @@
 import { isAcceptanceCriterion, type Story } from './prd.js'
 import { workspaceFingerprint } from '../workspace/fingerprint.js'
 import { execFileSync, execSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { Agent, DecisionPolicy } from '../retrofit/config.js'
 import type { TokenUsage } from './reporter.js'
 import { loadContext, formatForPrompt, contextDir } from '../context/context.js'
-import { contextPacket } from '../context/packet.js'
+import { contextPacket, feedbackPacket } from '../context/packet.js'
+import { requirementsPacket } from '../prd/requirements.js'
 import { buildProviderInvocation, startProviderProcess } from '../agents/providers.js'
 import { parseProviderResult, parseProviderTelemetry } from '../agents/telemetry.js'
 import { providerTelemetryUsage } from '../observability/usage.js'
 import type { ModelSelection, PermissionProfile } from '../agents/types.js'
 import type { ProviderProcessHandle, ProviderProcessOptions } from '../agents/process.js'
 import { formatReviewContract, formatReviewStdoutContract, parseReviewVerdict, type ReviewVerdict } from '../review/verdict.js'
-import { prepareWindowsInvocation } from '../agents/windows-launch.js'
+import { prepareWindowsInvocation, windowsWatchdogArgs } from '../agents/windows-launch.js'
+import { prepareChildEnvironment } from '../agents/child-environment.js'
 import { readSupervision } from '../agents/supervision.js'
 import type { ReviewOutcome } from '../quality/repair.js'
 import { executionFailure, type FailureObservation } from '../observability/failure.js'
@@ -43,7 +43,8 @@ export type AgentRunner = (ctx: AgentContext) => AgentResult
 
 export function contextBlockFor(targetDir: string, story?: Story): string {
   const context = loadContext(contextDir(targetDir))
-  return story ? contextPacket(context, `${story.title} ${story.area ?? ''} ${story.acceptance.map(c => typeof c === 'string' ? c : c.text).join(' ')}`) : formatForPrompt(context)
+  const reference = story ? contextPacket(context, `${story.title} ${story.area ?? ''} ${story.acceptance.map(c => typeof c === 'string' ? c : c.text).join(' ')}`) : formatForPrompt(context)
+  return [requirementsPacket(targetDir, story?.id), reference].filter(Boolean).join('\n\n')
 }
 
 // How the agent handles ambiguous acceptance criteria: 'resolve' (default —
@@ -71,6 +72,7 @@ export function buildClaudePrompt(story: Story, context: string, onAmbiguity: Am
     `Story ${story.id}: ${story.title}`,
     'Acceptance criteria (Definition of Done):',
     criteria,
+    ...(story.writes?.length ? ['', 'Approved write scopes:', ...story.writes.map(path => `- ${path}`), 'Keep shared contract changes within these scopes; preserve other workers\' ownership. Report a scope mismatch rather than changing unrelated files.'] : []),
     ...(story.assessment ? ['Planner approach:', story.assessment.approach] : []),
     '',
     "When done, ensure the project's full test suite passes.",
@@ -118,6 +120,9 @@ export function buildReviewPrompt(story: Story, context: string, verdictPath?: s
     criteria,
     '',
     'Approve ONLY if every acceptance criterion is met and the change is sound.',
+    'Check domain invariants and boundary/state combinations, including faults, repeated commands and long-running behavior where relevant.',
+    'Check preserved capabilities and behavior against the original objective; detect removed commands, substituted requirements and degraded usability.',
+    'Check test adequacy: assertions must detect incorrect behavior, not merely repeat implementation formulas or confirm that a button responds.',
     'If you find ANY blocking issue (an unmet criterion, a bug, a missing test), reject.',
     'Base your verdict only on what the diff and test runs actually show — never assume unverified behavior.',
     verdictPath
@@ -155,6 +160,7 @@ export interface Invocation {
   args: string[]
   input: string
   cwd: string
+  env?: NodeJS.ProcessEnv
 }
 
 // Headless agents must run non-interactively: with plain `-p` the CLI denies
@@ -228,12 +234,16 @@ export function parseClaudeStreamUsage(lines: string[]): TokenUsage {
   return model ? { ...usage, model } : usage
 }
 
-function watchdogArgs(): string[] {
-  const compiled = fileURLToPath(new URL('./watchdog.js', import.meta.url))
-  if (existsSync(compiled)) return [compiled]
-  const source = fileURLToPath(new URL('./watchdog.ts', import.meta.url))
-  const tsxLoader = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href
-  return ['--import', tsxLoader, source]
+function prepareInvocation(inv: Invocation, nativePreflight = true): Invocation {
+  const child = { ...inv, ...prepareChildEnvironment(inv.cwd, inv.env) }
+  return process.platform === 'win32' && nativePreflight ? { ...child, ...prepareWindowsInvocation(child, child.env) } : child
+}
+
+function failureEvidence(error: unknown, tokens?: TokenUsage): { failure: FailureObservation; tokens?: TokenUsage } {
+  const failure = executionFailure(error)
+  return { failure, tokens: tokens ?? (failure.modelExecution === 'not-started'
+    ? { inputTokens: 0, outputTokens: 0, totalCostUsd: 0, measurementComplete: true, costMeasurementComplete: true }
+    : undefined) }
 }
 
 // When idleTimeoutMs > 0, run the agent THROUGH the watchdog so a silent hang is
@@ -249,9 +259,10 @@ export function buildWatchdogInvocation(inv: Invocation, idleTimeoutMs: number, 
   const pidArgs = existsSync(yokeDir) ? [`--pid-file=${join(yokeDir, 'runner.pid')}`] : []
   return {
     command: 'node',
-    args: [...watchdogArgs(), `--idle-ms=${idleTimeoutMs}`, ...pidArgs, '--', inv.command, ...inv.args],
+    args: [...windowsWatchdogArgs(), `--idle-ms=${idleTimeoutMs}`, ...pidArgs, '--', inv.command, ...inv.args],
     input: inv.input,
     cwd: inv.cwd,
+    ...(inv.env ? { env: inv.env } : {}),
   }
 }
 
@@ -270,12 +281,12 @@ export function win32CommandString(command: string, args: string[]): string {
 }
 
 function runCli(inv: Invocation): void {
-    const launch = process.platform === 'win32' ? prepareWindowsInvocation(inv) : inv
+    const launch = prepareInvocation(inv)
     execFileSync(launch.command, launch.args, {
-      cwd: inv.cwd,
+      cwd: launch.cwd,
       input: inv.input,
       stdio: ['pipe', 'inherit', 'inherit'],
-      ...('env' in launch ? { env: launch.env } : {}),
+      env: launch.env,
       windowsHide: true,
     })
 }
@@ -285,9 +296,9 @@ function runCli(inv: Invocation): void {
 // The watchdog wrapper forwards the child's stdout to its own, so piping still works
 // through it. Throws on a non-zero exit; the error carries the partial stdout.
 function runCliCapture(inv: Invocation): string {
-  const opts = { cwd: inv.cwd, input: inv.input, stdio: ['pipe', 'pipe', 'inherit'] as ['pipe', 'pipe', 'inherit'], encoding: 'utf8' as const, maxBuffer: 64 * 1024 * 1024 }
-  const launch = process.platform === 'win32' ? prepareWindowsInvocation(inv) : inv
-  return execFileSync(launch.command, launch.args, { ...opts, ...('env' in launch ? { env: launch.env } : {}), windowsHide: true })
+  const launch = prepareInvocation(inv)
+  const opts = { cwd: launch.cwd, input: inv.input, stdio: ['pipe', 'pipe', 'inherit'] as ['pipe', 'pipe', 'inherit'], encoding: 'utf8' as const, maxBuffer: 64 * 1024 * 1024 }
+  return execFileSync(launch.command, launch.args, { ...opts, env: launch.env, windowsHide: true })
 }
 
 // Reviews have a machine-readable result file, so their console stream is not
@@ -296,15 +307,15 @@ function runCliCapture(inv: Invocation): string {
 // reducing every failure to Node's generic "Command failed" message. The inner
 // watchdog still observes child output live and enforces the idle timeout.
 function runReviewCli(inv: Invocation): void {
+  const launch = prepareInvocation(inv)
   const opts = {
-    cwd: inv.cwd,
+    cwd: launch.cwd,
     input: inv.input,
     stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'],
     encoding: 'utf8' as const,
     maxBuffer: 64 * 1024 * 1024,
   }
-  const launch = process.platform === 'win32' ? prepareWindowsInvocation(inv) : inv
-  execFileSync(launch.command, launch.args, { ...opts, ...('env' in launch ? { env: launch.env } : {}), windowsHide: true })
+  execFileSync(launch.command, launch.args, { ...opts, env: launch.env, windowsHide: true })
 }
 
 function processFailureSummary(error: unknown): string {
@@ -318,6 +329,7 @@ function processFailureSummary(error: unknown): string {
 }
 
 export interface CapturedAgentRun {
+  failure?: FailureObservation
   success: boolean
   output: string
   summary: string
@@ -328,7 +340,7 @@ export interface CapturedAgentRun {
 export function runCapturedAgent(agent: Agent, inv: Invocation): CapturedAgentRun {
   try {
     const output = runCliCapture(inv)
-    return { success: true, output, summary: 'exited 0', tokens: providerTelemetryUsage(parseProviderTelemetry(agent, output.split(/\r?\n/))) }
+    return { success: true, output, summary: 'exited 0', tokens: providerTelemetryUsage(parseProviderTelemetry(agent, output.split(/\r?\n/)), agent) }
   } catch (error) {
     const partial = (error as { stdout?: unknown }).stdout
     const output = partial == null ? '' : String(partial)
@@ -336,7 +348,7 @@ export function runCapturedAgent(agent: Agent, inv: Invocation): CapturedAgentRu
       success: false,
       output,
       summary: (error as Error).message,
-      tokens: output ? providerTelemetryUsage(parseProviderTelemetry(agent, output.split(/\r?\n/))) : undefined,
+      ...failureEvidence(error, output ? providerTelemetryUsage(parseProviderTelemetry(agent, output.split(/\r?\n/)), agent) : undefined),
     }
   }
 }
@@ -365,7 +377,7 @@ export function runAgent(inv: Invocation): AgentResult {
     runCli(inv)
     return { success: true, summary: 'exited 0' }
   } catch (e) {
-    return { success: false, summary: (e as Error).message }
+    return { success: false, summary: (e as Error).message, ...failureEvidence(e) }
   }
 }
 
@@ -375,7 +387,7 @@ export function runReviewAgent(inv: Invocation): AgentResult {
     runReviewCli(inv)
     return { success: true, summary: 'exited 0' }
   } catch (error) {
-    return { success: false, summary: processFailureSummary(error) }
+    return { success: false, summary: processFailureSummary(error), ...failureEvidence(error) }
   }
 }
 
@@ -411,7 +423,7 @@ export function makeAsyncRunner(agent: Agent, opts: AsyncRunnerOpts = {}): Async
     agent,
     runnerInvocation(
       agent,
-      buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story) + (ctx.feedback ? "\nPrior independent failure; preserve useful existing changes and fix the root cause:\n" + ctx.feedback.slice(0, 8000) : ""), opts.onAmbiguity, opts.perfCommand),
+      buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story) + (ctx.feedback ? "\nPrior independent failure; preserve useful existing changes and fix the root cause:\n" + feedbackPacket(ctx.feedback) : ""), opts.onAmbiguity, opts.perfCommand),
       ctx.targetDir,
       true,
       opts.permissions ?? 'safe',
@@ -430,21 +442,28 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
     opts.onStart?.(agent, opts.selection ?? {})
     const started = Date.now()
     const attributed = (tokens: TokenUsage | undefined): TokenUsage | undefined => tokens ? { ...tokens, provider: agent, role: 'parent', storyId: ctx.story.id, durationMs: Date.now() - started } : undefined
-    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story) + (ctx.feedback ? "\nPrior independent failure; preserve useful existing changes and fix the root cause:\n" + ctx.feedback.slice(0, 8000) : ""), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe', opts.selection)
-    const inv = buildWatchdogInvocation(base, idleTimeoutMs, ctx.targetDir, true)
-    if (ctx.attempt) inv.args.splice(inv.args.indexOf('--'), 0, `--attempt=${ctx.attempt}`)
+    const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story) + (ctx.feedback ? "\nPrior independent failure; preserve useful existing changes and fix the root cause:\n" + feedbackPacket(ctx.feedback) : ""), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe', opts.selection)
+    let inv: Invocation
+    try {
+      inv = buildWatchdogInvocation(prepareInvocation(base, captureTokens ? !opts.execCapture : !opts.exec), idleTimeoutMs, ctx.targetDir, true)
+      if (ctx.attempt) inv.args.splice(inv.args.indexOf('--'), 0, `--attempt=${ctx.attempt}`)
+    } catch (error) {
+      const evidence = failureEvidence(error)
+      return { success: false, infrastructureFailure: true, failure: evidence.failure, summary: `${agent} failed on ${ctx.story.id}: ${(error as Error).message}`, tokens: attributed(evidence.tokens) }
+    }
     if (captureTokens) {
       const capture = opts.execCapture ?? runCliCapture
       try {
         const out = capture(inv)
         const telemetry = parseProviderTelemetry(agent, out.split(/\r?\n/))
-        return { success: true, summary: `${agent} implemented ${ctx.story.id}`, tokens: attributed(providerTelemetryUsage(telemetry)) }
+        return { success: true, summary: `${agent} implemented ${ctx.story.id}`, tokens: attributed(providerTelemetryUsage(telemetry, agent)) }
       } catch (e) {
         // Salvage usage from whatever the agent streamed before dying — those tokens were spent.
         const partial = (e as { stdout?: unknown }).stdout
-        const tokens = partial == null ? undefined : providerTelemetryUsage(parseProviderTelemetry(agent, String(partial).split(/\r?\n/)))
+        const tokens = partial == null ? undefined : providerTelemetryUsage(parseProviderTelemetry(agent, String(partial).split(/\r?\n/)), agent)
         const reason = readSupervision(ctx.targetDir, new Date(started).toISOString())[0]?.reason
-        return { success: false, infrastructureFailure: true, failure: executionFailure(e), summary: `${agent} failed on ${ctx.story.id}: ${reason ?? (e as Error).message}`, tokens: attributed(tokens) }
+        const evidence = failureEvidence(e, tokens)
+        return { success: false, infrastructureFailure: true, failure: evidence.failure, summary: `${agent} failed on ${ctx.story.id}: ${reason ?? (e as Error).message}`, tokens: attributed(evidence.tokens) }
       }
     }
     try {
@@ -453,7 +472,8 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
       ;(opts.exec ?? runCli)(inv)
       return { success: true, summary: `${agent} implemented ${ctx.story.id}` }
     } catch (e) {
-      return { success: false, infrastructureFailure: true, failure: executionFailure(e), summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}` }
+      const evidence = failureEvidence(e)
+      return { success: false, infrastructureFailure: true, failure: evidence.failure, summary: `${agent} failed on ${ctx.story.id}: ${(e as Error).message}`, tokens: attributed(evidence.tokens) }
     }
   }
 }
@@ -464,20 +484,25 @@ export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: I
   return (ctx: AgentContext): AgentResult => {
     const before = repositoryFingerprint(ctx.targetDir)
     const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), undefined, agent), ctx.targetDir, 'read-only', { ...selection, nativeMultiAgent: false })
-    const inv = buildWatchdogInvocation(base, idleTimeoutMs)
     let processFailure: string | undefined
+    let failure: FailureObservation | undefined
     let actualModel: string | undefined
     let usage: TokenUsage | undefined
     let output = ''
     try {
+      const inv = buildWatchdogInvocation(prepareInvocation(base, !exec), idleTimeoutMs)
       const result = exec?.(inv) ?? runCapturedAgent(agent, inv)
       if (!result.success) processFailure = result.summary
+      failure = result.failure
       actualModel = result.tokens?.model
       usage = result.tokens
       output = result.output
       if (!exec && !actualModel && !processFailure) processFailure = 'review provider did not report its model'
     } catch (e) {
       processFailure = processFailureSummary(e)
+      const evidence = failureEvidence(e)
+      failure = evidence.failure
+      usage = evidence.tokens
     }
     try {
       if (repositoryFingerprint(ctx.targetDir) !== before) throw new Error('reviewer modified the repository during a read-only review')
@@ -486,6 +511,7 @@ export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: I
       if (processFailure) {
         return {
           success: false,
+          failure,
           summary: `review process failed: ${processFailure}; verdict: ${verdict.summary}`,
           reviewOutcome: { kind: 'infrastructure', summary: processFailure },
           tokens: usage,
@@ -497,7 +523,7 @@ export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: I
       return { ...reviewed, tokens: usage }
     } catch (e) {
       const summary = `${processFailure ? `review process failed: ${processFailure}; ` : ''}${(e as Error).message}`
-      return { success: false, summary, tokens: usage, reviewOutcome: processFailure ? { kind: 'infrastructure', summary } : { kind: 'malformed', summary } }
+      return { success: false, failure, summary, tokens: usage, reviewOutcome: processFailure ? { kind: 'infrastructure', summary } : { kind: 'malformed', summary } }
     }
   }
 }

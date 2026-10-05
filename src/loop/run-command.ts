@@ -10,6 +10,7 @@ import { makeRunner, makeReviewRunner, isAgentAvailable, type AgentRunner, type 
 import type { Agent } from '../retrofit/config.js'
 import type { GitOps } from './gates.js'
 import { commandVerifier, commandsVerifier, retryingVerifier, type Verifier } from './verify.js'
+import { createVerificationSession } from './verification-cache.js'
 import { readStatus, makeReporter, fmtDuration, type LoopReporter } from './reporter.js'
 import { acquireLock, releaseLock, readLock } from './lock.js'
 import { statePath } from '../workspace/state.js'
@@ -626,6 +627,8 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     }
   }
   const outputPolicy = resolveOutputPolicy(config)
+  const verificationReuse = config.verify?.reusableCommands?.length
+    ? { session: createVerificationSession(), reusableCommands: config.verify.reusableCommands } : {}
   const configuredVerifyCommand = opts.verify ? undefined : resolveVerifyCommand(targetDir, config)
   let verify = opts.verify
   if (!verify) {
@@ -1014,7 +1017,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       git: opts.git,
       identity: commitIdentity,
       verify,
-      verifyCriterion: (dir, _story, criterion) => commandsVerifier(criterion.verify, { phase: 'criterion', policy: outputPolicy })(dir),
+      verifyCriterion: (dir, _story, criterion) => commandsVerifier(criterion.verify, { phase: 'criterion', policy: outputPolicy, ...verificationReuse })(dir),
       requireCriterionEvidence: config.verify?.requireCriteria ?? false,
       design,
       perf,
@@ -1036,7 +1039,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
       git,
       commitIdentity,
       verify,
-      verifyCriterion: (dir, _story, criterion) => commandsVerifier(criterion.verify, { phase: 'criterion', policy: outputPolicy })(dir),
+      verifyCriterion: (dir, _story, criterion) => commandsVerifier(criterion.verify, { phase: 'criterion', policy: outputPolicy, ...verificationReuse })(dir),
       requireCriterionEvidence: config.verify?.requireCriteria ?? false,
       completion,
       intake,
