@@ -62,7 +62,7 @@ The ledger uses this shape (digest placeholders below must be replaced with real
 version: 1
 objective:
   idea: The exact original --idea input, including whitespace.
-  approvedPlanSha256: <SHA-256 of the exact approved .yoke/plan.md content, or empty string content>
+  approvedPlanSha256: <SHA-256 of approved .yoke/plan.md with CRLF pairs normalized to LF, or empty string content>
   sha256: <SHA-256 of JSON.stringify({idea, approvedPlanSha256}), in that property order>
 requirements:
   - id: REQUIREMENT-1
@@ -103,13 +103,17 @@ alone does not establish contract ownership.
 
 Active ledgers are enforced by `loadPrd`, so checking, serial scheduling, parallel scheduling
 and completion use the same coverage validation. Progress saves preserve the ledger.
-Prepared assessment contracts include the raw ledger digest; even an invariant edit makes
+Prepared assessment contracts include the ledger digest with CRLF pairs normalized to LF; even an invariant edit makes
 old preparation stale. Worker and reviewer packets retain the original objective, relevant
 requirements, and all preserved invariants without silently truncating binding content.
 
-Candidate acceptance protection compares the exact ledger and approved-plan bytes with
+Candidate acceptance protection compares ledger and approved-plan bytes with
 the baseline workspace, including additions and deletions, even without a pinned
 acceptance manifest. Explicit acceptance protection also pins these files when present.
+Only CRLF pairs are normalized to LF for planning identity and protection, so Git checkout
+conversion preserves the contract. All other bytes, including lone CR and invalid UTF-8
+bytes, remain significant. The original idea is compared exactly without normalization.
+Resuming a retained isolated worktree checks these contracts before implementation.
 Append-only change intake currently rejects projects with an active ledger before calling
 providers: adding a new approved objective requires updating source binding and coverage
 together. The pending request is retained; legacy intake remains supported.

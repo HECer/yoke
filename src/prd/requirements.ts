@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { criterionCommandProblem, isAcceptanceCriterion, loadPrd, type Story } from '../loop/prd.js'
 import { writeScopesOverlap } from '../loop/scheduler.js'
 import { readPlanningFile } from '../routing/contracts.js'
+import { planningSourceDigest } from '../routing/planning-source.js'
 
 export const MAX_REQUIREMENTS_BYTES = 200_000
 const digest = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex')
@@ -22,7 +23,7 @@ export type RequirementsLedger = z.infer<typeof RequirementsSchema>
 
 /** Bind the exact original input, independently of planner-generated summaries. */
 export function requirementObjective(idea: string, brief = ''): RequirementsLedger['objective'] {
-  const source = { idea, approvedPlanSha256: digest(brief) }
+  const source = { idea, approvedPlanSha256: planningSourceDigest(brief) }
   return { ...source, sha256: digest(JSON.stringify(source)) }
 }
 
@@ -33,7 +34,7 @@ export function readRequirements(root: string): RequirementsLedger | undefined {
 
 export function requirementsDigest(root: string): string {
   const source = readPlanningFile(root, '.yoke/requirements.yaml', MAX_REQUIREMENTS_BYTES)
-  return source === undefined ? '' : digest(source)
+  return source === undefined ? '' : planningSourceDigest(source)
 }
 
 export function validateRequirements(ledger: RequirementsLedger, stories: Story[], brief = '', expectedIdea?: string): void {

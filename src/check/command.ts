@@ -17,6 +17,7 @@ import { createProviderProcessRecord, filesystemProviderProcessRecordAdapter } f
 import { trackProcessRecordIdentity } from '../agents/process-record-identity.js'
 import { DeliverySchema, startDelivery, finishDelivery, type DeliveryEvidence } from './delivery.js'
 import { MAX_REQUIREMENTS_BYTES } from '../prd/requirements.js'
+import { planningSourceDigest } from '../routing/planning-source.js'
 import { prepareChildEnvironment } from '../agents/child-environment.js'
 import { executionFailure } from '../observability/failure.js'
 
@@ -157,11 +158,14 @@ function baselinePath(root: string): string {
   return join(process.env.YOKE_STATE_DIR ?? join(homedir(), '.yoke', 'state'), 'acceptance', `${id}.json`)
 }
 function protectedHashes(root: string, paths: string[]): Record<string, string> {
-  return Object.fromEntries(paths.map(path => [path, createHash('sha256').update(readFileSync(protectedPath(root, path))).digest('hex')]))
+  return Object.fromEntries(paths.map(path => {
+    const bytes = readFileSync(protectedPath(root, path))
+    return [path, path === '.yoke/requirements.yaml' || path === '.yoke/plan.md' ? planningSourceDigest(bytes) : createHash('sha256').update(bytes).digest('hex')]
+  }))
 }
 const planningContracts = ['requirements.yaml', 'plan.md'] as const
 /** Compare bounded original bytes even when no acceptance manifest was pinned. */
-function planningContractHash(root: string, name: typeof planningContracts[number]): string | null {
+function planningContractHash(root: string, name: typeof planningContracts[number], requiredRawDigest?: string): string | null {
   const file = statePath(root, name)
   if (!existsSync(file)) return null
   const limit = name === 'requirements.yaml' ? MAX_REQUIREMENTS_BYTES : 80_000
@@ -175,7 +179,9 @@ function planningContractHash(root: string, name: typeof planningContracts[numbe
     const after = fstatSync(fd), named = lstatSync(statePath(root, name))
     if (length !== before.size || after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs ||
       named.ino !== before.ino || named.dev !== before.dev || named.size !== before.size || named.mtimeMs !== before.mtimeMs || named.ctimeMs !== before.ctimeMs) throw Error(`Planning contract ${name} changed while loading`)
-    return createHash('sha256').update(bytes.subarray(0, length)).digest('hex')
+    const content = bytes.subarray(0, length)
+    if (requiredRawDigest !== undefined && createHash('sha256').update(content).digest('hex') !== requiredRawDigest) throw Error(`Original planning contract ${name} differs from its protected raw baseline`)
+    return planningSourceDigest(content)
   } finally { closeSync(fd) }
 }
 /** Explicitly pin acceptance outside the worker workspace. Never refreshed by check. */
@@ -199,7 +205,15 @@ export function acceptanceProtectionProblem(root: string, baselineRoot = root): 
     const baseline = z.object({ version: z.literal(1), hashes: z.record(z.string().regex(/^[a-f0-9]{64}$/)) }).strict().parse(JSON.parse(readFileSync(file, 'utf8')))
     if (!Object.keys(baseline.hashes).includes('.yoke/acceptance.yaml')) return 'Invalid protected acceptance baseline'
     const actual = protectedHashes(root, Object.keys(baseline.hashes))
-    const changed = Object.keys(actual).filter(path => actual[path] !== baseline.hashes[path])
+    const changed = Object.keys(actual).filter(path => {
+      if (actual[path] === baseline.hashes[path]) return false
+      const planning = planningContracts.find(name => path === `.yoke/${name}`)
+      if (!planning) return true
+      // Legacy version-1 baselines may contain raw CRLF hashes. Verify their
+      // original bytes and candidate equivalence from the same bounded snapshot.
+      try { return planningContractHash(baselineRoot, planning, baseline.hashes[path]) !== actual[path] }
+      catch { return true }
+    })
     return changed.length ? `Protected acceptance changed: ${changed.join(', ')}` : null
   } catch (error) { return `Protected acceptance cannot be verified: ${(error as Error).message}` }
 }

@@ -25,7 +25,7 @@ yoke loop wait ./project --until=change --since=<previous-cursor> --timeout=60 -
 
 Wait timeout is seconds; run timeout remains minutes. Changed exits 0, timeout 3, malformed state/error 1. The API accepts an AbortSignal and returns cancellation; the CLI maps a cancellation result to 130. A terminal state already stored is returned immediately.
 
-New drafts keep `.yoke/requirements.yaml`, `.yoke/plan.md` and `.yoke/prd.yaml` together. Every drafted story carries a host-written `requirementsFor` objective hash. Missing ledgers and self-consistent objective rewrites fail. A host-authorized forced redraft can replace the objective while retaining story IDs. Isolated workers cannot replace these contracts; prepared assessments are invalidated when they change. Active-ledger change intake is blocked until the coverage ledger can be updated safely.
+New drafts keep `.yoke/requirements.yaml`, `.yoke/plan.md` and `.yoke/prd.yaml` together. Every drafted story carries a host-written `requirementsFor` objective hash. Missing ledgers and self-consistent objective rewrites fail. A host-authorized forced redraft can replace the objective while retaining story IDs. Isolated workers cannot replace these contracts; prepared assessments are invalidated when they change. Retained isolated worktrees must match the parent's ledger and approved plan before resuming implementation, including parallel recovery after parent HEAD advancement. Textual planning identity treats CRLF and LF as equivalent so Git's Windows checkout conversion preserves the contract; every other byte, including a lone CR, remains significant. The original idea remains exact. Active-ledger change intake is blocked until the coverage ledger can be updated safely.
 
 ```yaml
 verify:
@@ -47,6 +47,12 @@ Fresh usage requires known semantics: Claude's native input is already uncached 
 - Independent code, security, documentation and measurement reviews approved with no remaining blocking finding after fixes. The first integration suite exposed a stale planner fixture and ran the framing regression before its fix; it is not counted as a passing release gate.
 - Standalone tarball installation passed installed canon validation, terminal JSON handoff and explicit timeout exit code 3, without provider calls. Final package validation additionally compares installed CLI/check/cache/usage bytes against the final built code.
 - The first CI matrix passed all gates on Windows/Node 20 and 24. Linux/Node 20 and 24 passed their tests but rejected stale release metadata: five Windows-only tests lacked the existing metadata-discovery override. The metadata follow-up preserves runtime platform guards, enables discovery with `YOKE_INCLUDE_PLATFORM_TESTS=1`, and adds a real Vitest-list regression (0/5 before the fix, 5/5 after). Focused follow-up tests passed 26/26; full discovery found 1,882 registered tests. Product code remains unchanged. Full CI and refreshed packaging gates apply to the follow-up.
+
+### Final isolated-recovery follow-up
+
+Actual Git worktrees exposed two additional integration issues: retained candidates could consume a first model call before late contract protection, and Windows Git checkout conversion could invalidate otherwise identical planning contracts. Thirteen recovery regressions first reproduced provider dispatch on stale candidates; three real `core.autocrlf=true` checkout tests reproduced the line-ending failures. The fixes reject drift before dispatch and canonicalize only CRLF pairs. A legacy version-1 raw-CRLF protection baseline regression also failed before its compatibility fallback and now rejects substantive candidate or baseline edits.
+
+The final affected suites passed 169 tests with zero failures. Independent review approved the recovery, byte-preserving normalization and bounded-snapshot legacy fallback. Release discovery reports 1,899 registered tests. Lint, build, canon validation, audit (zero vulnerabilities), package dry-run and diff whitespace checks passed. The final commit's full Windows/Linux and Node 20/24 CI outcome is recorded in [PR #18](https://github.com/HECer/yoke/pull/18); handover requires all four configurations and refreshed standalone package installation to pass. Earlier full-suite timing evidence applies to its explicitly named commit, not this follow-up.
 
 ### Synthetic regression benchmark
 

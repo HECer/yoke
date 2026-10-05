@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { statePath } from '../workspace/state.js'
 import { loadPrd } from './prd.js'
 import { observedError, safeFailure, type FailureObservation } from '../observability/failure.js'
+import { acceptanceProtectionProblem } from '../check/command.js'
 
 const Recovery = z.object({ version: z.literal(1), root: z.string(), worktree: z.string(), base: z.string(), prdHash: z.string() }).strict()
 const digest = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex')
@@ -14,6 +15,11 @@ const pathIdentity = (path: string) => process.platform === 'win32' ? path.toLow
 // Native handle-based resolution expands Windows 8.3 names. The JS realpath
 // implementation can retain RUNNER~1 while Git reports runneradmin.
 const realpathSync = filesystemRealpathSync.native
+
+function assertRecoveryContract(worktree: string, root: string): void {
+  const problem = acceptanceProtectionProblem(worktree, root)
+  if (problem) throw observedError(`Retained worktree contract is stale: ${problem}. Preserved ${worktree}; reconcile its approved contracts or explicitly clean up before retrying.`, 'source-changed')
+}
 
 /** Explicit recovery is valid only for the unchanged original target and PRD. */
 export function prepareIsolatedWorktree(directory: string, worktree: string, resume: boolean): void {
@@ -41,6 +47,7 @@ export function prepareIsolatedWorktree(directory: string, worktree: string, res
     if (!registered.some(path => pathIdentity(path) === pathIdentity(actual))) throw new Error(`Recovery directory is not a registered worktree: ${actual}; registered: ${registered.join(', ')}`)
     if (pathIdentity(realpathSync(resolve(actual, git(['rev-parse', '--git-common-dir'], actual)))) !== pathIdentity(common)) throw new Error('Recovery belongs to a different repository')
     git(['merge-base', '--is-ancestor', base, 'HEAD'], actual)
+    assertRecoveryContract(actual, root)
     return
   }
   mkdirSync(dirname(record), { recursive: true })
@@ -131,5 +138,6 @@ export function recoverParallelWorktree(directory: string, file: string, storyId
   const registered = git(['worktree', 'list', '--porcelain']).split(/\r?\n/u).filter(line => line.startsWith('worktree ')).map(line => realpathSync(resolve(line.slice(9))))
   if (!registered.some(path => pathIdentity(path) === pathIdentity(actual))) throw new Error('Retained candidate is not a registered worktree')
   git(['merge-base', '--is-ancestor', saved.baseCommit, 'HEAD'], actual)
+  assertRecoveryContract(actual, root)
   return { path: actual, baseCommit: saved.baseCommit, recovered: true, ownerToken: saved.ownerToken, recovery: { phase, feedback: saved.reason, ...(saved.observation ? { observation: saved.observation } : {}) } }
 }

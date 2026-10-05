@@ -14,6 +14,8 @@
 - Bound secondary planning references and repair feedback while preserving binding criteria, objectives, invariants, ownership and artifact references. Review instructions cover preserved behavior, boundaries, state transitions and test adequacy.
 - Request the smallest coherent decomposition rather than a minimum of five stories. Protect planning contracts against isolated worker changes and invalidate stale assessments.
 - Keep registered test counts consistent across platforms during release metadata discovery while preserving normal Windows-only execution.
+- Reject retained isolated worktrees with changed planning contracts before resuming implementation, including parallel recovery after parent HEAD advances.
+- Preserve textual planning contracts across LF/CRLF checkout conversion on Windows while rejecting substantive contract changes.
 
 ### Migration and limits
 - Legacy unbound PRDs remain supported. New drafts must retain `.yoke/requirements.yaml`, `.yoke/plan.md` and story `requirementsFor` markers. Forced host-authorized redrafting can establish a new objective; ordinary workers cannot. Change intake blocks active-ledger extensions until coverage can be safely updated.

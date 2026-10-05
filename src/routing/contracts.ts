@@ -3,6 +3,7 @@ import { lstatSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from 'yaml'
 import type { Story } from '../loop/prd.js'
+import { normalizePlanningBytes, planningSourceDigest } from './planning-source.js'
 
 export function readPlanningFile(root: string, relative: string, maxBytes = 1_048_576): string | undefined {
   let file = root
@@ -27,7 +28,7 @@ export function contractKeys(stories: Story[], brief = '', requirementDigest = '
   const byId = new Map(stories.map(story => [story.id, story]))
   if (byId.size !== stories.length || stories.length > 2000) throw Error('Invalid planning task set')
   const keys = new Map<string, string>(), visiting = new Set<string>()
-  const plan = hash(brief)
+  const plan = hash(normalizePlanningBytes(brief).toString('utf8'))
   const visit = (id: string): string => {
     if (keys.has(id)) return keys.get(id)!
     const s = byId.get(id)
@@ -49,6 +50,6 @@ export function currentContractKey(root: string, story: Story): string {
   // Use the supplied dispatch contract, while obtaining upstream contracts from
   // the stable project root rather than a worker's mutable worktree copy.
   const stories = [...parsed.filter(s => s.id !== story.id), story]
-  const requirements = readPlanningFile(root, '.yoke/requirements.yaml', 256_000)
-  return contractKeys(stories, readPlanningFile(root, '.yoke/plan.md', 80_000) ?? '', requirements === undefined ? '' : createHash('sha256').update(requirements).digest('hex')).get(story.id)!
+  const requirements = readPlanningFile(root, '.yoke/requirements.yaml', 200_000)
+  return contractKeys(stories, readPlanningFile(root, '.yoke/plan.md', 80_000) ?? '', requirements === undefined ? '' : planningSourceDigest(requirements)).get(story.id)!
 }
