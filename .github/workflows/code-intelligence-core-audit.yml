@@ -1,0 +1,51 @@
+name: Code Intelligence baseline audit
+on:
+  push:
+    branches: [audit/code-intelligence-20261012]
+    paths: [.github/workflows/code-intelligence-core-audit.yml]
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Original dependency installation
+        id: install
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p audit-results
+          node --version > audit-results/node-version.txt
+          git rev-parse HEAD > audit-results/audit-commit.txt
+          git rev-parse HEAD:src/code-intelligence > audit-results/code-intelligence-tree.txt
+          npm ci --no-audit --no-fund > audit-results/npm-ci.log 2>&1
+      - name: Original build and tests
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          npm run lint > audit-results/lint.log 2>&1
+          echo "$?" > audit-results/lint.exit
+          npm run build > audit-results/build.log 2>&1
+          echo "$?" > audit-results/build.exit
+          timeout 600 npm test -- --reporter=json --outputFile=audit-results/vitest.json > audit-results/vitest.log 2>&1
+          echo "$?" > audit-results/vitest.exit
+          npm run docs:check > audit-results/docs-check.log 2>&1
+          echo "$?" > audit-results/docs-check.exit
+          tar -czf audit-results/original-runtime.tar.gz dist src node_modules/zod node_modules/yaml package.json package-lock.json LICENSE docs/CODE-INTELLIGENCE.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yoke-code-intelligence-baseline
+          path: audit-results/
+          retention-days: 7
+          if-no-files-found: error
