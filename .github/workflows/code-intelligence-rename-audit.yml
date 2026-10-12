@@ -1,0 +1,55 @@
+name: Code Intelligence rename controls
+on:
+  push:
+    branches: [audit/code-intelligence-20261012]
+    paths: [.github/workflows/code-intelligence-rename-audit.yml]
+permissions:
+  contents: read
+jobs:
+  rename-controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DO_NOT_TRACK: '1'
+      SERENA_BIN: /tmp/yoke-rename-env/bin/serena
+      OPENAI_API_KEY: ''
+      ANTHROPIC_API_KEY: ''
+      GEMINI_API_KEY: ''
+      GOOGLE_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Prepare exact runtimes
+        shell: bash
+        run: |
+          mkdir -p audit-results
+          npm ci --no-audit --no-fund > audit-results/yoke-install.log 2>&1
+          npm run build > audit-results/yoke-build.log 2>&1
+          python -m pip install uv > audit-results/uv-install.log 2>&1
+          uv venv --python 3.12 /tmp/yoke-rename-env
+          uv pip install --python /tmp/yoke-rename-env/bin/python 'git+https://github.com/oraios/serena.git@701e7c843f46c6a649203a488cece1bf19f1df90' > audit-results/serena-install.log 2>&1
+          uv pip freeze --python /tmp/yoke-rename-env/bin/python > audit-results/serena-freeze.txt
+          git rev-parse HEAD > audit-results/audit-commit.txt
+          git rev-parse HEAD:src/code-intelligence > audit-results/code-intelligence-tree.txt
+          cp audit/rename-control-audit.mjs audit-results/
+      - name: Independent compile-checked rename controls
+        shell: bash
+        run: |
+          set +e
+          timeout 480 node audit/rename-control-audit.mjs > audit-results/rename-controls.log 2>&1
+          echo "$?" > audit-results/rename-controls.exit
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yoke-code-intelligence-rename-controls
+          path: audit-results/
+          retention-days: 7
+          if-no-files-found: error
