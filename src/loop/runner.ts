@@ -43,8 +43,12 @@ export type AgentRunner = (ctx: AgentContext) => AgentResult
 
 export function contextBlockFor(targetDir: string, story?: Story): string {
   const context = loadContext(contextDir(targetDir))
-  const reference = story ? contextPacket(context, `${story.title} ${story.area ?? ''} ${story.acceptance.map(c => typeof c === 'string' ? c : c.text).join(' ')}`) : formatForPrompt(context)
-  return [requirementsPacket(targetDir, story?.id), reference].filter(Boolean).join('\n\n')
+  // Only DECISIONS is explicitly historical. Legacy projects may keep binding
+  // constraints in any other context file; lexical retrieval must not drop them.
+  const binding = formatForPrompt({ ...context, decisions: '' }, Number.MAX_SAFE_INTEGER)
+  const history = { project: '', knowledge: '', glossary: '', contextMap: '', decisions: context.decisions }
+  const reference = story ? contextPacket(history, `${story.title} ${story.area ?? ''} ${story.acceptance.map(c => typeof c === 'string' ? c : c.text).join(' ')}`) : formatForPrompt(history)
+  return [requirementsPacket(targetDir, story?.id), binding, reference].filter(Boolean).join('\n\n')
 }
 
 // How the agent handles ambiguous acceptance criteria: 'resolve' (default —
@@ -75,10 +79,13 @@ export function buildClaudePrompt(story: Story, context: string, onAmbiguity: Am
     ...(story.writes?.length ? ['', 'Approved write scopes:', ...story.writes.map(path => `- ${path}`), 'Keep shared contract changes within these scopes; preserve other workers\' ownership. Report a scope mismatch rather than changing unrelated files.'] : []),
     ...(story.assessment ? ['Planner approach:', story.assessment.approach] : []),
     '',
-    "When done, ensure the project's full test suite passes.",
+    'Use focused tests during TDD and run the relevant acceptance checks after your changes.',
+    'Yoke independently runs the configured independent verification and required gates after you return; do not duplicate that entire sweep merely to finish your message.',
+    'Run broader checks yourself when an explicit criterion, a cross-cutting change, or a failure requires them. Never skip or weaken required checks.',
     'Do NOT commit — the loop commits on your behalf after verifying.',
     '',
     'Working rules:',
+    '- Yoke owns orchestration, independent review, and integration. Do not start nested Yoke loops or additional agents, and do not poll the parent loop from this worker.',
     '- Use worktree-local writable dependency/runtime caches. Do not link node_modules to a target checkout when tools write .vite-temp or other caches there. Shared package download caches are allowed; preserve the configured sandbox. Report offline cache misses and network failures explicitly instead of blindly retrying.',
     '- Add nothing beyond what the story requires: no extra features, abstractions, comments, or defensive code for cases that cannot happen.',
     '- Do not create summary, plan, or analysis documents — only files the story itself needs.',
@@ -118,6 +125,7 @@ export function buildReviewPrompt(story: Story, context: string, verdictPath?: s
     `Story ${story.id}: ${story.title}`,
     'Acceptance criteria:',
     criteria,
+    ...(story.writes?.length ? ['', 'Approved implementation write scopes:', ...story.writes.map(path => `- ${path}`), 'Reject changes outside these scopes; the reviewer remains read-only.'] : []),
     '',
     'Approve ONLY if every acceptance criterion is met and the change is sound.',
     'Check domain invariants and boundary/state combinations, including faults, repeated commands and long-running behavior where relevant.',

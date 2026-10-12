@@ -1,0 +1,10 @@
+{
+  "sourceRawSha256": "d47b19fa6c04e673bd700ff97ef7c4b672ee82fd58792c22677d426a2a53e350",
+  "files": {
+    "bench/stream-efficiency.mjs": "b9bdc5626c7951d55adba7a32ab9f2b49b39f6a18336f9ad95f50a56e07d1165",
+    "src/agents/stream-buffer.ts": "e7b74aec819a5a190109404edf313c6413272d63d217bccd59df496fe0885b1a",
+    "src/agents/process-streams.ts": "bf8cc45fdd3e8b7dd922360ccb4d6e161b8a1b1acd37f87f9b5a3162ec64c1c4",
+    "src/context/packet.ts": "46f9e1833d617ae5904f7ed3b5e5d41b8fb849a4af7166744b47989c61a9ff70"
+  },
+  "scope": "Synthetic function benchmark only; contextPacket is standalone historical retrieval, not the complete production prompt."
+}
