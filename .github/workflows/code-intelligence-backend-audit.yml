@@ -1,0 +1,93 @@
+name: Code Intelligence real backend audit
+on:
+  push:
+    branches: [audit/code-intelligence-20261012]
+    paths: [.github/workflows/code-intelligence-backend-audit.yml]
+permissions:
+  contents: read
+jobs:
+  live-backends:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DO_NOT_TRACK: '1'
+      GRAFT_TELEMETRY: 'off'
+      AUDIT_BACKENDS: ${{ runner.temp }}/ci-backends
+      GRAFT_CLI: ${{ runner.temp }}/ci-backends/graft/dist/cli.js
+      GRAPHIFY_PYTHON: ${{ runner.temp }}/ci-backends/graphify-env/bin/python
+      SERENA_BIN: ${{ runner.temp }}/ci-backends/serena-env/bin/serena
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Build unchanged Yoke runtime
+        shell: bash
+        run: |
+          mkdir -p audit-results
+          npm ci --no-audit --no-fund > audit-results/yoke-install.log 2>&1
+          npm run build > audit-results/yoke-build.log 2>&1
+          cp audit/live-backend-audit.mjs audit-results/
+          git rev-parse HEAD > audit-results/audit-commit.txt
+          git rev-parse HEAD:src/code-intelligence > audit-results/code-intelligence-tree.txt
+          python -m pip install uv > audit-results/uv-install.log 2>&1
+      - name: Fetch documented backend commits
+        shell: bash
+        run: |
+          set -e
+          mkdir -p "$AUDIT_BACKENDS"
+          fetch_pin() {
+            git init -q "$3"
+            git -C "$3" remote add origin "$1"
+            git -C "$3" fetch -q --depth=1 origin "$2"
+            git -C "$3" checkout -q --detach FETCH_HEAD
+            git -C "$3" rev-parse HEAD
+          }
+          fetch_pin https://github.com/trailhq/Graft.git 05760b07abc0e427f5af8ad378889ee402c5afc6 "$AUDIT_BACKENDS/graft" > audit-results/graft-pin.txt
+          fetch_pin https://github.com/Graphify-Labs/graphify.git 67f99bd0059dd1bac9e44382907ef9f10098b39f "$AUDIT_BACKENDS/graphify-src" > audit-results/graphify-pin.txt
+          fetch_pin https://github.com/oraios/serena.git 701e7c843f46c6a649203a488cece1bf19f1df90 "$AUDIT_BACKENDS/serena-src" > audit-results/serena-pin.txt
+      - name: Install Graft
+        continue-on-error: true
+        shell: bash
+        run: |
+          cd "$AUDIT_BACKENDS/graft"
+          timeout 420 npm ci --no-audit --no-fund > "$GITHUB_WORKSPACE/audit-results/graft-install.log" 2>&1
+          node dist/cli.js --version > "$GITHUB_WORKSPACE/audit-results/graft-version.txt"
+          npm ls --json > "$GITHUB_WORKSPACE/audit-results/graft-dependencies.json" || true
+      - name: Install Graphify in isolated environment
+        continue-on-error: true
+        shell: bash
+        run: |
+          uv venv --python 3.12 "$AUDIT_BACKENDS/graphify-env"
+          timeout 420 uv pip install --python "$GRAPHIFY_PYTHON" "$AUDIT_BACKENDS/graphify-src[mcp]" > audit-results/graphify-install.log 2>&1
+          uv pip freeze --python "$GRAPHIFY_PYTHON" > audit-results/graphify-freeze.txt
+          "$AUDIT_BACKENDS/graphify-env/bin/graphify" extract --help > audit-results/graphify-extract-help.txt 2>&1
+      - name: Install Serena in isolated environment
+        continue-on-error: true
+        shell: bash
+        run: |
+          uv venv --python 3.12 "$AUDIT_BACKENDS/serena-env"
+          timeout 420 uv pip install --python "$AUDIT_BACKENDS/serena-env/bin/python" "$AUDIT_BACKENDS/serena-src" > audit-results/serena-install.log 2>&1
+          uv pip freeze --python "$AUDIT_BACKENDS/serena-env/bin/python" > audit-results/serena-freeze.txt
+          "$SERENA_BIN" start-mcp-server --help > audit-results/serena-server-help.txt 2>&1
+      - name: Run native and facade comparison probes
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          timeout 720 node audit/live-backend-audit.mjs > audit-results/live-audit.log 2>&1
+          echo "$?" > audit-results/live-audit.exit
+          tar --ignore-failed-read -czf audit-results/upstream-sources.tar.gz -C "$AUDIT_BACKENDS" graft/src/mcp graft/package.json graft/LICENSE graphify-src/graphify/serve.py graphify-src/graphify/cli.py graphify-src/pyproject.toml graphify-src/LICENSE serena-src/src/serena/tools/symbol_tools.py serena-src/src/serena/symbol.py serena-src/pyproject.toml serena-src/LICENSE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yoke-code-intelligence-real-backends
+          path: audit-results/
+          retention-days: 7
+          if-no-files-found: error
