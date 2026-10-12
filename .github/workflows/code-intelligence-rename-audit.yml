@@ -39,17 +39,17 @@ jobs:
           uv pip freeze --python /tmp/yoke-rename-env/bin/python > audit-results/serena-freeze.txt
           git rev-parse HEAD > audit-results/audit-commit.txt
           git rev-parse HEAD:src/code-intelligence > audit-results/code-intelligence-tree.txt
-          cp audit/rename-control-audit.mjs audit-results/
-      - name: Independent compile-checked rename controls
+          cp audit/rename-control-audit.mjs audit/preview-isolation-audit.mjs audit-results/
+      - name: Compile-checked original-workspace isolation probes
         shell: bash
         run: |
           set +e
-          timeout 480 node audit/rename-control-audit.mjs > audit-results/rename-controls.log 2>&1
-          echo "$?" > audit-results/rename-controls.exit
+          timeout 480 node audit/preview-isolation-audit.mjs > audit-results/preview-isolation.log 2>&1
+          echo "$?" > audit-results/preview-isolation.exit
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: yoke-code-intelligence-rename-controls
+          name: yoke-code-intelligence-preview-isolation
           path: audit-results/
           retention-days: 7
           if-no-files-found: error
