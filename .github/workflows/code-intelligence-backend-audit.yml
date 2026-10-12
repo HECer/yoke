@@ -33,7 +33,7 @@ jobs:
           mkdir -p audit-results
           npm ci --no-audit --no-fund > audit-results/yoke-install.log 2>&1
           npm run build > audit-results/yoke-build.log 2>&1
-          cp audit/live-backend-audit.mjs audit-results/
+          cp audit/live-backend-audit.mjs audit/refine-live-audit.mjs audit-results/
           git rev-parse HEAD > audit-results/audit-commit.txt
           git rev-parse HEAD:src/code-intelligence > audit-results/code-intelligence-tree.txt
           python -m pip install uv > audit-results/uv-install.log 2>&1
@@ -76,12 +76,12 @@ jobs:
           timeout 420 uv pip install --python "$AUDIT_BACKENDS/serena-env/bin/python" "$AUDIT_BACKENDS/serena-src" > audit-results/serena-install.log 2>&1
           uv pip freeze --python "$AUDIT_BACKENDS/serena-env/bin/python" > audit-results/serena-freeze.txt
           "$SERENA_BIN" start-mcp-server --help > audit-results/serena-server-help.txt 2>&1
-      - name: Run native and facade comparison probes
+      - name: Run refined native and facade comparisons
         continue-on-error: true
         shell: bash
         run: |
           set +e
-          timeout 720 node audit/live-backend-audit.mjs > audit-results/live-audit.log 2>&1
+          timeout 720 node audit/refine-live-audit.mjs > audit-results/live-audit.log 2>&1
           echo "$?" > audit-results/live-audit.exit
           tar --ignore-failed-read -czf audit-results/upstream-sources.tar.gz -C "$AUDIT_BACKENDS" graft/src/mcp graft/package.json graft/LICENSE graphify-src/graphify/serve.py graphify-src/graphify/cli.py graphify-src/pyproject.toml graphify-src/LICENSE serena-src/src/serena/tools/symbol_tools.py serena-src/src/serena/symbol.py serena-src/pyproject.toml serena-src/LICENSE
       - uses: actions/upload-artifact@v4
