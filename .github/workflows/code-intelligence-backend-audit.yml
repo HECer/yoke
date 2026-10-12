@@ -12,10 +12,10 @@ jobs:
     env:
       DO_NOT_TRACK: '1'
       GRAFT_TELEMETRY: 'off'
-      AUDIT_BACKENDS: ${{ runner.temp }}/ci-backends
-      GRAFT_CLI: ${{ runner.temp }}/ci-backends/graft/dist/cli.js
-      GRAPHIFY_PYTHON: ${{ runner.temp }}/ci-backends/graphify-env/bin/python
-      SERENA_BIN: ${{ runner.temp }}/ci-backends/serena-env/bin/serena
+      AUDIT_BACKENDS: /tmp/yoke-audit-backends
+      GRAFT_CLI: /tmp/yoke-audit-backends/graft/dist/cli.js
+      GRAPHIFY_PYTHON: /tmp/yoke-audit-backends/graphify-env/bin/python
+      SERENA_BIN: /tmp/yoke-audit-backends/serena-env/bin/serena
     steps:
       - uses: actions/checkout@v7
         with:
