@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.25.1 — 2026-10-13
+
+### Fixed
+- Keep measured Claude input, cache, output and cost lower bounds when a crash returns zero or missing usage. Deduplicate assistant snapshots, retain reported models and keep incomplete consumption explicitly partial.
+- Bound retained console output and incomplete stream frames, honor zero retention, preserve split Unicode and avoid interpreting discarded frame suffixes as new provider events.
+- Avoid dispatching already-cancelled prompts and settle observer, supervision and ownership-storage failures without losing measured usage. Distinguish failures after prompt dispatch from calls that never started.
+- Block another provider while process-tree termination remains unconfirmed, including dead leaders with retained ownership, older records beyond display limits, concurrent cleanup races and Windows path casing differences.
+- Keep complete binding project rules, requirements, invariants, acceptance evidence and write scopes in worker/reviewer prompts. Bound repair feedback and historical references without amplifying diagnostics or losing late matching passages.
+- Probe each provider once during routing initialization while retaining fresh availability checks before every dispatch.
+- Update two development dependencies to resolve the dependency audit findings.
+
+### Changed
+- Ask implementation workers for focused TDD and relevant acceptance checks while the host runs configured independent verification and required gates. Preserve broader checks when criteria, cross-cutting changes or failures require them.
+- Prefer one attached blocking backlog run in the managed workflow skill. Respect explicit iteration, attempt, cost and time budgets; handle wait timeouts in host code without model polling or automatic capped-run restarts.
+
+### Migration and validation limits
+- Existing projects receive the workflow guidance through their normal managed update/retrofit path; their explicit limits and decision policy remain authoritative. No permissions, model selection, capability floors or required gates are relaxed.
+- The corrected implementation passed independent code/security review, 1,989 local tests with two skips, and Linux/Windows CI on Node 20/24. Release metadata is checked again on the release commit before publication.
+- New five-sample Windows measurements cover isolated buffer, feedback and retrieval functions. They do not establish whole-Yoke runtime or provider-cost savings; no authenticated live-provider comparison was performed. See the [implementation report](docs/EFFICIENCY-HANDOFF-2026-10-13.md).
+
 ## 1.25.0 — 2026-10-05
 
 ### Added

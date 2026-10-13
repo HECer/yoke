@@ -1,5 +1,7 @@
 # Efficiency handoff implementation — 2026-10-13
 
+Historical implementation-time validation record. Statements below about unreleased status describe the handoff before PR #19 merged; see the [changelog](../CHANGELOG.md) for subsequent release history. Original measurements and their validation scope are preserved.
+
 Unreleased corrections based on `56691e694874dbf1166b461e1994172567bf9a17` (Yoke 1.25.0). The original checkout at 1.22.0 and its user edits were preserved; implementation and baseline checks use separate worktrees with separate `npm ci` installations. No merge, tag or npm publication was performed.
 
 The supplied patch SHA-256 is `37016e362910e49964e3abe868d7a277bb4db19576d7be0f3f23a93ccd7d8f0b`; all 21 manifest file hashes were verified. Original inputs and Linux measurements remain unchanged. The [historical candidate audit](EFFICIENCY-AUDIT-2026-10-12.md) records its previous environment, not current results.
