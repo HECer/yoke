@@ -74,6 +74,46 @@ it('refuses a new provider while termination of an earlier live PID is unconfirm
   expect(() => assertPreviousProvidersStopped(cwd)).not.toThrow()
 })
 
+it('blocks a dead leader with retained process-tree ownership until explicit cleanup removes it', async () => {
+  const cwd = root(), dir = join(cwd, '.yoke', 'supervision'), ownership = join(cwd, '.yoke', 'provider-processes')
+  mkdirSync(dir, { recursive: true }); mkdirSync(ownership, { recursive: true })
+  const { spawn } = await import('node:child_process')
+  const child = spawn(process.execPath, ['-e', ''], { stdio: 'ignore', windowsHide: true })
+  await new Promise<void>((resolve, reject) => { child.once('close', () => resolve()); child.once('error', reject) })
+  const record = { id: 'prior', state: 'termination-unconfirmed', childPid: child.pid, startedAt: new Date().toISOString(), heartbeatAt: new Date().toISOString() }
+  writeFileSync(join(dir, 'prior.json'), JSON.stringify(record))
+  const owned = join(ownership, 'owned.json')
+  writeFileSync(owned, JSON.stringify({ version: 1, owner: 'provider-process', targetDir: cwd, childPid: child.pid, startedAt: 'unverified:fixture' }))
+  expect(readSupervision(cwd, '')[0].liveness).toBe('exited')
+  expect(() => assertPreviousProvidersStopped(cwd)).toThrow('unconfirmed')
+  if (process.platform === 'win32') {
+    writeFileSync(owned, JSON.stringify({ version: 1, owner: 'provider-process', targetDir: cwd.toUpperCase(), childPid: child.pid, startedAt: 'unverified:fixture' }))
+    expect(() => assertPreviousProvidersStopped(cwd)).toThrow('unconfirmed')
+  }
+  const handle = startProviderProcess('codex', { command: process.execPath, args: ['-e', ''], input: 'prompt', cwd })
+  expect(handle.pid).toBeUndefined()
+  expect((await handle.completion).kind).toBe('spawn-failed')
+  rmSync(owned)
+  expect(() => assertPreviousProvidersStopped(cwd)).not.toThrow()
+})
+
+it('does not hide an older termination blocker behind bounded display history', () => {
+  const cwd = root(), dir = join(cwd, '.yoke', 'supervision')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'old.json'), JSON.stringify({ id: 'old', state: 'termination-unconfirmed', childPid: process.pid, startedAt: '2026-01-01', heartbeatAt: '2026-01-01' }))
+  for (let i = 0; i < 220; i++) writeFileSync(join(dir, `new-${i}.json`), JSON.stringify({ id: `new-${i}`, state: 'stopped', startedAt: '2026-10-13', heartbeatAt: '2026-10-13' }))
+  expect(readSupervision(cwd, '')).toHaveLength(20)
+  expect(() => assertPreviousProvidersStopped(cwd)).toThrow('unconfirmed')
+})
+
+it.each([undefined, 'unknown'])('rejects a malformed supervision state %s during admission', state => {
+  const cwd = root(), dir = join(cwd, '.yoke', 'supervision')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'bad.json'), JSON.stringify({ state, startedAt: '2026-01-01', heartbeatAt: '2026-01-01' }))
+  expect(() => assertPreviousProvidersStopped(cwd)).toThrow('malformed')
+})
+
+
 it('blocks the routed worker after one infrastructure failure despite green existing gates', async () => {
   const cwd = root(); vi.stubEnv('YOKE_REGISTRY_DIR', join(cwd, 'registry'))
   const story = { id: 'INFRA', title: 'work', priority: 1, passes: false, acceptance: ['verified'], assessment: { taskClass: 'mechanical' as const, difficulty: 'low' as const, uncertainty: 'low' as const, risk: 'low' as const, scope: 'low' as const, testability: 'high' as const, reason: 'bounded task', approach: 'implement and test' } }

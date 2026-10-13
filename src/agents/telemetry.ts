@@ -1,6 +1,7 @@
 import type { Agent } from '../retrofit/config.js'
 import type { ProviderTelemetry } from './types.js'
 import { createPiTelemetry } from './pi-telemetry.js'
+import { createClaudeTelemetry } from './claude-telemetry.js'
 
 type JsonParseResult =
   | { readonly ok: true; readonly value: unknown }
@@ -166,8 +167,8 @@ function parseQwenResult(output: string): unknown {
 }
 
 export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderTelemetry {
-  if (agent === 'pi') {
-    const accumulator = createPiTelemetry()
+  if (agent === 'pi' || agent === 'claude') {
+    const accumulator = agent === 'claude' ? createClaudeTelemetry() : createPiTelemetry()
     for (const line of lines) {
       const parsed = parseJson(line)
       if (parsed.ok && isRecord(parsed.value)) accumulator.consume(parsed.value)
@@ -189,7 +190,7 @@ export function parseProviderTelemetry(agent: Agent, lines: string[]): ProviderT
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue
     const event = parsed as Record<string, unknown>
     steps?.consume(event)
-    if ((agent === 'qwen' || agent === 'claude') && event.parent_tool_use_id != null) continue
+    if (agent === 'qwen' && event.parent_tool_use_id != null) continue
     const message = event.message && typeof event.message === 'object' ? event.message as Record<string, unknown> : undefined
     const stats = event.stats && typeof event.stats === 'object' ? event.stats as Record<string, unknown> : undefined
     const usage = (event.usage && typeof event.usage === 'object'

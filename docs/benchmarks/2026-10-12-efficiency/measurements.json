@@ -1,0 +1,58 @@
+{
+  "baselineCommit": "56691e694874dbf1166b461e1994172567bf9a17",
+  "baselineBlobs": {
+    "src/agents/process-streams.ts": "2e314fd64a674f1e8ffc545f6f0fe5247832e494",
+    "src/context/packet.ts": "d6bad14d7b59ab6bbfda7fb5c02e6098d3ea7972"
+  },
+  "node": "v22.16.0",
+  "platform": "linux",
+  "arch": "x64",
+  "scope": "Synthetic function benchmark, not whole-project or live-provider savings",
+  "outputFixture": {
+    "totalBytes": 4194304,
+    "chunkBytes": 4096,
+    "retainedLimitBytes": 1048576,
+    "samples": 5
+  },
+  "outputTimings": {
+    "before": {
+      "samplesMs": [
+        1008.0967740000001,
+        875.6225240000003,
+        956.7195349999997,
+        1011.173385,
+        1022.8076890000002
+      ],
+      "medianMs": 1008.0967740000001,
+      "minMs": 875.6225240000003,
+      "maxMs": 1022.8076890000002
+    },
+    "after": {
+      "samplesMs": [
+        4.0272289999998065,
+        3.0088620000001356,
+        2.4473049999996874,
+        2.3670640000000276,
+        2.1332510000002003
+      ],
+      "medianMs": 2.4473049999996874,
+      "minMs": 2.1332510000002003,
+      "maxMs": 4.0272289999998065
+    }
+  },
+  "feedback": {
+    "sourceCharacters": 30570,
+    "budgetCharacters": 256,
+    "beforeCharacters": 61396,
+    "afterCharacters": 256
+  },
+  "unrelatedContext": {
+    "sourceCharacters": 27155,
+    "beforeCharacters": 6000,
+    "afterCharacters": 168
+  },
+  "zeroRetention": {
+    "beforeBytes": 15,
+    "afterBytes": 0
+  }
+}

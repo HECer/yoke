@@ -91,7 +91,7 @@ export function providerSpawnOptions(invocation: AgentInvocation, platform: Node
 }
 
 function preflightFailureHandle(invocation: AgentInvocation, error: unknown, message = error instanceof Error ? error.message : String(error)): ProviderProcessHandle {
-  const failure = executionFailure(error)
+  const failure = { ...executionFailure(error), modelExecution: 'not-started' as const }
   const telemetry: ProviderTelemetry = failure.modelExecution === 'not-started'
     ? { usageAvailable: true, tokens: { inputTokens: 0, outputTokens: 0, totalCostUsd: 0 } }
     : { usageAvailable: false }
@@ -99,6 +99,20 @@ function preflightFailureHandle(invocation: AgentInvocation, error: unknown, mes
 }
 
 export function startProviderProcess(agent: Agent, invocation: AgentInvocation, options: ProviderProcessOptions = {}): ProviderProcessHandle {
+  // A pre-cancelled call must not start a CLI or send a billable prompt.
+  if (options.signal?.aborted) return {
+    pid: undefined, invocation, recordPath: '', cancel: () => false,
+    completion: Promise.resolve({ kind: 'cancelled', reason: cancellationReason(options.signal), invocation,
+      pid: undefined, stdout: '', stderr: '', stdoutTruncated: false, stderrTruncated: false,
+      telemetry: { usageAvailable: true, tokens: { inputTokens: 0, outputTokens: 0, totalCostUsd: 0 } } }),
+  }
+  // Validate storage limits before spawn, so an invalid option cannot orphan a child.
+  let stdout: ReturnType<typeof createBoundedOutput>
+  let stderr: ReturnType<typeof createBoundedOutput>
+  try {
+    stdout = createBoundedOutput(options.outputLimitBytes ?? 1_048_576)
+    stderr = createBoundedOutput(options.outputLimitBytes ?? 1_048_576)
+  } catch (error) { return preflightFailureHandle(invocation, error) }
   let childEnvironment
   try {
     childEnvironment = prepareChildEnvironment(invocation.cwd)
@@ -107,7 +121,9 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   let failure: (reason: string) => void = () => {}
   let progress: () => void = () => {}
   const limits = supervisionLimits(invocation.cwd)
-  const supervision = createSupervision(invocation.cwd, reason => failure(reason), () => progress(), options.attempt)
+  let supervision: ReturnType<typeof createSupervision>
+  try { supervision = createSupervision(invocation.cwd, reason => failure(reason), () => progress(), options.attempt) }
+  catch (error) { return preflightFailureHandle(invocation, error) }
   let restoreSolPiConfig = (): void => {}
   let prepared
   try {
@@ -141,7 +157,6 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   const targetDir = resolve(invocation.cwd)
   const pid = child.pid
   const startedAt = pid === undefined ? `unverified:${new Date().toISOString()}` : processIncarnation(pid) ?? `unverified:${new Date().toISOString()}`
-  supervision.start(pid, 'shell' in prepared ? prepared.shell : undefined, startedAt.startsWith('unverified:') ? undefined : startedAt)
   const record = createProviderProcessRecord(targetDir, pid ?? 0, options.workerId, startedAt)
   const recordAdapter = options.recordAdapter ?? filesystemProviderProcessRecordAdapter
   const terminateProcessTree = options.terminateProcessTree ?? ((processPid: number) => {
@@ -173,8 +188,6 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   })
   let recordPublished = false
 
-  const stdout = createBoundedOutput(options.outputLimitBytes ?? 1_048_576)
-  const stderr = createBoundedOutput(options.outputLimitBytes ?? 1_048_576)
   const telemetry = createTelemetryAccumulator(agent)
   const idleTimeoutMs = options.idleTimeoutMs ?? 0
   const terminationGraceMs = options.terminationGraceMs ?? 5_000
@@ -185,9 +198,11 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   let progressTimer: ReturnType<typeof setTimeout> | undefined
   let completionTimer: ReturnType<typeof setTimeout> | undefined
   let recordFailure: string | undefined
+  let recordFailureObservation: FailureObservation | undefined
   let terminationConfirmed = false
   let forcedTerminationAttempted = false
   let settled = false
+  let promptDispatched = false
   let resolveCompletion: (result: ProviderProcessResult) => void = () => {}
 
   const completion = new Promise<ProviderProcessResult>(resolveCompletionValue => {
@@ -210,13 +225,18 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     if (settled) return
     settled = true
     clearTimers()
-    let completedResult = result
-    try { restoreSolPiConfig() }
-    catch (error) { completedResult = { ...evidence(), kind: 'spawn-failed', error: (error as Error).message } }
-    supervision.stop(termination?.reason ?? (completedResult.kind === 'succeeded' ? 'provider-exited' : 'provider-failed'), !termination || terminationConfirmed)
+    const cleanupErrors: unknown[] = []
+    try { restoreSolPiConfig() } catch (error) { cleanupErrors.push(error) }
+    try { supervision.stop(termination?.reason ?? (result.kind === 'succeeded' ? 'provider-exited' : 'provider-failed'), !termination || terminationConfirmed) }
+    catch (error) { cleanupErrors.push(error) }
     options.signal?.removeEventListener('abort', onAbort)
-    if (!termination || terminationConfirmed) removeRecord()
-    resolveCompletion(completedResult)
+    try { if (!termination || terminationConfirmed) removeRecord() }
+    catch (error) { cleanupErrors.push(error) }
+    // Storage/cleanup failures must block success, not leave completion pending forever.
+    const cleanupError = cleanupErrors[0]
+    resolveCompletion(cleanupErrors.length ? { ...evidence(), kind: 'spawn-failed',
+      error: `provider cleanup failed after ${result.kind}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+      failure: failureObservation('storage', promptDispatched ? 'started' : 'not-started') } : result)
   }
   const evidence = (): ProcessEvidence => ({
     invocation,
@@ -233,7 +253,8 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   }
   const finalize = (exitCode: number | null): void => {
     if (settled) return
-    supervision.flush()
+    try { supervision.flush() }
+    catch (error) { recordFailure ??= `provider supervision flush failed: ${error instanceof Error ? error.message : String(error)}` }
     // Windows can emit close before taskkill's process-tree state is observable.
     // Reconfirm here so successful termination does not leave a stale ownership record.
     if (termination && pid !== undefined && !terminationConfirmed && !forcedTerminationAttempted) {
@@ -242,7 +263,8 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     }
     const details = evidence()
     if (recordFailure) {
-      finish({ ...details, kind: 'spawn-failed', error: recordFailure, failure: failureObservation('storage') })
+      finish({ ...details, kind: 'spawn-failed', error: recordFailure,
+        failure: { ...(recordFailureObservation ?? failureObservation('storage')), modelExecution: promptDispatched ? 'started' : 'not-started' } })
       return
     }
     if (termination?.kind === 'timed-out') {
@@ -297,8 +319,14 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     } else {
       stderr.append(text)
     }
-    options.onOutput?.({ stream, text })
-    supervision.output(stream, text)
+    try {
+      options.onOutput?.({ stream, text })
+      supervision.output(stream, text)
+    } catch (error) {
+      recordFailureObservation ??= executionFailure(error)
+      recordFailure ??= `provider output observer failed: ${error instanceof Error ? error.message : String(error)}`
+      terminate({ kind: 'cancelled', reason: recordFailure })
+    }
     armIdleTimer()
   }
   failure = reason => { terminate({ kind: 'cancelled', reason }) }
@@ -307,6 +335,9 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     if ((options.progressTimeoutMs ?? limits.progressMs) > 0) progressTimer = setTimeout(() => terminate({ kind: 'timed-out', reason: 'provider-progress-timeout' }), options.progressTimeoutMs ?? limits.progressMs)
   }
 
+  // Decode across pipe chunks; Buffer.toString on each chunk corrupts split UTF-8.
+  child.stdout?.setEncoding('utf8')
+  child.stderr?.setEncoding('utf8')
   child.stdout?.on('data', chunk => { onOutput('stdout', chunk) })
   child.stderr?.on('data', chunk => { onOutput('stderr', chunk) })
   child.stdin?.on('error', () => {})
@@ -316,6 +347,7 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   })
   if (pid !== undefined) {
     try {
+      supervision.start(pid, 'shell' in prepared ? prepared.shell : undefined, startedAt.startsWith('unverified:') ? undefined : startedAt)
       recordAdapter.publish(record)
       recordPublished = true
     } catch (error) {
@@ -336,9 +368,12 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     },
   }
   if (recordFailure) return handle
-  child.stdin?.end(invocation.input)
-  if (options.signal?.aborted) onAbort()
-  else options.signal?.addEventListener('abort', onAbort, { once: true })
+  if (options.signal?.aborted) { child.stdin?.end(); onAbort() }
+  else {
+    options.signal?.addEventListener('abort', onAbort, { once: true })
+    promptDispatched = true
+    child.stdin?.end(invocation.input)
+  }
   armIdleTimer()
   if ((options.totalTimeoutMs ?? limits.totalMs) > 0) totalTimer = setTimeout(() => terminate({ kind: 'timed-out', reason: 'provider-total-timeout' }), options.totalTimeoutMs ?? limits.totalMs)
   progress()

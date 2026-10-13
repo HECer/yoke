@@ -11,6 +11,16 @@ beforeEach(() => { target = mkdtempSync(join(tmpdir(), 'yoke-retro-')) })
 afterEach(() => { rmSync(target, { recursive: true, force: true }) })
 
 describe('yoke retrofit (integration, Claude)', () => {
+  it('refreshes the managed workflow through normal retrofit while preserving project limits', () => {
+    expect(runRetrofit(target, { loop: false, agents: ['codex'] })).toBe(0)
+    const installed = join(target, '.agents', 'skills', 'yoke-workflow', 'SKILL.md')
+    const config = loadConfig(target)!
+    saveConfig(target, { ...config, loop: { ...config.loop, timeoutMinutes: 45, decisionPolicy: 'critical' } })
+    writeFileSync(installed, readFileSync(installed, 'utf8').replace('yoke loop run . --isolate', 'yoke loop run . --max=5 --isolate'))
+    expect(runRetrofit(target, { loop: false, agents: ['codex'] })).toBe(0)
+    expect(readFileSync(installed, 'utf8')).toBe(readFileSync('canon/skills/yoke-workflow/SKILL.md', 'utf8'))
+    expect(loadConfig(target)?.loop).toEqual({ ...config.loop, timeoutMinutes: 45, decisionPolicy: 'critical' })
+  })
   it('generates Claude artifacts and writes config with loop disabled by default', () => {
     const code = runRetrofit(target, { loop: false, host: 'claude' })
     expect(code).toBe(0)

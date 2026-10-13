@@ -211,7 +211,10 @@ export function makeAsyncAdaptiveRunner(options: AsyncAdaptiveRunnerOptions): (c
 function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOptions) {
   const now = options.now ?? Date.now
   const available = options.isAvailable ?? (() => true)
-  const eligibleWorkers = options.workers.filter(worker => available(worker.agent))
+  // Model profiles share a CLI. Probe each provider once during candidate setup;
+  // perform() still checks availability afresh before every actual model call.
+  const eligibleAgents = new Set([...new Set(options.workers.map(worker => worker.agent))].filter(available))
+  const eligibleWorkers = options.workers.filter(worker => eligibleAgents.has(worker.agent))
   const failedStories = new Set<string>()
   const makeWorker = options.makeWorker ?? ((agent, selection) => makeRunner(agent, options.idleTimeoutMs ?? 0, {
     ...options.runnerOpts, permissions: options.permissions ?? 'safe', selection,
