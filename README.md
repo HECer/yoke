@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node.js 20+](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)
 
-<!-- yoke:version:start -->1.25.0<!-- yoke:version:end --> · <!-- yoke:tests:start -->1991<!-- yoke:tests:end --> test cases · <!-- yoke:skills:start -->34<!-- yoke:skills:end --> skills
+<!-- yoke:version:start -->1.25.1<!-- yoke:version:end --> · <!-- yoke:tests:start -->1991<!-- yoke:tests:end --> test cases · <!-- yoke:skills:start -->34<!-- yoke:skills:end --> skills
 
 <!-- yoke:agents:start -->Claude | Codex | Gemini | Qwen | OpenCode | Kilo | Pi | Hermes<!-- yoke:agents:end -->
 
@@ -148,7 +148,7 @@ The dashboard is a local control room. It does not discover every process or run
 
 ## Development
 
-Unreleased efficiency work, corrections and measurement boundaries: [October 2026 implementation report](docs/EFFICIENCY-HANDOFF-2026-10-13.md).
+Version 1.25.1 includes the efficiency corrections described in the [October 2026 implementation report](docs/EFFICIENCY-HANDOFF-2026-10-13.md); its measurements retain their original scope and validation date.
 
 ```sh
 git clone https://github.com/HECer/yoke.git

@@ -31,4 +31,4 @@
 - [x] Run all project gates and benchmark; update current metadata deliberately while preserving historical evidence. Final local gates all exit 0; 1,989 passed, two skipped.
 - [x] Request independent review, address findings test-first, rerun affected gates, and prepare the reviewable branch and delivery evidence.
 
-Exact final commit and Linux/Windows × Node 20/24 CI are a final delivery checkpoint. Record their immutable SHA and job URLs in the external delivery report; do not mutate the tested head just to insert its own hash. Delivery remains pending until that checkpoint passes.
+The handoff delivery checkpoint passed for commit `4f2305d168d1fa559ae4ea2b0225afd72930d2b2`: [all four Linux/Windows × Node 20/24 jobs passed](https://github.com/HECer/yoke/actions/runs/38318169678), and PR #19 subsequently merged. Version 1.25.1 runs fresh release gates and exact-head CI before tagging and publication; the original handoff measurements remain historical evidence.
