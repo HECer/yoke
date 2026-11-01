@@ -14,6 +14,7 @@ import { parseProviderResult } from '../agents/telemetry.js'
 import { resolveIdleMs } from '../loop/run-command.js'
 import { loadConfig } from '../retrofit/config.js'
 import { parseReviewVerdict } from './verdict.js'
+import { budgetedInvocation, withExecutionBudgetScope } from '../execution/budget.js'
 
 export interface RunReviewOptions {
   reviewer?: Agent
@@ -32,6 +33,9 @@ export interface RunReviewOptions {
 const RESOLUTION_ORDER: Agent[] = ['codex', 'gemini', 'qwen', 'claude', 'opencode', 'kilo', 'pi', 'hermes']
 
 export function runReview(targetDir: string, opts: RunReviewOptions = {}): number {
+  return withExecutionBudgetScope(targetDir, () => review(targetDir, opts))
+}
+function review(targetDir: string, opts: RunReviewOptions): number {
   const available = opts.isAvailable ?? isAgentAvailable
   const implementer = opts.implementer ?? loadConfig(targetDir)?.agents[0] ?? 'claude'
   let reviewer = opts.reviewer
@@ -62,12 +66,15 @@ export function runReview(targetDir: string, opts: RunReviewOptions = {}): numbe
   // reviewer command. The default runner adds the watchdog wrapper before exec;
   // an injected run() gets the raw invocation.
   const inv = agentInvocation(reviewer, prompt, targetDir, 'read-only')
+  inv.execution = { root: targetDir, role: 'review', provider: reviewer }
 
   const say = opts.json ? console.error : console.log
   say(`Reviewing ${scope} with ${reviewer}...`)
   const before = repositoryFingerprint(targetDir)
   const run = opts.run ?? ((i: Invocation) => runCapturedAgent(reviewer, buildWatchdogInvocation(i, idleMs)))
-  const processResult = run(inv)
+  let processResult: CapturedAgentRun
+  try { processResult = budgetedInvocation(reviewer, inv, run) }
+  catch (error) { say(`Review blocked: ${(error as Error).message}`); return 1 }
   if (repositoryFingerprint(targetDir) !== before) {
     say(`✗ ${reviewer} modified the repository during a read-only review`)
     return 1

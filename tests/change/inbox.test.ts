@@ -199,7 +199,7 @@ describe('change inbox', () => {
     const result = runChangeApply(dir, { runner: 'codex', isAvailable: () => true, commit: () => {} })
 
     expect(result.ok).toBe(false)
-    expect(result.summary).toMatch(/uncommitted/i)
+    expect(result.summary).toMatch(/host approval receipt/i)
     expect(pendingChanges(dir)).toHaveLength(1)
   })
 
@@ -218,11 +218,11 @@ describe('change inbox', () => {
     const result = runChangeApply(dir, { runner: 'codex', isAvailable: () => true, commit: () => {} })
 
     expect(result.ok).toBe(false)
-    expect(result.summary).toMatch(/uncommitted/i)
+    expect(result.summary).toMatch(/host approval receipt/i)
     expect(pendingChanges(dir)).toHaveLength(1)
   })
 
-  it('archives a request after its sourceChange story is committed', () => {
+  it('does not treat a committed sourceChange story as proof of host review', () => {
     execFileSync('git', ['init'], { cwd: dir, stdio: 'pipe' })
     execFileSync('git', ['config', 'user.name', 'Yoke Test'], { cwd: dir })
     execFileSync('git', ['config', 'user.email', 'yoke@example.invalid'], { cwd: dir })
@@ -238,11 +238,33 @@ describe('change inbox', () => {
     execFileSync('git', ['add', '.yoke/prd.yaml'], { cwd: dir })
     execFileSync('git', ['commit', '-m', 'plan change'], { cwd: dir, stdio: 'pipe' })
 
-    const result = runChangeApply(dir, { runner: 'codex', isAvailable: () => true, commit: () => {} })
+    let commits = 0, archived = 0
+    const result = runChangeApply(dir, { runner: 'codex', isAvailable: () => true, commit: () => { commits++ }, archive: () => { archived++ } })
 
-    expect(result).toMatchObject({ ok: true, added: 0, changeId: request.id })
-    expect(result.summary).toMatch(/recovered applied change/i)
-    expect(pendingChanges(dir)).toHaveLength(0)
+    expect(result).toMatchObject({ ok: false, added: 0, changeId: request.id })
+    expect(result.summary).toMatch(/host approval receipt/i)
+    expect(commits).toBe(0); expect(archived).toBe(0)
+    expect(pendingChanges(dir)).toHaveLength(1)
+  })
+
+  it('archives a legitimately reviewed committed state on retry without another provider or commit', () => {
+    execFileSync('git', ['init'], { cwd: dir, stdio: 'pipe' })
+    execFileSync('git', ['config', 'user.name', 'Yoke Test'], { cwd: dir })
+    execFileSync('git', ['config', 'user.email', 'yoke@example.invalid'], { cwd: dir })
+    execFileSync('git', ['add', '.yoke/prd.yaml'], { cwd: dir })
+    execFileSync('git', ['commit', '-m', 'initial plan'], { cwd: dir, stdio: 'pipe' })
+    const request = queueChange(dir, 'Add billing portal', { id: 'reviewed-committed' })
+    const first = runChangeApply(dir, { runner: 'codex', isAvailable: () => true,
+      run: () => { writeValidProposal(request.id); return { success: true, summary: 'planned' } },
+      review: () => { writeApprovedReview(request.id); return { success: true, summary: 'reviewed' } },
+      archive: () => { throw Error('archive interrupted') },
+    })
+    expect(first.ok).toBe(false)
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' })
+    const retry = runChangeApply(dir, { runner: 'codex', isAvailable: () => { throw Error('must reuse approval') }, commit: () => { throw Error('already committed') } })
+    expect(retry).toMatchObject({ ok: true, added: 0 })
+    expect(pendingChanges(dir)).toEqual([])
+    expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' })).toBe(head)
   })
 
   it('accepts a proposed story that depends on an existing story', () => {

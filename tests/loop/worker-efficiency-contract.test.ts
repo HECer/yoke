@@ -8,7 +8,7 @@ const story = { id: 'STORY-1', title: 'Fix a bounded parser', priority: 1, accep
 describe('worker and controller execution ownership', () => {
   it('uses focused worker checks without removing required host or broad checks', () => {
     const prompt = buildClaudePrompt(story, '')
-    assert.ok(prompt.includes('Use focused tests during TDD'))
+    assert.ok(prompt.includes('Use focused behavioral tests for meaningful changes'))
     assert.ok(prompt.includes('Yoke independently runs the configured independent verification and required gates'))
     assert.ok(prompt.includes('cross-cutting change'))
     assert.ok(prompt.includes('Never skip or weaken required checks'))

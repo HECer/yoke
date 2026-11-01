@@ -25,7 +25,7 @@ export const ProjectQualityDefaultsSchema = z.object({
   policy: QualityPolicySchema.default('blocking'),
   maxRounds: z.number().int().positive().default(3),
   maxMinutes: z.number().int().positive().default(60),
-  consistencyChecks: z.literal(2).default(2),
+  consistencyChecks: z.union([z.literal(1), z.literal(2), z.literal('adaptive')]).default('adaptive'),
   maxParallelCandidates: z.number().int().positive().default(2),
   criticAgent: QualityAgentSchema.optional(),
   criticModel: z.string().min(1).optional(),

@@ -3,6 +3,20 @@ import { z } from 'zod'
 export const QualityLabelSchema = z.enum(['A', 'B'])
 export type QualityLabel = z.infer<typeof QualityLabelSchema>
 
+// Provider output contains a decision only. The host binds identity, artifacts,
+// requested/observed models, and prompt provenance after validating that decision.
+export const QualityDecisionSchema = z.object({
+  schemaVersion: z.literal(1),
+  attemptId: z.string().min(1).max(200),
+  winner: QualityLabelSchema,
+  biggestGap: z.string().min(1).max(4000),
+  evidence: z.array(z.string().min(1).max(2000)).min(1).max(30),
+  confidence: z.enum(['high', 'medium', 'low']),
+}).strict()
+export const CandidatePairDecisionSchema = QualityDecisionSchema.omit({ biggestGap: true })
+export const QUALITY_DECISION_JSON_SCHEMA = z.toJSONSchema(QualityDecisionSchema)
+export const CANDIDATE_PAIR_DECISION_JSON_SCHEMA = z.toJSONSchema(CandidatePairDecisionSchema)
+
 const DigestSchema = z.string().min(1)
 const ComparedArtifactSchema = z.object({ label: QualityLabelSchema, digest: DigestSchema })
 const ProvenanceSchema = z.object({
@@ -12,6 +26,8 @@ const ProvenanceSchema = z.object({
   rubricDigest: DigestSchema,
   referenceDigest: DigestSchema,
   candidateDigest: DigestSchema,
+  requestedModel: z.string().min(1).optional(),
+  actualModel: z.string().min(1).nullable().optional(),
 })
 
 export const QualityVerdictSchema = z.object({
@@ -57,6 +73,9 @@ const CandidatePairVerdictSchema = z.object({
     model: z.string().min(1),
     promptDigest: DigestSchema,
     rubricDigest: DigestSchema,
+    requestedModel: z.string().min(1).optional(),
+    actualModel: z.string().min(1).nullable().optional(),
+    inputDigest: DigestSchema.optional(),
   }),
 }).superRefine((value, context) => {
   if (value.left.label === value.right.label) {
@@ -141,6 +160,18 @@ export function reduceComparisons(input: { readonly expected: ComparisonExpectat
   }
 }
 
+export function reduceSingleComparison(input: { readonly expected: ComparisonExpectation['normal']; readonly provenance: ComparisonExpectation['provenance']; readonly verdict: unknown }): ComparisonReduction {
+  const result = QualityVerdictSchema.safeParse(input.verdict)
+  if (!result.success) return { kind: 'inconsistent', reason: 'invalid-verdict' }
+  const verdict = result.data
+  if (verdict.attemptId !== input.expected.attemptId) return { kind: 'inconsistent', reason: 'attempt-mismatch' }
+  if (!input.expected.candidateDigests.includes(verdict.candidate.digest) || verdict.reference.digest !== input.expected.referenceDigest) return { kind: 'inconsistent', reason: 'digest-mismatch' }
+  if (verdict.provenance.provider !== input.provenance.provider || verdict.provenance.model !== input.provenance.model || verdict.provenance.promptDigest !== input.expected.promptDigest || verdict.provenance.rubricDigest !== input.expected.rubricDigest) return { kind: 'inconsistent', reason: 'provenance-mismatch' }
+  if (verdict.winner === 'reference') return { kind: 'lose', reason: 'reference-selected', biggestGap: verdict.biggestGap, evidence: verdict.evidence }
+  if (verdict.confidence === 'low') return { kind: 'lose', reason: 'low-confidence', biggestGap: verdict.biggestGap, evidence: verdict.evidence }
+  return { kind: 'pass', candidateDigest: verdict.candidate.digest, referenceDigest: verdict.reference.digest }
+}
+
 export function reduceCandidatePairComparisons(input: {
   readonly expected: { readonly normal: CandidatePairExpectation; readonly swapped: CandidatePairExpectation }
   readonly normal: unknown
@@ -149,6 +180,7 @@ export function reduceCandidatePairComparisons(input: {
   const normal = CandidatePairVerdictSchema.safeParse(input.normal)
   const swapped = CandidatePairVerdictSchema.safeParse(input.swapped)
   if (!normal.success || !swapped.success) return { kind: 'inconsistent', reason: 'invalid-verdict' }
+  if (normal.data.provenance.actualModel !== swapped.data.provenance.actualModel) return { kind: 'inconsistent', reason: 'provenance-mismatch' }
   const normalMismatch = candidatePairMismatch(normal.data, input.expected.normal)
   if (normalMismatch) return { kind: 'inconsistent', reason: normalMismatch }
   const swappedMismatch = candidatePairMismatch(swapped.data, input.expected.swapped)

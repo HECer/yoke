@@ -6,6 +6,8 @@ import { parse, stringify } from 'yaml'
 import type { Invocation } from '../../src/loop/runner.js'
 import type { Story } from '../../src/loop/prd.js'
 import { runPrdDecompose } from '../../src/prd/decompose.js'
+import { loadPrd } from '../../src/loop/prd.js'
+import { readRequirements, requirementObjective } from '../../src/prd/requirements.js'
 
 vi.mock('../../src/agents/process-incarnation.js', () => ({ processIncarnation: () => 'test-process:1' }))
 
@@ -58,6 +60,61 @@ function planner(proposalValue: unknown, beforeWrite?: (invocation: Invocation) 
 }
 
 describe('yoke prd decompose', () => {
+  function ledgerFixture(): void {
+    const parent = fixture().find(story => story.id === 'PARENT')!
+    const objective = requirementObjective('Keep both API and web behavior', readFileSync(join(root, '.yoke/plan.md'), 'utf8'))
+    parent.needs = []
+    parent.requirementsFor = objective.sha256
+    parent.sourceChange = 'earlier-change'
+    parent.acceptance = parent.acceptance.map(criterion => typeof criterion === 'string' ? criterion : { ...criterion, verify: [`npm run test:${criterion.id}`] })
+    const changes = [{ id: 'earlier-change', request: 'Add the web slice', createdAt: '2026-10-01T00:00:00.000Z' }]
+    const bound = requirementObjective(objective.idea, readFileSync(join(root, '.yoke/plan.md'), 'utf8'), changes)
+    parent.requirementsFor = bound.sha256
+    writeFixture([parent])
+    writeFileSync(join(root, '.yoke/requirements.yaml'), stringify({
+      version: 1, objective: bound, changes,
+      requirements: [{ id: 'R1', text: 'API and web work', criteria: ['AC-1', 'AC-3'].map(criterion => ({ story: parent.id, criterion })) }],
+      invariants: [{ id: 'I1', text: 'Failures remain recoverable', criteria: ['AC-2', 'AC-4'].map(criterion => ({ story: parent.id, criterion })) }],
+    }))
+  }
+
+  it('remaps every ledger reference and retains objective/change bindings in loadable children', () => {
+    ledgerFixture()
+    const before = readRequirements(root)!
+    expect(runPrdDecompose(root, { story: 'PARENT', runner: 'codex', apply: true, isAvailable: () => true, run: planner(proposal) })).toBe(0)
+    const children = loadPrd(join(root, '.yoke/prd.yaml'))
+    expect(children).toHaveLength(2)
+    expect(children.every(story => story.requirementsFor === before.objective.sha256 && story.sourceChange === 'earlier-change')).toBe(true)
+    const ledger = readRequirements(root)!
+    expect(ledger.objective).toEqual(before.objective)
+    expect(ledger.changes).toEqual(before.changes)
+    expect(ledger.requirements[0].criteria).toEqual([{ story: 'PARENT-api', criterion: 'AC-1' }, { story: 'PARENT-web', criterion: 'AC-3' }])
+    expect(ledger.invariants[0].criteria).toEqual([{ story: 'PARENT-api', criterion: 'AC-2' }, { story: 'PARENT-web', criterion: 'AC-4' }])
+  })
+
+  it('preserves a concurrent ledger edit instead of applying a stale decomposition', () => {
+    ledgerFixture()
+    const path = join(root, '.yoke/requirements.yaml')
+    const beforePrd = readFileSync(join(root, '.yoke/prd.yaml'), 'utf8')
+    const changed = readFileSync(path, 'utf8') + '# concurrent edit\n'
+    expect(runPrdDecompose(root, { story: 'PARENT', runner: 'codex', apply: true, isAvailable: () => true, run: planner(proposal, () => writeFileSync(path, changed)) })).toBe(1)
+    expect(readFileSync(path, 'utf8')).toBe(changed)
+    expect(readFileSync(join(root, '.yoke/prd.yaml'), 'utf8')).toBe(beforePrd)
+  })
+
+  it.each(['quality', 'exploration'] as const)('refuses to discard unpartitioned %s semantics before a provider call', kind => {
+    const stories = fixture()
+    const parent = stories.find(story => story.id === 'PARENT')!
+    if (kind === 'quality') parent.quality = { reference: { name: 'baseline', source: 'reference.txt', kind: 'file', digest: `sha256:${'a'.repeat(64)}` }, candidate: { kind: 'files', paths: ['candidate.txt'] }, rubric: 'Preserve the complete experience' }
+    else parent.exploration = { version: 1, rationale: 'Existing evidence', expectedBenefit: 'Preserve behavior', confidence: 0.9, risk: 'low', evidence: [{ path: 'src/api/index.ts', observation: 'API and web are coupled' }], discoveredAt: '2026-10-01T00:00:00.000Z' }
+    const path = writeFixture(stories)
+    const before = readFileSync(path, 'utf8')
+    const run = vi.fn(planner(proposal))
+    expect(runPrdDecompose(root, { story: 'PARENT', runner: 'codex', apply: true, isAvailable: () => true, run })).toBe(1)
+    expect(run).not.toHaveBeenCalled()
+    expect(readFileSync(path, 'utf8')).toBe(before)
+  })
+
   it('previews an exact split without changing the PRD', async () => {
     const path = writeFixture()
     const before = readFileSync(path, 'utf8')

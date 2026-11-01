@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { rmSync } from 'node:fs'
-import { readReviewVerdict, reviewVerdictPath, selectRepairFinding } from '../../src/review/verdict.js'
+import { parseReviewVerdict, readReviewVerdict, reviewVerdictPath, selectRepairFinding } from '../../src/review/verdict.js'
 
 const provenance = { provider: 'codex', model: 'test-model', role: 'review', promptVersion: 1, permissions: 'safe' } as const
 const verdict = (approved: boolean, summary: string, findings: readonly Record<string, unknown>[]) => ({
@@ -15,6 +15,14 @@ const verdict = (approved: boolean, summary: string, findings: readonly Record<s
 })
 
 describe('structured review verdicts', () => {
+  it('rejects approval when any blocking finding remains, including deferred findings', () => {
+    for (const actionable of [true, false, undefined]) {
+      const contradictory = verdict(true, 'approved despite data loss', [{ severity: 'blocking', message: 'Data loss on retry', actionable }])
+      expect(() => parseReviewVerdict(contradictory)).toThrow(/blocking findings cannot be approved/)
+    }
+    expect(parseReviewVerdict(verdict(true, 'nonblocking advice', [{ severity: 'warning', message: 'Consider a clearer name' }])).approved).toBe(true)
+  })
+
   it('reads approval and findings, then cleans up the file', () => {
     const dir = mkdtempSync(join(tmpdir(), 'yoke-verdict-'))
     const path = reviewVerdictPath(dir)

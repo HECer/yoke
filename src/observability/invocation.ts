@@ -5,6 +5,8 @@ import { parseProviderTelemetry } from '../agents/telemetry.js'
 import type { AgentResult, Invocation } from '../loop/runner.js'
 import { appendEvent } from './events.js'
 import { providerTelemetryUsage } from './usage.js'
+import { budgetedInvocation } from '../execution/budget.js'
+import { safeFailure } from './failure.js'
 
 /** A single invocation boundary, including failures and injected runner seams. */
 export function measureInvocation<T extends AgentResult>(options: {
@@ -23,13 +25,15 @@ export function measureInvocation<T extends AgentResult>(options: {
   let failure: unknown
   const base = { runId, storyId: options.storyId, attemptId: callId, agent: options.agent, role: options.role }
   appendEvent(options.root, { ...base, timestamp: new Date(started).toISOString(), type: 'status', data: { callId, parentCallId: options.parentCallId, state: 'started' } })
-  try { result = options.execute(options.invocation); return result }
+  try { result = budgetedInvocation(options.agent, { ...options.invocation, execution: { root: options.root, role: options.role, provider: options.agent, storyId: options.storyId } }, options.execute); return result }
   catch (error) { failure = error; throw error }
   finally {
     let salvaged: AgentResult['tokens']
     try {
       const stdout = failure && typeof failure === 'object' && 'stdout' in failure ? failure.stdout : undefined
-      salvaged = stdout == null ? undefined : providerTelemetryUsage(parseProviderTelemetry(options.agent, String(stdout).split(/\r?\n/u)), options.agent)
+      salvaged = stdout == null ? safeFailure((failure as { failure?: unknown })?.failure)?.modelExecution === 'not-started'
+        ? { inputTokens: 0, outputTokens: 0, totalCostUsd: 0, measurementComplete: true, costMeasurementComplete: true } : undefined
+        : providerTelemetryUsage(parseProviderTelemetry(options.agent, String(stdout).split(/\r?\n/u)), options.agent)
     } catch { /* Failed measurement must not replace the original provider error. */ }
     const usage = result?.tokens ?? salvaged
     const complete = usage !== undefined && usage.measurementComplete !== false

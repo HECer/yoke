@@ -31,10 +31,11 @@ export function planClaude(
   canonDir: string,
   targetDir: string,
   wslAvailable: boolean = (hasWsl() || hasRtk()),
-  codeGraph: CodeGraph = 'graphify',
+  codeGraph: CodeGraph = 'none',
   gstackDetected: boolean = detectGstack(targetDir),
   codeIntelligence: CodeIntelligenceMode = 'off',
   rtkAvailable?: boolean,
+  browserTools = false,
 ): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const actions: Action[] = []
@@ -62,8 +63,9 @@ export function planClaude(
   actions.push({
     kind: 'write',
     target: '.mcp.json',
-    content: JSON.stringify({ mcpServers: mcpServers(codeGraph, codeIntelligence, targetDir) }, null, 2) + '\n',
-    reason: codeIntelligence === 'off' ? 'MCP servers (code-graph + playwright)' : 'Yoke code-intelligence facade + playwright',
+    merge: true,
+    content: JSON.stringify({ mcpServers: mcpServers(codeGraph, codeIntelligence, targetDir, browserTools) }, null, 2) + '\n',
+    reason: 'Explicitly selected MCP tools',
   })
 
   if (rtkHookable) {

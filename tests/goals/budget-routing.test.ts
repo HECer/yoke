@@ -3,7 +3,8 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'nod
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { assessProjectGoal, budgetProjectGoal, createProjectGoal, goalRoutingStory, readProjectGoal, runProjectGoal } from '../../src/goals/command.js'
-import { saveConfig } from '../../src/retrofit/config.js'
+import { loadConfig, saveConfig } from '../../src/retrofit/config.js'
+import { executionBudgetStatus } from '../../src/execution/budget.js'
 import { defaultRoutingWorkers } from '../../src/setup/command.js'
 import * as providers from '../../src/agents/providers.js'
 import * as nativeGoals from '../../src/goals/codex-native.js'
@@ -38,6 +39,32 @@ function configure(policy: 'prepared' | 'on-demand' = 'on-demand') {
 function implement(inputTokens = 1, outputTokens = 1) {
   return vi.fn(async () => { writeFileSync(join(root, 'implemented.txt'), 'done'); return { success: true, summary: 'implemented', inputTokens, outputTokens } })
 }
+it('shares the project allowance across goal planning and implementation without doubling the goal ledger', async () => {
+  createProjectGoal(root, 'Expected outcome', { acceptanceIds: ['outcome'], tokenBudget: 14 })
+  configure(); planner({ inputTokens: 10, outputTokens: 2 })
+  saveConfig(root, { ...loadConfig(root)!, executionBudget: { id: 'goal-package', maxCalls: 2, maxTokens: 14 } })
+  const result = await runProjectGoal(root, { execute: implement() })
+  expect(result.status).toBe('complete')
+  expect(result.usageLedger?.calls).toHaveLength(2)
+  expect(result.usageLedger?.calls.reduce((sum, call) => sum + (call.inputTokens ?? 0) + (call.outputTokens ?? 0), 0)).toBe(14)
+  const global = executionBudgetStatus(root)
+  expect(global).toMatchObject({ configured: true, admittedCalls: 2, knownTokens: 14 })
+  expect(global.configured && global.calls.map(call => call.role)).toEqual(['goal-planning', 'goal-implementation'])
+})
+it('retains streamed native failure usage in the project ledger and prevents another paid attempt', async () => {
+  createProjectGoal(root, 'Expected outcome', { acceptanceIds: ['outcome'] })
+  configure(); planner({ inputTokens: 1, outputTokens: 1 })
+  saveConfig(root, { ...loadConfig(root)!, executionBudget: { id: 'native-package', maxTokens: 1000 } })
+  const native = vi.spyOn(nativeGoals, 'executeCodexGoal').mockImplementation(async input => {
+    input.onUsageUpdate?.({ inputTokens: 17, outputTokens: 9 })
+    throw Error('native transport disconnected')
+  })
+  expect((await runProjectGoal(root, { native: true })).status).toBe('blocked')
+  expect(executionBudgetStatus(root)).toMatchObject({ configured: true, admittedCalls: 2, knownTokens: 28, unknownTokenCalls: 1 })
+  await runProjectGoal(root, { native: true })
+  expect(native).toHaveBeenCalledTimes(1)
+  expect(executionBudgetStatus(root)).toMatchObject({ admittedCalls: 2, knownTokens: 28 })
+})
 it('does not dispatch a worker after its planner has reached the goal token ceiling', async () => {
   const goal = createProjectGoal(root, 'Expected outcome', { acceptanceIds: ['outcome'], tokenBudget: 100 })
   configure(); planner({ inputTokens: 90, outputTokens: 10 })

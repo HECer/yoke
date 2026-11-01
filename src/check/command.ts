@@ -202,7 +202,7 @@ export function acceptanceProtectionProblem(root: string, baselineRoot = root): 
     if (planningChanged.length) return `Protected planning contract changed: ${planningChanged.map(name => `.yoke/${name}`).join(', ')}`
     const file = baselinePath(baselineRoot)
     if (!existsSync(file)) return null
-    const baseline = z.object({ version: z.literal(1), hashes: z.record(z.string().regex(/^[a-f0-9]{64}$/)) }).strict().parse(JSON.parse(readFileSync(file, 'utf8')))
+    const baseline = z.object({ version: z.literal(1), hashes: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)) }).strict().parse(JSON.parse(readFileSync(file, 'utf8')))
     if (!Object.keys(baseline.hashes).includes('.yoke/acceptance.yaml')) return 'Invalid protected acceptance baseline'
     const actual = protectedHashes(root, Object.keys(baseline.hashes))
     const changed = Object.keys(actual).filter(path => {

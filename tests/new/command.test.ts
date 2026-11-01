@@ -6,7 +6,8 @@ import { runNew } from '../../src/new/command.js'
 import type { Invocation } from '../../src/loop/runner.js'
 import { loadPrd, savePrd, type Story } from '../../src/loop/prd.js'
 import { readRequirements, requirementObjective } from '../../src/prd/requirements.js'
-import { writeDraftCoverage } from '../prd/draft-fixture.js'
+import { draftFile, writeDraftCoverage } from '../prd/draft-fixture.js'
+import { loadConfig } from '../../src/retrofit/config.js'
 
 const VALID_PRD: Story[] = [{
   id: 'STORY-1', title: 'scaffold project', priority: 1, writes: ['src'], passes: false,
@@ -16,7 +17,7 @@ const VALID_PRD: Story[] = [{
   ],
 }]
 function writeValidDraft(dir: string, invocation: Invocation) {
-  savePrd(join(dir, '.yoke', 'prd.yaml'), VALID_PRD)
+  savePrd(draftFile(invocation), VALID_PRD)
   writeDraftCoverage(dir, invocation, VALID_PRD)
   return { success: true, summary: 'ok' }
 }
@@ -49,6 +50,7 @@ describe('runNew', { timeout: 15_000 }, () => {
     expect(readFileSync(join(dir, 'README.md'), 'utf8')).toContain('# app')
     expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toContain('node_modules/')
     expect(existsSync(join(dir, 'CLAUDE.md'))).toBe(true)              // retrofit ran
+    expect(loadConfig(dir)?.executionBudget).toEqual({ id: 'default', maxCalls: 24, maxMinutes: 120, maxPromptBytes: 128000 })
     expect(existsSync(join(dir, '.yoke', 'context', 'PROJECT.md'))).toBe(true) // context init ran
     expect(readFileSync(join(dir, '.yoke', 'prd.yaml'), 'utf8').trim().endsWith('[]')).toBe(true)
     expect(gitCalls[0]).toEqual(['init'])

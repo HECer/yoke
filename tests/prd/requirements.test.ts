@@ -7,7 +7,7 @@ import { stringify } from 'yaml'
 import { loadPrd, savePrd, type Story } from '../../src/loop/prd.js'
 import { buildPrdDraftPrompt, runPrdCheck, runPrdDraft } from '../../src/prd/command.js'
 import { requirementsPacket } from '../../src/prd/requirements.js'
-import { writeDraftCoverage } from './draft-fixture.js'
+import { draftFile, writeDraftCoverage } from './draft-fixture.js'
 import { bindAssessments, preparedProblems, runPrdAssess } from '../../src/prd/assess.js'
 
 let root: string
@@ -61,16 +61,16 @@ it('requires the smallest coherent 1-12 decomposition and exact objective source
 })
 it('rejects missing ledger on new drafts and restores original planning output', () => {
   write(); const before = readFileSync(join(root, '.yoke', 'prd.yaml'), 'utf8')
-  expect(runPrdDraft(root, { idea: 'different', force: true, isAvailable: () => true, run: () => {
-    writeFileSync(join(root, '.yoke', 'prd.yaml'), stringify([story()]))
-    rmSync(join(root, '.yoke', 'requirements.yaml'))
+  expect(runPrdDraft(root, { idea: 'different', force: true, isAvailable: () => true, run: inv => {
+    writeFileSync(draftFile(inv), stringify([story()]))
+    rmSync(draftFile(inv, 'requirements'))
     return { success: true, summary: 'done' }
   } })).toBe(1)
   expect(readFileSync(join(root, '.yoke', 'prd.yaml'), 'utf8')).toBe(before)
   expect(readFileSync(join(root, '.yoke', 'requirements.yaml'), 'utf8')).toContain('Keep offline edits')
 })
 it('rejects a self-consistent ledger that silently redefines the supplied idea', () => {
-  expect(runPrdDraft(root, { idea: 'Original approved idea', isAvailable: () => true, run: () => { write(); return { success: true, summary: 'done' } } })).toBe(1)
+  expect(runPrdDraft(root, { idea: 'Original approved idea', isAvailable: () => true, run: inv => { writeFileSync(draftFile(inv), stringify([story()])); writeFileSync(draftFile(inv, 'requirements'), stringify(ledger())); return { success: true, summary: 'done' } } })).toBe(1)
 })
 it('exposes relevant requirements and every preserved invariant to task and review prompts', () => {
   const l = ledger(); l.requirements.push({ id: 'R2', text: 'Other story behavior', criteria: [{ story: 'S2', criterion: 'offline' }] })
@@ -116,7 +116,7 @@ it('preserves whitespace in the exact original objective with one planning call'
   let calls = 0
   const idea = '  Keep offline edits\n'
   expect(runPrdDraft(root, { idea, isAvailable: () => true, run: inv => {
-    calls++; writeFileSync(join(root, '.yoke', 'prd.yaml'), stringify([story()]))
+    calls++; writeFileSync(draftFile(inv), stringify([story()]))
     writeDraftCoverage(root, inv, [story()]); return { success: true, summary: 'done' }
   } })).toBe(0)
   expect(calls).toBe(1)
@@ -124,7 +124,7 @@ it('preserves whitespace in the exact original objective with one planning call'
 })
 function draftBound(): void {
   expect(runPrdDraft(root, { idea: 'Keep offline edits', isAvailable: () => true, run: inv => {
-    writeFileSync(join(root, '.yoke', 'prd.yaml'), stringify([story()])); writeDraftCoverage(root, inv, [story()])
+    writeFileSync(draftFile(inv), stringify([story()])); writeDraftCoverage(root, inv, [story()])
     return { success: true, summary: 'done' }
   } })).toBe(0)
 }
@@ -152,7 +152,7 @@ it('rejects inconsistent planner supplied objective markers and restores both ol
   draftBound(); const file = join(root, '.yoke', 'prd.yaml'), before = readFileSync(file, 'utf8')
   const ledgerBefore = readFileSync(join(root, '.yoke', 'requirements.yaml'), 'utf8')
   expect(runPrdDraft(root, { idea: 'Keep offline edits', force: true, isAvailable: () => true, run: inv => {
-    writeFileSync(file, stringify([{ ...story(), requirementsFor: 'a'.repeat(64) }]))
+    writeFileSync(draftFile(inv), stringify([{ ...story(), requirementsFor: 'a'.repeat(64) }]))
     writeDraftCoverage(root, inv, [story()]); return { success: true, summary: 'done' }
   } })).toBe(1)
   expect(readFileSync(file, 'utf8')).toBe(before)
@@ -161,7 +161,7 @@ it('rejects inconsistent planner supplied objective markers and restores both ol
 it('rejects planner removal of a retained story original-objective binding', () => {
   draftBound(); const file = join(root, '.yoke', 'prd.yaml'), before = readFileSync(file, 'utf8')
   expect(runPrdDraft(root, { idea: 'Keep offline edits', force: true, isAvailable: () => true, run: inv => {
-    writeFileSync(file, stringify([story()])); writeDraftCoverage(root, inv, [story()])
+    writeFileSync(draftFile(inv), stringify([story()])); writeDraftCoverage(root, inv, [story()])
     return { success: true, summary: 'removed host binding' }
   } })).toBe(1)
   expect(readFileSync(file, 'utf8')).toBe(before)
@@ -170,7 +170,7 @@ it('allows an authorized forced objective change with retained story IDs and pre
   draftBound(); const file = join(root, '.yoke', 'prd.yaml'), original = loadPrd(file)
   const idea = 'Keep encrypted offline edits'
   expect(runPrdDraft(root, { idea, force: true, isAvailable: () => true, run: inv => {
-    writeFileSync(file, stringify(original)); writeDraftCoverage(root, inv, original)
+    writeFileSync(draftFile(inv), stringify(original)); writeDraftCoverage(root, inv, original)
     return { success: true, summary: 'authorized new objective' }
   } })).toBe(0)
   expect(loadPrd(file)[0]).toHaveProperty('requirementsFor', objective(idea).sha256)

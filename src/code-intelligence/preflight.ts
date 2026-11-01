@@ -43,8 +43,8 @@ export async function runToolPreflight(root: string, options: { timeoutMs?: numb
   ] as const
   try {
     for (const [name, custom, factory, required] of definitions) {
-      if (mode === 'off' || custom) {
-        backends[name] = { status: 'unprobed', tools: [], missingTools: [...required], reason: mode === 'off' ? 'Configured mode is off.' : 'Custom command/arguments were not executed; read-only behavior cannot be verified.' }
+      if (mode === 'off' || custom || configured?.policy?.allowNetwork !== true) {
+        backends[name] = { status: 'unprobed', tools: [], missingTools: [...required], reason: mode === 'off' ? 'Configured mode is off.' : custom ? 'Custom command/arguments were not executed; read-only behavior cannot be verified.' : 'Network denial cannot be enforced by this facade. Configure trusted or externally isolated backends, then explicitly set policy.allowNetwork=true to permit execution.' }
         continue
       }
       const adapter = factory(probeRoot)

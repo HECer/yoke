@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -28,6 +28,75 @@ process.stdin.on('data', chunk => {
 `
 
 describe('MCP stdio client', () => {
+  it('honors each caller deadline while another caller owns initialization', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'yoke-ci-mcp-shared-deadline-')), file = join(root, 'server.mjs'), release = join(root, 'release')
+    writeFileSync(file, `import{createInterface}from'node:readline';import{existsSync}from'node:fs';
+createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;
+const reply=()=>console.log(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{content:[{type:'text',text:'ready'}]}}));
+if(m.method==='initialize'){const timer=setInterval(()=>{if(existsSync(${JSON.stringify(release)})){clearInterval(timer);reply();}},10);}else reply();});`)
+    const client = new McpStdioClient(process.execPath, [file], root, 'line')
+    try {
+      const first = client.call('first', {}, 2000).catch(error => error)
+      await expect(client.call('second', {}, 80)).rejects.toThrow(/deadline/)
+      writeFileSync(release, 'initialize now')
+      expect((await first).content?.[0]?.text).toBe('ready')
+    } finally { await client.close(); rmSync(root, { recursive: true, force: true }) }
+  })
+  it('shares initialization across simultaneous calls and records the reported backend version', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'yoke-ci-mcp-concurrent-')), file = join(root, 'server.mjs')
+    writeFileSync(file, `import {createInterface} from 'node:readline';let ready=false;
+createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;
+if(m.method==='initialize'){setTimeout(()=>{ready=true;console.log(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{serverInfo:{version:'observed-version'}}}));},100);return;}
+console.log(JSON.stringify({jsonrpc:'2.0',id:m.id,...(ready?{result:{content:[{type:'text',text:'ready'}]}}:{error:{message:'not initialized'}})}));});`)
+    const client = new McpStdioClient(process.execPath, [file], root, 'line')
+    try {
+      const results = await Promise.all([client.call('first', {}, 2000), client.call('second', {}, 2000)])
+      expect(results.every(result => result.content?.[0]?.text === 'ready')).toBe(true)
+      expect(client.serverVersion).toBe('observed-version')
+    } finally { await client.close(); rmSync(root, { recursive: true, force: true }) }
+  })
+
+  it('starts with a fresh parser after a previous process exits mid-frame', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'yoke-ci-mcp-restart-')), file = join(root, 'server.mjs'), marker = join(root, 'started')
+    writeFileSync(file, `import{createInterface}from'node:readline';import{existsSync,writeFileSync}from'node:fs';
+const marker=${JSON.stringify(marker)},first=!existsSync(marker);writeFileSync(marker,'yes');
+createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;
+if(m.method==='initialize')console.log(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{}}));
+else if(first){process.stdout.write('{unfinished');setTimeout(()=>process.exit(1),10);}
+else console.log(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{content:[{type:'text',text:'recovered'}]}}));});`)
+    const client = new McpStdioClient(process.execPath, [file], root, 'line')
+    try {
+      await expect(client.call('first', {}, 2000)).rejects.toThrow(/exited/)
+      expect((await client.call('second', {}, 2000)).content?.[0]?.text).toBe('recovered')
+    } finally { await client.close(); rmSync(root, { recursive: true, force: true }) }
+  })
+
+  it('rejects oversized partial frames without waiting for the request timeout', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'yoke-ci-mcp-frame-')), file = join(root, 'server.mjs')
+    writeFileSync(file, `import{createInterface}from'node:readline';createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;if(m.method==='initialize')console.log(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{}}));else process.stdout.write('x'.repeat(2000));});`)
+    const client = new McpStdioClient(process.execPath, [file], root, 'line', 1024)
+    try { await expect(client.call('read', {}, 3000)).rejects.toThrow(/frame exceeds byte limit/) }
+    finally { await client.close(); rmSync(root, { recursive: true, force: true }) }
+  })
+
+  it.skipIf(process.platform === 'win32')('terminates a backend descendant in the owned process group', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'yoke-ci-mcp-tree-')), file = join(root, 'server.mjs'), heartbeat = join(root, 'heartbeat')
+    writeFileSync(file, `import{createInterface}from'node:readline';import{spawn}from'node:child_process';
+const child=spawn(process.execPath,['-e',${JSON.stringify(`const{writeFileSync}=require('node:fs');setInterval(()=>writeFileSync(${JSON.stringify(heartbeat)},String(Date.now())),10);`)}],{stdio:'ignore'});
+createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;console.log(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{}}));});`)
+    const client = new McpStdioClient(process.execPath, [file], root, 'line')
+    try {
+      await client.call('read', {}, 2000)
+      for (let i = 0; i < 100 && !existsSync(heartbeat); i++) await new Promise(resolve => setTimeout(resolve, 10))
+      expect(existsSync(heartbeat)).toBe(true)
+      await client.close()
+      await new Promise(resolve => setTimeout(resolve, 40))
+      const stopped = readFileSync(heartbeat, 'utf8')
+      await new Promise(resolve => setTimeout(resolve, 60))
+      expect(readFileSync(heartbeat, 'utf8')).toBe(stopped)
+    } finally { await client.close(); rmSync(root, { recursive: true, force: true }) }
+  })
+
   it('discovers advertised capabilities using tools/list without invoking backend code queries', async () => {
     const root = mkdtempSync(join(tmpdir(), 'yoke-ci-mcp-list-'))
     const file = join(root, 'server.mjs')

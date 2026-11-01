@@ -23,10 +23,10 @@ export function planClaudeRetrofit(canonDir: string, targetDir: string): Action[
   return planClaude(canonDir, targetDir)
 }
 
-export type AgentPlanner = (canonDir: string, targetDir: string, codeGraph: CodeGraph, codeIntelligence?: CodeIntelligenceMode) => Action[]
+export type AgentPlanner = (canonDir: string, targetDir: string, codeGraph: CodeGraph, codeIntelligence?: CodeIntelligenceMode, browserTools?: boolean) => Action[]
 
 export const PLANNERS: Record<Agent, AgentPlanner> = {
-  claude: (c, t, cg, ci) => planClaude(c, t, undefined, cg, undefined, ci),
+  claude: (c, t, cg, ci, browser) => planClaude(c, t, undefined, cg, undefined, ci, undefined, browser),
   codex: planCodex,
   gemini: planGemini,
   qwen: planQwen,
@@ -36,7 +36,7 @@ export const PLANNERS: Record<Agent, AgentPlanner> = {
   hermes: planHermes,
 }
 
-export function planRetrofit(canonDir: string, targetDir: string, agents: Agent[], codeGraph: CodeGraph = 'graphify', codeIntelligence: CodeIntelligenceMode = 'off'): Action[] {
+export function planRetrofit(canonDir: string, targetDir: string, agents: Agent[], codeGraph: CodeGraph = 'none', codeIntelligence: CodeIntelligenceMode = 'off', browserTools = false): Action[] {
   const seen = new Set<string>()
   const merged: Action[] = []
   for (const action of baseContextActions(canonDir)) {
@@ -44,7 +44,7 @@ export function planRetrofit(canonDir: string, targetDir: string, agents: Agent[
     merged.push(action)
   }
   for (const agent of agents) {
-    for (const action of PLANNERS[agent](canonDir, targetDir, codeGraph, codeIntelligence)) {
+    for (const action of PLANNERS[agent](canonDir, targetDir, codeGraph, codeIntelligence, browserTools)) {
       if (seen.has(action.target)) continue
       seen.add(action.target)
       merged.push(action)

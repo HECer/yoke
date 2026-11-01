@@ -9,6 +9,7 @@ import { validWriteScope } from './scheduler.js'
 import { AssessmentSchema } from '../routing/assessment.js'
 import { readRequirements, validateRequirements } from '../prd/requirements.js'
 import { readPlanningFile } from '../routing/contracts.js'
+import { recoverPlanningTransaction } from '../prd/transaction.js'
 
 export const AcceptanceCriterionSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
@@ -113,10 +114,11 @@ export function parsePrd(file: string): Story[] {
 }
 
 export function loadPrd(file: string): Story[] {
+  const root = dirname(dirname(file))
+  recoverPlanningTransaction(root)
   const stories = parsePrd(file)
   const issues = validateDependencies(stories)
   if (issues.length) throw new Error(`Invalid PRD dependency graph:\n${issues.join('\n')}`)
-  const root = dirname(dirname(file))
   const ledger = readRequirements(root)
   if (!ledger && stories.some(story => story.requirementsFor)) throw Error('Bound PRD requires its original requirement ledger')
   if (ledger) validateRequirements(ledger, stories, readPlanningFile(root, '.yoke/plan.md', 80_000) ?? '')

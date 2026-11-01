@@ -228,9 +228,9 @@ function rankingComparator<T extends RankingProjection>(key: RankingKey): (left:
     return compareMetric(left[key], right[key]) || compareNames(left.name, right.name) || compareNames(JSON.stringify(left), JSON.stringify(right))
   }
 }
-export function rankProjections<T extends RankingProjection>(rows: readonly T[]): RankingViews<T> {
+export function rankProjections<T extends RankingProjection>(rows: readonly T[], limit: number = DASHBOARD_LIMITS.analyticsRows): RankingViews<T> {
   const views = {} as RankingViews<T>
-  for (const key of ['attention', 'activity', 'tokens', 'cost', 'acceptance', 'name'] as const) views[key] = [...rows].sort(rankingComparator(key))
+  for (const key of ['attention', 'activity', 'tokens', 'cost', 'acceptance', 'name'] as const) views[key] = [...rows].sort(rankingComparator(key)).slice(0, limit)
   return views
 }
 function rankingRow(name: string, value: ProjectedTotals): RankingProjection & { total: ProjectedTotals } {
@@ -254,7 +254,7 @@ function projectEvents(root: string, period: Period): { events: LoopEvent[]; err
     const time = Date.parse(event.timestamp)
     if (seen.has(event.id) || !Number.isFinite(time) || time < period.from || time >= period.to) return false
     seen.add(event.id); return true
-  }).sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+  }).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp) || compareNames(a.id ?? '', b.id ?? ''))
   return { events, errors: history.errors }
 }
 
@@ -267,9 +267,13 @@ function eventMetadata(event: LoopEvent): RunMetadata {
   const first = (keys: string[]) => { for (const source of sources) for (const key of keys) { const value = textValue(source[key]); if (value) return value } return undefined }
   return { agent: first(['agent']), provider: first(['provider']), model: first(['actualModel', 'model']), variant: first(['variant']), role: first(['role']) }
 }
-function runProjections(events: readonly LoopEvent[], period: Period) {
+function runProjections(events: readonly LoopEvent[], period: Period, details = false) {
   const byRun = new Map<string, LoopEvent[]>()
-  for (const event of events) byRun.set(event.runId, [...(byRun.get(event.runId) ?? []), event])
+  for (const event of events) {
+    let rows = byRun.get(event.runId)
+    if (!rows) { rows = []; byRun.set(event.runId, rows) }
+    rows.push(event)
+  }
   return [...byRun].map(([runId, runEvents]) => {
     const metadata: RunMetadata = {}, phases: string[] = [], timestamps = runEvents.map(event => new Date(event.timestamp).toISOString())
     for (const event of runEvents) {
@@ -279,7 +283,8 @@ function runProjections(events: readonly LoopEvent[], period: Period) {
       if (phase && !phases.includes(phase)) phases.push(phase)
     }
     const total = aggregateMeasurements(runEvents, period).total
-    return { runId, ...metadata, ...(phases.length ? { phase: phases[phases.length - 1], phases } : {}), timestamps, startedAt: timestamps[0], endedAt: timestamps[timestamps.length - 1], events: runEvents, total, analytics: total }
+    return { runId, ...metadata, ...(phases.length ? { phase: phases[phases.length - 1], phases } : {}), startedAt: timestamps[0], endedAt: timestamps[timestamps.length - 1], eventCount: runEvents.length,
+      ...(details ? { timestamps, events: runEvents } : {}), total, analytics: total }
   }).sort((left, right) => compareNames(left.startedAt, right.startedAt) || compareNames(left.runId, right.runId))
 }
 
@@ -292,24 +297,59 @@ export interface ProjectHistory {
   runs: ReturnType<typeof runProjections>
   errors: string[]
   coverage: string
+  nextCursor: string | null
 }
-export function projectHistory(root: string, period: Period, limit: number = DASHBOARD_LIMITS.events): ProjectHistory {
+
+export type HistoryCursor = { time: number; id: string; from: number; to: number }
+export function parseHistoryCursor(value: string | null, period: Period): HistoryCursor | undefined {
+  if (value === null) return undefined
+  try {
+    if (value.length > 1024 || !/^[A-Za-z0-9_-]+$/u.test(value)) throw Error()
+    const cursor = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as HistoryCursor
+    if (!Number.isFinite(cursor.time) || cursor.time < period.from || cursor.time >= period.to || typeof cursor.id !== 'string' || cursor.id.length > 256 || cursor.from !== period.from || cursor.to !== period.to) throw Error()
+    return cursor
+  } catch { throw Error('Invalid history cursor; retain the same from and to period when requesting older events') }
+}
+
+export function projectHistory(root: string, period: Period, limit: number = DASHBOARD_LIMITS.events, cursor?: HistoryCursor): ProjectHistory {
   if (!Number.isInteger(limit) || limit < 1 || limit > DASHBOARD_LIMITS.events) throw Error('Limit must be an integer from 1 to ' + DASHBOARD_LIMITS.events)
-  const history = projectEvents(root, period), events = history.events.slice(-limit)
-  return { from: new Date(period.from).toISOString(), to: new Date(period.to).toISOString(), bucket: period.bucket, timezone: 'UTC', events, runs: runProjections(events, period), errors: history.errors,
+  const history = projectEvents(root, period)
+  const eligible = cursor ? history.events.filter(event => Date.parse(event.timestamp) < cursor.time || (Date.parse(event.timestamp) === cursor.time && compareNames(event.id ?? '', cursor.id) < 0)) : history.events
+  const events = eligible.slice(-limit), first = events[0]
+  const nextCursor = eligible.length > events.length && first ? Buffer.from(JSON.stringify({ time: Date.parse(first.timestamp), id: first.id ?? '', from: period.from, to: period.to })).toString('base64url') : null
+  return { from: new Date(period.from).toISOString(), to: new Date(period.to).toISOString(), bucket: period.bucket, timezone: 'UTC', events, runs: runProjections(events, period, true), errors: history.errors, nextCursor,
     coverage: 'Recorded measurements only. Earlier unrecorded or expired activity cannot be reconstructed. Usage is assigned to its reporting time; durations to their end time.' }
 }
 
+function boundedAggregate(aggregate: ReturnType<typeof aggregateMeasurements>) {
+  let detailsLimited = false
+  const cap = <T>(rows: T[]): T[] => { if (rows.length > DASHBOARD_LIMITS.analyticsRows) detailsLimited = true; return rows.slice(0, DASHBOARD_LIMITS.analyticsRows) }
+  const dimensions = { agents: cap(aggregate.dimensions.agents), providers: cap(aggregate.dimensions.providers), variants: cap(aggregate.dimensions.variants), roles: cap(aggregate.dimensions.roles), phases: cap(aggregate.dimensions.phases) }
+  const result = { ...aggregate, models: cap(aggregate.models), modelBuckets: cap(aggregate.modelBuckets), tasks: cap(aggregate.tasks), phases: cap(aggregate.phases), agents: cap(aggregate.agents), providers: cap(aggregate.providers), variants: cap(aggregate.variants), roles: cap(aggregate.roles), dimensions }
+  return { ...result, detailsLimited }
+}
+
 export function workspaceAnalytics(projects: readonly DashboardProjectReference[], period: Period, sort: RankingKey = 'attention') {
-  const source: { project: DashboardProjectReference; analytics: ReturnType<typeof aggregateMeasurements> & { errors: string[]; from: string; to: string; bucket: Period['bucket']; timezone: 'UTC'; coverage: string } | null; errors: string[] }[] = []
+  const source: { project: DashboardProjectReference; analytics: Pick<ReturnType<typeof aggregateMeasurements>, 'total'> & { errors: string[]; from: string; to: string; bucket: Period['bucket']; timezone: 'UTC'; coverage: string } | null; errors: string[] }[] = []
   const allEvents: LoopEvent[] = []
+  let bytes = 0, exhausted = false
   for (const project of projects.slice(0, DASHBOARD_LIMITS.projects)) {
     if (project.error || !project.root) { source.push({ project, analytics: null, errors: [project.error ?? 'Project directory is unavailable'] }); continue }
+    if (exhausted) { source.push({ project, analytics: null, errors: ['Workspace history query limit reached; narrow the period or inspect this project separately'] }); continue }
     try {
       const history = projectEvents(project.root, period)
-      allEvents.push(...history.events)
-      const aggregate = aggregateMeasurements(history.events, period)
-      source.push({ project, analytics: { ...aggregate, from: new Date(period.from).toISOString(), to: new Date(period.to).toISOString(), bucket: period.bucket, timezone: 'UTC', errors: history.errors, coverage: 'Recorded measurements only. Earlier unrecorded or expired activity cannot be reconstructed. Usage is assigned to its reporting time; durations to their end time.' }, errors: history.errors })
+      const included: LoopEvent[] = []
+      for (const event of history.events) {
+        const size = Buffer.byteLength(JSON.stringify(event))
+        if (allEvents.length >= DASHBOARD_LIMITS.measurementEvents || bytes + size > DASHBOARD_LIMITS.historyBytes) {
+          exhausted = true
+          history.errors.push('Workspace history query limit reached; narrow the period or inspect projects separately')
+          break
+        }
+        bytes += size; allEvents.push(event); included.push(event)
+      }
+      const aggregate = aggregateMeasurements(included, period)
+      source.push({ project, analytics: { total: aggregate.total, from: new Date(period.from).toISOString(), to: new Date(period.to).toISOString(), bucket: period.bucket, timezone: 'UTC', errors: history.errors, coverage: 'Recorded measurements only. Earlier unrecorded or expired activity cannot be reconstructed. Usage is assigned to its reporting time; durations to their end time.' }, errors: history.errors })
     } catch (error) { source.push({ project, analytics: null, errors: [(error as Error).message] }) }
   }
   const aggregate = aggregateMeasurements(allEvents, period)
@@ -318,19 +358,23 @@ export function workspaceAnalytics(projects: readonly DashboardProjectReference[
     const total = analytics?.total
     return { id: project.id, name: project.name, analytics, errors, attention: project.attention ?? ((project.error ? 1 : 0) + (total?.attention ?? 0)), activity: total?.activity ?? null, tokens: total?.tokens.total ?? null, cost: total?.cost.reportedUsd ?? null, acceptance: total?.outcomes.accepted ?? null, costState: total?.costState ?? 'unknown' as CostState }
   })
-  const projectRankings = rankProjections(projectsWithMetrics)
+  const orderedProjects = rankProjections(projectsWithMetrics, DASHBOARD_LIMITS.projects)[sort]
+  const projectRankings = rankProjections(projectsWithMetrics.map(({ analytics, ...row }) => ({ ...row, ...(analytics ? { total: analytics.total } : {}) })))
   const rankings = { projects: projectRankings, ...dimensionRankings(aggregate, runs) }
-  return { ...aggregate, from: new Date(period.from).toISOString(), to: new Date(period.to).toISOString(), bucket: period.bucket, timezone: 'UTC' as const,
-    projects: projectRankings[sort], runs, rankings, errors: source.flatMap(row => row.errors) }
+  const bounded = boundedAggregate(aggregate)
+  return { ...bounded, from: new Date(period.from).toISOString(), to: new Date(period.to).toISOString(), bucket: period.bucket, timezone: 'UTC' as const,
+    projects: orderedProjects, runs: runs.slice(-DASHBOARD_LIMITS.analyticsRows), rankings, detailsLimited: bounded.detailsLimited || runs.length > DASHBOARD_LIMITS.analyticsRows || source.length > DASHBOARD_LIMITS.analyticsRows,
+    errors: [...new Set(source.flatMap(row => row.errors))] }
 }
 
 export function projectAnalytics(root: string, period: Period) {
   const history = projectEvents(root, period)
   const aggregate = aggregateMeasurements(history.events, period)
   const runs = runProjections(history.events, period)
-  return { ...aggregate,
+  const bounded = boundedAggregate(aggregate)
+  return { ...bounded,
     from: new Date(period.from).toISOString(), to: new Date(period.to).toISOString(), bucket: period.bucket, timezone: 'UTC',
-    runs, rankings: dimensionRankings(aggregate, runs), errors: history.errors,
+    runs: runs.slice(-DASHBOARD_LIMITS.analyticsRows), rankings: dimensionRankings(aggregate, runs), errors: history.errors, detailsLimited: bounded.detailsLimited || runs.length > DASHBOARD_LIMITS.analyticsRows,
     coverage: 'Recorded measurements only. Earlier unrecorded or expired activity cannot be reconstructed. Usage is assigned to its reporting time; durations to their end time.',
   }
 }

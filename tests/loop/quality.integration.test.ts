@@ -48,7 +48,7 @@ function writeQualityProject(referenceDigest: string, policy: 'blocking' | 'advi
   })
 }
 
-function qualityVerdict(attemptId: string, candidateLabel: 'A' | 'B', promptDigest: string, rubricDigest: string, winner: 'candidate' | 'reference' = 'candidate'): string {
+function qualityVerdict(attemptId: string, winner: 'A' | 'B'): string {
   return JSON.stringify({
     schemaVersion: 1,
     attemptId,
@@ -56,24 +56,11 @@ function qualityVerdict(attemptId: string, candidateLabel: 'A' | 'B', promptDige
     biggestGap: 'header alignment',
     evidence: ['header is offset by 8px'],
     confidence: 'high',
-    candidate: { label: candidateLabel, digest: digest('candidate artifact') },
-    reference: { label: candidateLabel === 'A' ? 'B' : 'A', digest: digest('trusted reference') },
-    provenance: {
-      provider: 'codex',
-      model: 'test-critic',
-      promptDigest,
-      rubricDigest,
-      referenceDigest: digest('trusted reference'),
-      candidateDigest: digest('candidate artifact'),
-    },
   })
 }
 
-const CriticPromptSchema = z.object({ attemptId: z.string(), candidateLabel: z.enum(['A', 'B']), promptDigest: z.string(), rubricDigest: z.string() })
-const StagedCriticPromptSchema = CriticPromptSchema.extend({
-  reference: z.object({ digest: z.string(), artifact: z.string() }),
-  candidate: z.object({ digests: z.array(z.string()), artifacts: z.array(z.string()) }),
-})
+const CriticPromptSchema = z.object({ attemptId: z.string(), bundles: z.array(z.object({ label: z.enum(['A', 'B']), artifacts: z.array(z.object({ path: z.string(), sha256: z.string() })) })) })
+const StagedCriticPromptSchema = CriticPromptSchema
 const RepairPromptSchema = z.object({
   schemaVersion: z.literal(1),
   role: z.literal('quality-repair'),
@@ -85,7 +72,9 @@ const RepairPromptSchema = z.object({
 
 function qualityVerdictFor(invocation: Invocation, winner: 'candidate' | 'reference' = 'candidate'): string {
   const request = CriticPromptSchema.parse(JSON.parse(invocation.input))
-  return qualityVerdict(request.attemptId, request.candidateLabel, request.promptDigest, request.rubricDigest, winner)
+  const wanted = winner === 'candidate' ? digest('candidate artifact') : digest('trusted reference')
+  const bundle = request.bundles.find(bundle => bundle.artifacts.some(artifact => artifact.sha256 === wanted))!
+  return qualityVerdict(request.attemptId, bundle.label)
 }
 
 beforeEach(() => {
@@ -260,9 +249,13 @@ describe('runLoopCommand declared quality integration', () => {
           const request = StagedCriticPromptSchema.parse(JSON.parse(invocation.input))
           criticRoots.push(invocation.cwd)
           expect(invocation.cwd).not.toBe(projectDir)
-          expect(readdirSync(invocation.cwd).sort()).toEqual([request.reference.artifact, ...request.candidate.artifacts].sort())
-          expect(readFileSync(join(invocation.cwd, request.reference.artifact), 'utf8')).toBe('trusted reference')
-          expect(readFileSync(join(invocation.cwd, request.candidate.artifacts[0] ?? ''), 'utf8')).toBe('candidate artifact')
+          const artifacts = request.bundles.flatMap(bundle => bundle.artifacts)
+          expect(readdirSync(invocation.cwd).sort()).toEqual([...artifacts.map(artifact => artifact.path), 'decision.schema.json'].sort())
+          expect(artifacts.map(artifact => readFileSync(join(invocation.cwd, artifact.path), 'utf8')).sort()).toEqual(['candidate artifact', 'trusted reference'])
+          expect(invocation.args).toContain('--skip-git-repo-check')
+          expect(invocation.args).toContain('--output-schema')
+          expect(JSON.parse(invocation.input)).not.toHaveProperty('candidateLabel')
+          expect(artifacts.every(artifact => /^[AB]-\d+\.bin$/u.test(artifact.path))).toBe(true)
           return { success: true, output: qualityVerdictFor(invocation), summary: 'critic completed' }
         },
         firstLabel: () => 'A',
@@ -274,7 +267,7 @@ describe('runLoopCommand declared quality integration', () => {
     expect(criticRoots.every(root => !existsSync(root))).toBe(true)
   })
 
-  it('blocks a verdict when provider telemetry reports a different critic model', () => {
+  it('records reported model identity separately from a requested model alias', () => {
     writeQualityProject(digest('trusted reference'))
     let commits = 0
 
@@ -294,9 +287,10 @@ describe('runLoopCommand declared quality integration', () => {
       },
     })
 
-    expect(code).toBe(1)
-    expect(commits).toBe(0)
-    expect(loadPrd(join(projectDir, '.yoke', 'prd.yaml'))[0].passes).toBe(false)
+    expect(code).toBe(0)
+    expect(commits).toBe(1)
+    const proof = JSON.parse(readFileSync(join(projectDir, '.yoke', 'proof', storyPathSegment('S1'), 'quality', 'round-1', 'normal.verdict.json'), 'utf8'))
+    expect(proof.verdict.provenance).toMatchObject({ requestedModel: 'test-critic', actualModel: 'unexpected-model', model: 'unexpected-model' })
   })
 
   it('blocks when the declared reference changes after preflight', () => {

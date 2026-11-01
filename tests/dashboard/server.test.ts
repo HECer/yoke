@@ -232,6 +232,21 @@ it('server exposes runs grouped in history with recorded execution metadata', as
   expect(data.runs[0].events).toHaveLength(3)
 })
 
+it('serves cursor pages without duplicates and rejects malformed cursors before reading history', async () => {
+  const project = registerProject(root)
+  for (let index = 0; index < 3; index++) appendEvent(root, { runId: 'paged', timestamp: '2026-09-06T10:00:00Z', type: 'accepted', storyId: String(index) })
+  server = await startDashboard()
+  const endpoint = `${server.url}api/projects/${project.id}/history?from=2026-09-01&to=2026-10-01&limit=2`
+  const first = await (await fetch(endpoint)).json()
+  expect(first.events).toHaveLength(2)
+  expect(first.nextCursor).toEqual(expect.any(String))
+  const next = await (await fetch(endpoint + '&cursor=' + first.nextCursor)).json()
+  expect(next.events).toHaveLength(1)
+  expect(next.nextCursor).toBeNull()
+  expect(new Set([...first.events, ...next.events].map((event: { id: string }) => event.id)).size).toBe(3)
+  expect((await fetch(endpoint + '&cursor=bad')).status).toBe(400)
+})
+
 it('server validates typed control payloads', async () => {
   createProjectGoal(root, 'Test goal')
   const project = registerProject(root)

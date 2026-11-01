@@ -11,16 +11,10 @@ const verdict = (attemptId: string, candidateLabel: 'A' | 'B', overrides: {
   readonly promptDigest?: string
   readonly rubricDigest?: string
 } = {}) => JSON.stringify({
-  schemaVersion: 1, attemptId, winner: 'candidate', biggestGap: 'spacing', evidence: ['measured difference'], confidence: 'high',
-  candidate: { label: candidateLabel, digest: overrides.candidateDigest ?? 'candidate' }, reference: { label: candidateLabel === 'A' ? 'B' : 'A', digest: 'reference' },
-  provenance: { provider: overrides.provider ?? 'codex', model: overrides.model ?? 'test', promptDigest: overrides.promptDigest ?? 'prompt', rubricDigest: overrides.rubricDigest ?? 'rubric', referenceDigest: 'reference', candidateDigest: overrides.candidateDigest ?? 'candidate' },
+  schemaVersion: 1, attemptId, winner: candidateLabel, biggestGap: 'spacing', evidence: ['measured difference'], confidence: 'high', ...overrides,
 })
 
-const verdictFor = (request: QualityCriticRequest, overrides: Parameters<typeof verdict>[2] = {}) => verdict(request.attemptId, request.candidateLabel, {
-  promptDigest: request.promptDigest,
-  rubricDigest: request.rubricDigest,
-  ...overrides,
-})
+const verdictFor = (request: QualityCriticRequest, overrides: Parameters<typeof verdict>[2] = {}) => verdict(request.attemptId, request.candidateLabel, overrides)
 
 const providerStream = (provider: 'claude' | 'codex' | 'gemini', payload: string): string => {
   switch (provider) {
@@ -87,7 +81,7 @@ describe('runQualityCritic', () => {
   it.each(['claude', 'codex', 'gemini'] as const)('extracts a quality verdict from a real %s JSONL envelope', provider => {
     const result = runQualityCritic({
       targetDir: 'C:\\project', storyId: 'S1', round: 1, policy: 'blocking', rubric: 'r', reference: { digest: 'reference' }, candidate: { digests: ['candidate'] }, provider, model: 'critic-model',
-      invoke: request => ({ ok: true, output: providerStream(provider, verdictFor(request, { provider, model: 'critic-model' })) }),
+      invoke: request => ({ ok: true, output: providerStream(provider, verdictFor(request)) }),
       mkdir: () => undefined, writeFile: () => undefined, firstLabel: () => 'A',
     })
 

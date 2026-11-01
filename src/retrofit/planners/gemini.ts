@@ -12,7 +12,7 @@ function tomlString(s: string): string {
   return '"""\n' + s.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"') + '\n"""'
 }
 
-export function planGemini(canonDir: string, targetDir: string, codeGraph: CodeGraph = 'graphify', codeIntelligence: CodeIntelligenceMode = 'off'): Action[] {
+export function planGemini(canonDir: string, targetDir: string, codeGraph: CodeGraph = 'none', codeIntelligence: CodeIntelligenceMode = 'off', browserTools = false): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const actions: Action[] = []
 
@@ -64,7 +64,7 @@ export function planGemini(canonDir: string, targetDir: string, codeGraph: CodeG
     target: '.gemini/settings.json',
     merge: true,
     content: JSON.stringify({
-      mcpServers: mcpServers(codeGraph, codeIntelligence, targetDir),
+      mcpServers: mcpServers(codeGraph, codeIntelligence, targetDir, browserTools),
       context: { fileName: ['AGENTS.md', 'GEMINI.md'] },
       hooks: { BeforeTool: [{ matcher: '^run_shell_command$', hooks: [{ name: 'yoke-rtk', type: 'command', command: 'node .gemini/hooks/gemini-rtk-hook.mjs' }] }] },
     }, null, 2) + '\n',

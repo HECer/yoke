@@ -21,6 +21,8 @@ createInterface({ input: process.stdin }).on('line', line => {
 
 it.each([
   ['plain backend text', { content: [{ type: 'text', text: 'src/main.ts:L12 symbol' }] }, 'src/main.ts:L12 symbol'],
+  ['multiple backend text blocks', { content: [{ type: 'text', text: 'first evidence' }, { type: 'text', text: 'second evidence' }] }, 'first evidence\nsecond evidence'],
+  ['Serena shortened references', { content: [{ type: 'text', text: 'References without surrounding lines:\n{"src/main.ts":{"Function":{"name_path":"run","reference_line":2}}}' }] }, { backend_shortened: 'Reference context omitted by backend.', results: { 'src/main.ts': { Function: { name_path: 'run', reference_line: 2 } } } }],
   ['Serena structured result', { structuredContent: { result: JSON.stringify([{ name_path: 'answer', relative_path: 'src/main.ts' }]) } }, [{ name_path: 'answer', relative_path: 'src/main.ts' }]],
   ['Serena result envelope', { content: [{ type: 'text', text: JSON.stringify({ result: JSON.stringify([{ name_path: 'answer', relative_path: 'src/main.ts' }]) }) }] }, [{ name_path: 'answer', relative_path: 'src/main.ts' }]],
 ])('unwraps %s', async (_name, response, expected) => {

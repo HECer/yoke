@@ -327,7 +327,7 @@ describe('yoke config', () => {
       policy: 'blocking',
       maxRounds: 3,
       maxMinutes: 60,
-      consistencyChecks: 2,
+      consistencyChecks: 'adaptive',
       maxParallelCandidates: 2,
     })
   })

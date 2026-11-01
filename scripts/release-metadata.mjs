@@ -49,6 +49,9 @@ export function updateReadme(readme, metadata) {
     const start = `<!-- yoke:${marker}:start -->`
     const end = `<!-- yoke:${marker}:end -->`
     const pattern = new RegExp(`${start}[\\s\\S]*?${end}`)
+    // Exact test counts belong to execution reports. Older READMEs can retain
+    // the marker, but current documentation need not collect the suite for it.
+    if (marker === 'tests' && !pattern.test(next)) continue
     if (!pattern.test(next)) throw new Error(`README is missing ${marker} metadata markers`)
     next = next.replace(pattern, `${start}${values[marker]}${end}`)
   }
@@ -77,7 +80,8 @@ function main() {
   const root = dirname(dirname(fileURLToPath(import.meta.url)))
   const readmePath = join(root, 'README.md')
   const before = readFileSync(readmePath, 'utf8')
-  const after = updateReadme(before, collectMetadata(root, `Tests ${discoverTestCount(root)} passed`))
+  const testCount = before.includes('<!-- yoke:tests:start -->') ? discoverTestCount(root) : 0
+  const after = updateReadme(before, collectMetadata(root, `Tests ${testCount} passed`))
   if (process.argv.includes('--check')) {
     if (after !== before) {
       console.error('README release metadata is stale. Run: npm run docs:update')

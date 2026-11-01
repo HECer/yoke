@@ -13,8 +13,8 @@ import { saveConfig } from '../../src/retrofit/config.js'
 import { runPrdDraft, runPrdCheck } from '../../src/prd/command.js'
 import { loadPrd } from '../../src/loop/prd.js'
 import { acquireLock, releaseLock } from '../../src/loop/lock.js'
-import { writeDraftCoverage } from '../prd/draft-fixture.js'
-import { requirementsDigest } from '../../src/prd/requirements.js'
+import { draftFile, writeDraftCoverage } from '../prd/draft-fixture.js'
+import { readRequirements } from '../../src/prd/requirements.js'
 
 let root: string
 const assessment = { taskClass: 'implementation' as const, difficulty: 'medium' as const, uncertainty: 'low' as const, risk: 'low' as const, scope: 'low' as const, testability: 'high' as const, reason: 'Executable handler checks', approach: 'Implement handler and verify outputs' }
@@ -26,13 +26,13 @@ afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: tru
 it('drafts a fully assessed package with the planning model and rejects an incomplete replacement', () => {
   saveConfig(root, { canonVersion: '1.9.0', agents: ['codex'], loop: { enabled: true }, runner: { agent: 'codex', model: 'terra' }, planning: { model: 'astra' },
     routing: { enabled: true, strategy: 'capability', assessmentPolicy: 'prepared', fallback: 'block', workers: defaultRoutingWorkers(['codex']), maxCandidates: 3 } })
-  const run = vi.fn(inv => { expect(inv.args).toContain('astra'); const stories = [task('A'), task('B', ['A'])]; savePrd(join(root, '.yoke/prd.yaml'), stories); writeDraftCoverage(root, inv, stories); return { success: true, summary: 'planned' } })
+  const run = vi.fn(inv => { expect(inv.args).toContain('astra'); const stories = [task('A'), task('B', ['A'])]; savePrd(draftFile(inv), stories); writeDraftCoverage(root, inv, stories); return { success: true, summary: 'planned' } })
   expect(runPrdDraft(root, { idea: 'package', isAvailable: () => true, run })).toBe(0)
   expect(run).toHaveBeenCalledTimes(1)
   expect(runPrdCheck(root)).toBe(0)
-  expect(preparedProblems(loadPrd(join(root, '.yoke/prd.yaml')), '', requirementsDigest(root))).toEqual([])
-  expect(runPrdDraft(root, { idea: 'replacement', force: true, isAvailable: () => true, run: () => {
-    savePrd(join(root, '.yoke/prd.yaml'), [{ ...task('C'), assessment: undefined }]); return { success: true, summary: 'incomplete' }
+  expect(preparedProblems(loadPrd(join(root, '.yoke/prd.yaml')), '', readRequirements(root)!)).toEqual([])
+  expect(runPrdDraft(root, { idea: 'replacement', force: true, isAvailable: () => true, run: inv => {
+    savePrd(draftFile(inv), [{ ...task('C'), assessment: undefined }]); return { success: true, summary: 'incomplete' }
   } })).toBe(1)
   expect(loadPrd(join(root, '.yoke/prd.yaml')).map(s => s.id)).toEqual(['A', 'B'])
 })

@@ -3,6 +3,9 @@ import { z } from 'zod'
 export const DASHBOARD_LIMITS = {
   projects: 500,
   events: 100,
+  analyticsRows: 100,
+  measurementEvents: 50_000,
+  checkFiles: 10_000,
   historyBytes: 32 * 1024 * 1024,
   requestBytes: 16 * 1024,
   fileBytes: 1_048_576,

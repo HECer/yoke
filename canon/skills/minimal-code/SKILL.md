@@ -1,6 +1,6 @@
 ---
 name: minimal-code
-description: Use before writing any code — write the least code that fully solves the task (YAGNI, stdlib-first, no unrequested abstractions) to save tokens and reduce maintenance.
+description: Simplify an implementation that introduces unnecessary layers, dependencies, or scope. Prefer standard library facilities and the least code that fully satisfies the accepted behavior; avoid unrelated refactoring.
 ---
 
 # Minimal Code (lazy senior dev)

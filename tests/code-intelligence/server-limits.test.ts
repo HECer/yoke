@@ -30,6 +30,23 @@ it('boots the facade with all configured limits and advertises request controls'
     expect((tools.get('code_symbol') as any).token_budget).toBeDefined()
     expect((tools.get('code_trace') as any).require_resolved).toBeDefined()
     expect((tools.get('code_trace') as any).timeout_ms).toBeDefined()
-    expect((tools.get('code_edit_preview') as any).timeout_ms).toBeDefined()
+    expect(tools.has('code_edit_preview')).toBe(false)
+    expect((tools.get('code_evidence') as any).cursor).toBeDefined()
+    expect((tools.get('code_impact') as any).targets.items).toBeDefined()
+    expect((tools.get('code_symbol') as any).include.items.enum).toContain('references')
+    expect(messages[0].result.tools.find((tool: any) => tool.name === 'code_symbol').inputSchema.oneOf).toHaveLength(2)
+    expect((tools.get('code_impact') as any).plan_id).toBeUndefined()
   } finally { stdin.end(); await server; rmSync(root, { recursive: true, force: true }) }
+})
+
+it('rejects an oversized incomplete input frame and closes the server', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'yoke-ci-server-frame-'))
+  const stdin = new PassThrough(), stdout = new PassThrough(), messages: any[] = []
+  stdout.on('data', chunk => messages.push(JSON.parse(chunk.toString())))
+  const server = runCodeIntelligenceServer([`--workspace=${root}`], { stdin, stdout })
+  try {
+    stdin.write('{'.repeat(2_000_001))
+    await server
+    expect(messages[0].error.message).toMatch(/frame exceeds byte limit/)
+  } finally { stdin.end(); rmSync(root, { recursive: true, force: true }) }
 })

@@ -10,19 +10,27 @@ import { ToolActionSchema, type ToolAction } from '../execution/actions.js'
 import { CodeIntelligenceModeSchema, type CodeIntelligenceMode } from '../code-intelligence/contracts.js'
 
 export type Agent = z.infer<typeof AgentSchema>
-export type CodeGraph = 'graphify' | 'serena'
+export type CodeGraph = 'none' | 'graphify' | 'serena'
 export { CodeIntelligenceModeSchema }
 export type { CodeIntelligenceMode }
 export type DecisionPolicy = 'auto' | 'critical'
 export type RoutingStrategy = 'balanced' | 'cost' | 'speed' | 'quality' | 'capability'
 
-const CodeGraphSchema = z.enum(['graphify', 'serena'])
+const CodeGraphSchema = z.enum(['none', 'graphify', 'serena'])
+export const ExecutionBudgetSchema = z.object({
+  id: z.string().min(1).max(128),
+  maxCalls: z.number().int().positive().optional(),
+  maxMinutes: z.number().positive().finite().optional(),
+  maxTokens: z.number().int().positive().optional(),
+  maxPromptBytes: z.number().int().positive().optional(),
+}).strict()
+export type ExecutionBudgetSettings = z.infer<typeof ExecutionBudgetSchema>
 const CodeIntelligenceProcessSchema = z.object({ command: z.string().min(1), args: z.array(z.string()).max(32).optional() })
 const CodeIntelligenceSchema = z.object({
   mode: CodeIntelligenceModeSchema.default('off'), workspaceId: z.string().min(1).optional(),
   graft: CodeIntelligenceProcessSchema.optional(), graphify: CodeIntelligenceProcessSchema.optional(), serena: CodeIntelligenceProcessSchema.optional(),
   policy: z.object({ allowNetwork: z.boolean().default(false), excludePatterns: z.array(z.string().min(1)).max(100).default([]), maxFileBytes: z.number().int().positive().max(20_000_000).optional() }).optional(),
-  limits: z.object({ tokenBudget: z.number().int().min(128).max(16000).default(2400), timeoutMs: z.number().int().min(100).max(600000).default(10000), maxBytes: z.number().int().positive().max(10_000_000).default(2_000_000), maxBackends: z.number().int().min(1).max(3).default(3) }).optional(),
+  limits: z.object({ tokenBudget: z.number().int().min(128).max(16000).optional(), outputBytes: z.number().int().min(128).max(256_000).optional(), timeoutMs: z.number().int().min(100).max(600000).default(10000), maxBytes: z.number().int().positive().max(10_000_000).default(2_000_000), maxBackends: z.number().int().min(1).max(3).default(3) }).optional(),
 })
 
 const SmokeStepTimeout = z.number().int().min(1).max(30000).optional()
@@ -98,6 +106,7 @@ const RoutingRuleSchema = z.object({
 export type RoutingRule = z.infer<typeof RoutingRuleSchema>
 
 export const YokeConfigSchema = z.object({
+  executionBudget: ExecutionBudgetSchema.optional(),
   canonVersion: z.string().min(1),
   actions: z.array(ToolActionSchema).max(100).optional(),
   agents: z.array(AgentSchema),
@@ -166,6 +175,7 @@ export const YokeConfigSchema = z.object({
   }).optional(),
   verify: z.object({
     reusableCommands: z.array(z.string().min(1)).max(50).optional(),
+    reusableInputPaths: z.array(z.string().min(1)).max(256).optional(),
     command: z.string().min(1).optional(),
     retries: z.number().int().nonnegative().optional(),
     requireCriteria: z.boolean().optional(),
@@ -181,6 +191,7 @@ export const YokeConfigSchema = z.object({
     max: z.number().int().positive().default(4),
   }).optional(),
   codeGraph: CodeGraphSchema.optional(),
+  browserTools: z.boolean().optional(),
   codeIntelligence: CodeIntelligenceSchema.optional(),
   smoke: SmokeSchema.optional(),
   quality: ProjectQualityDefaultsSchema.optional(),
@@ -209,6 +220,7 @@ export interface RoutingWorker {
 }
 
 export interface YokeConfig {
+  executionBudget?: ExecutionBudgetSettings
   actions?: ToolAction[]
   canonVersion: string
   agents: Agent[]
@@ -231,16 +243,17 @@ export interface YokeConfig {
   }
   commit?: { authorName?: string; authorEmail?: string; allowCoAuthors?: boolean }
   audit?: { enabled: boolean; command?: string; suppressionsVersion?: 1; suppressions?: Array<{ ruleId: string; file?: string; reason: string; expires?: string }> }
-  verify?: { command?: string; retries?: number; requireCriteria?: boolean; reusableCommands?: string[] }
+  verify?: { command?: string; retries?: number; requireCriteria?: boolean; reusableCommands?: string[]; reusableInputPaths?: string[] }
   completion?: { command: string; retries?: number }
   perf?: { command: string; retries?: number }
   design?: { mode: 'off' | 'auto' | 'on'; max: number }
   codeGraph?: CodeGraph
+  browserTools?: boolean
   codeIntelligence?: {
     mode: CodeIntelligenceMode; workspaceId?: string
     graft?: { command: string; args?: string[] }; graphify?: { command: string; args?: string[] }; serena?: { command: string; args?: string[] }
     policy?: { allowNetwork: boolean; excludePatterns: string[]; maxFileBytes?: number }
-    limits?: { tokenBudget: number; timeoutMs: number; maxBytes: number; maxBackends: number }
+    limits?: { tokenBudget?: number; outputBytes?: number; timeoutMs: number; maxBytes: number; maxBackends: number }
   }
   smoke?: SmokeConfig
   quality?: import('../quality/types.js').ProjectQualityDefaults

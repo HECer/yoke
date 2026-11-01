@@ -7,39 +7,48 @@ import { criterionCommandProblem, isAcceptanceCriterion, loadPrd, type Story } f
 import { writeScopesOverlap } from '../loop/scheduler.js'
 import { readPlanningFile } from '../routing/contracts.js'
 import { planningSourceDigest } from '../routing/planning-source.js'
+import { recoverPlanningTransaction } from './transaction.js'
 
 export const MAX_REQUIREMENTS_BYTES = 200_000
 const digest = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex')
 const id = z.string().min(1).max(120)
 const reference = z.object({ story: id, criterion: id }).strict()
-const entry = z.object({ id, text: z.string().min(1).max(2_000), criteria: z.array(reference).min(1).max(50) }).strict()
+export const RequirementEntrySchema = z.object({ id, text: z.string().min(1).max(2_000), criteria: z.array(reference).min(1).max(50) }).strict()
+export const ApprovedChangeSchema = z.object({ id, request: z.string().min(1).max(20_000), createdAt: z.string().datetime() }).strict()
 export const RequirementsSchema = z.object({
   version: z.literal(1),
   objective: z.object({ idea: z.string().min(1).max(20_000), approvedPlanSha256: z.string().regex(/^[a-f0-9]{64}$/), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
-  requirements: z.array(entry).min(1).max(100),
-  invariants: z.array(entry).max(50),
+  requirements: z.array(RequirementEntrySchema).min(1).max(100),
+  invariants: z.array(RequirementEntrySchema).max(50),
+  /** Exact queued requests, activated only by the host after coverage review. */
+  changes: z.array(ApprovedChangeSchema).max(100).optional(),
 }).strict()
 export type RequirementsLedger = z.infer<typeof RequirementsSchema>
 
 /** Bind the exact original input, independently of planner-generated summaries. */
-export function requirementObjective(idea: string, brief = ''): RequirementsLedger['objective'] {
+export function requirementObjective(idea: string, brief = '', changes: NonNullable<RequirementsLedger['changes']> = []): RequirementsLedger['objective'] {
   const source = { idea, approvedPlanSha256: planningSourceDigest(brief) }
-  return { ...source, sha256: digest(JSON.stringify(source)) }
+  return { ...source, sha256: digest(JSON.stringify({ ...source, ...(changes.length ? { changes } : {}) })) }
 }
 
 export function readRequirements(root: string): RequirementsLedger | undefined {
+  recoverPlanningTransaction(root)
   const source = readPlanningFile(root, '.yoke/requirements.yaml', MAX_REQUIREMENTS_BYTES)
   return source === undefined ? undefined : RequirementsSchema.parse(parse(source, { maxAliasCount: 10 }))
 }
 
 export function requirementsDigest(root: string): string {
+  recoverPlanningTransaction(root)
   const source = readPlanningFile(root, '.yoke/requirements.yaml', MAX_REQUIREMENTS_BYTES)
   return source === undefined ? '' : planningSourceDigest(source)
 }
 
 export function validateRequirements(ledger: RequirementsLedger, stories: Story[], brief = '', expectedIdea?: string): void {
-  const objective = requirementObjective(expectedIdea ?? ledger.objective.idea, brief)
+  const objective = requirementObjective(expectedIdea ?? ledger.objective.idea, brief, ledger.changes)
   if (ledger.objective.idea !== objective.idea || ledger.objective.approvedPlanSha256 !== objective.approvedPlanSha256 || ledger.objective.sha256 !== objective.sha256) throw Error('Stale requirement objective or approved source binding')
+  const changes = ledger.changes ?? []
+  if (new Set(changes.map(change => change.id)).size !== changes.length) throw Error('Duplicate approved change id')
+  for (const change of changes) if (!stories.some(story => story.sourceChange === change.id)) throw Error(`Approved change ${change.id} has no retained story coverage`)
   if (stories.some(story => story.requirementsFor !== undefined && story.requirementsFor !== ledger.objective.sha256)) throw Error('Requirement objective differs from host-owned PRD binding')
   if (stories.length > 2_000) throw Error('Requirement coverage exceeds story limit')
   const byId = new Map(stories.map(s => [s.id, s]))
@@ -94,6 +103,7 @@ export function requirementsPacket(root: string, storyId?: string): string | und
   return [
     '## Original objective and requirement coverage',
     ledger.objective.idea,
+    ...(ledger.changes?.length ? ['## Approved changes (exact requests)', ...ledger.changes.map(change => `${change.id}: ${change.request}`)] : []),
     `Objective SHA-256: ${ledger.objective.sha256}; approved plan SHA-256: ${ledger.objective.approvedPlanSha256}`,
     entries(ledger.requirements.filter(item => !storyId || item.criteria.some(ref => ref.story === storyId))),
     '## Preserved invariants (apply throughout implementation)', entries(ledger.invariants),

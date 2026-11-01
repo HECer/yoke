@@ -29,7 +29,7 @@ afterEach(() => { rmSync(canon, { recursive: true, force: true }) })
 
 describe('native OpenCode, Kilo, and Pi retrofit planners', () => {
   it('writes OpenCode skills, instructions, MCP config, and read-only agent', () => {
-    const actions = planOpenCode(canon, '/t')
+    const actions = planOpenCode(canon, '/t', 'graphify')
     expect(actions.map(action => action.target)).toEqual(expect.arrayContaining([
       'AGENTS.md', 'opencode.json', '.opencode/skills/tdd/SKILL.md', '.opencode/skills/release/SKILL.md', '.opencode/agents/yoke-reviewer.md',
     ]))
@@ -40,7 +40,7 @@ describe('native OpenCode, Kilo, and Pi retrofit planners', () => {
   })
 
   it('writes Kilo-native skills, instructions, MCP config, and review agent', () => {
-    const actions = planKilo(canon, '/t')
+    const actions = planKilo(canon, '/t', 'graphify')
     expect(actions.map(action => action.target)).toEqual(expect.arrayContaining([
       'AGENTS.md', 'kilo.jsonc', '.kilo/skills/tdd/SKILL.md', '.kilo/skills/release/SKILL.md', '.kilo/agents/yoke-reviewer.md',
     ]))

@@ -25,6 +25,7 @@ import type { Story } from '../loop/prd.js'
 import { readAssessment, routingAssessmentKey, saveAssessment } from '../routing/capability.js'
 import { parseAssessment } from '../routing/assessment.js'
 import { providerTelemetryUsage } from '../observability/usage.js'
+import { updateExecutionBudgetUsage, withExecutionBudget, withExecutionBudgetScope } from '../execution/budget.js'
 
 const Attempt = z.object({ provider: AgentSchema, model: z.string().optional(), startedAt: z.string(), durationMs: z.number().nonnegative(), success: z.boolean(), summary: z.string(), checkId: z.string(), inputTokens: z.number().nonnegative().optional(), outputTokens: z.number().nonnegative().optional() })
 const NativeBinding = z.object({ provider: z.literal('codex'), threadId: z.string().min(1), objectiveRevision: z.string().regex(/^[a-f0-9]{64}$/), modelProvider: z.string().optional(), model: z.string().optional(), usageInvalid: z.literal(true).optional(), usageBaseline: z.object({ inputTokens: z.number().int().nonnegative().safe(), outputTokens: z.number().int().nonnegative().safe(), cachedInputTokens: z.number().int().nonnegative().safe().optional(), cacheWriteInputTokens: z.number().int().nonnegative().safe().optional(), reasoningOutputTokens: z.number().int().nonnegative().safe().optional() }).strict().optional() }).strict()
@@ -138,11 +139,11 @@ async function executeAgent(input: GoalExecutionInput): Promise<GoalExecutionRes
   return { success: result.kind === 'succeeded', summary: result.kind === 'succeeded' ? 'Agent finished; independently checked below' : `${result.kind}: ${result.stderr.slice(-3000)}`, ...tokens, provider: input.provider, tokens }
 }
 export async function assessProjectGoal(root: string, options: GoalAssessOptions = {}): Promise<GoalAssessResult> {
-  const goal = await operateProjectGoal(root, options, true)
+  const goal = await withExecutionBudgetScope(root, () => operateProjectGoal(root, options, true))
   return { goalId: goal.id, assessed: goal.status !== 'blocked' && goal.reason === 'Goal assessment prepared for the current executable contract', reason: goal.reason ?? 'Goal assessment was not prepared' }
 }
 export async function runProjectGoal(root: string, options: GoalRunOptions = {}): Promise<ProjectGoal> {
-  return operateProjectGoal(root, options, false)
+  return withExecutionBudgetScope(root, () => operateProjectGoal(root, options, false))
 }
 async function operateProjectGoal(root: string, options: GoalRunOptions, assessmentOnly: boolean): Promise<ProjectGoal> {
   const lock = acquireLock(root)
@@ -259,17 +260,27 @@ async function operateProjectGoal(root: string, options: GoalRunOptions, assessm
         const problem = goalBudgetProblem(goal!, true)
         if (problem) throw new Error(problem)
         const remainingTokens = goal!.tokenBudget === undefined ? undefined : goal!.tokenBudget - tokensUsed()
-        callId = randomUUID()
-        goal = save(root, { ...goal!, usageLedger: { ...goal!.usageLedger!, calls: [...goal!.usageLedger!.calls, { id: callId, attempt: goal!.attempts.length + 1, provider: input.provider, model: input.selection.model,
-          requestedProvider: input.selection.provider, requestedModel: input.selection.model, requestedReasoningEffort: input.selection.reasoningEffort, requestedVariant: input.selection.variant,
-          role, modelRole, startedAt: new Date(started).toISOString(), status: 'pending', usageComplete: false }] } })
-        const result = await operation({ remainingTokens, onUsageUpdate: usage => {
-          const measured = reportedGoalUsage({ tokens: usage })
-          if (!measured.complete) return
-          const prior = goal!.usageLedger!.calls.find(call => call.id === callId)!
-          updateCall({ inputTokens: Math.max(prior.inputTokens ?? 0, measured.inputTokens), outputTokens: Math.max(prior.outputTokens ?? 0, measured.outputTokens) })
-          if (goal!.tokenBudget !== undefined && tokensUsed() > goal!.tokenBudget) controller.abort('Token budget exceeded during native execution')
-        } })
+        const result = await withExecutionBudget({ root, provider: input.provider, role: `goal-${role}`, storyId: goal!.id, prompt: input.prompt }, async () => {
+          callId = randomUUID()
+          goal = save(root, { ...goal!, usageLedger: { ...goal!.usageLedger!, calls: [...goal!.usageLedger!.calls, { id: callId, attempt: goal!.attempts.length + 1, provider: input.provider, model: input.selection.model,
+            requestedProvider: input.selection.provider, requestedModel: input.selection.model, requestedReasoningEffort: input.selection.reasoningEffort, requestedVariant: input.selection.variant,
+            role, modelRole, startedAt: new Date(started).toISOString(), status: 'pending', usageComplete: false }] } })
+          return operation({ remainingTokens, onUsageUpdate: usage => {
+            updateExecutionBudgetUsage(usage)
+            const measured = reportedGoalUsage({ tokens: usage })
+            if (!measured.complete) return
+            const prior = goal!.usageLedger!.calls.find(call => call.id === callId)!
+            updateCall({ inputTokens: Math.max(prior.inputTokens ?? 0, measured.inputTokens), outputTokens: Math.max(prior.outputTokens ?? 0, measured.outputTokens) })
+            if (goal!.tokenBudget !== undefined && tokensUsed() > goal!.tokenBudget) controller.abort('Token budget exceeded during native execution')
+          } })
+        }, result => {
+          if (result.tokens) return result.tokens
+          const measured = reportedGoalUsage(result)
+          return measured.hasInput || measured.hasOutput ? {
+            inputTokens: measured.inputTokens, outputTokens: measured.outputTokens, measurementComplete: measured.complete,
+            usageMissingFields: [...(measured.hasInput ? [] : ['inputTokens']), ...(measured.hasOutput ? [] : ['outputTokens'])],
+          } : undefined
+        })
         const measured = reportedGoalUsage(result)
         const prior = goal!.usageLedger!.calls.find(call => call.id === callId)!
         const decreased = measured.inputTokens < (prior.inputTokens ?? 0) || measured.outputTokens < (prior.outputTokens ?? 0)

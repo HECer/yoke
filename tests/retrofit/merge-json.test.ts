@@ -32,4 +32,20 @@ describe('mergeJson', () => {
     mergeJson({}, JSON.parse('{"__proto__":{"polluted":true}}'))
     expect(({} as Record<string, unknown>).polluted).toBeUndefined()
   })
+
+  it('replaces selected MCP arguments and removes unselected Yoke tools without deleting foreign servers', () => {
+    const base = { mcpServers: {
+      playwright: { command: 'npx', args: ['@playwright/mcp@latest'], env: { DISPLAY: ':1' } },
+      graphify: { command: 'graphify', args: ['serve'] },
+      custom: { url: 'https://example.test/mcp' },
+    } }
+    const selected = { mcpServers: { playwright: { command: 'npx', args: ['--yes', '@playwright/mcp@0.0.84'] } } }
+    expect(mergeJson(base, selected)).toEqual({ mcpServers: {
+      playwright: { ...base.mcpServers.playwright, ...selected.mcpServers.playwright },
+      custom: base.mcpServers.custom,
+    } })
+    expect(mergeJson(base, { mcpServers: {} })).toEqual({ mcpServers: { custom: base.mcpServers.custom } })
+    expect(mergeJson({ mcpServers: { graphify: { command: 'custom-graph-server' } } }, { mcpServers: {} }))
+      .toEqual({ mcpServers: { graphify: { command: 'custom-graph-server' } } })
+  })
 })

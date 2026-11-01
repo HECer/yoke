@@ -19,7 +19,7 @@ permission:
 Review the observed diff and test evidence. Do not modify files. Return only actionable findings grounded in evidence.
 `
 
-export function planKilo(canonDir: string, targetDir: string, codeGraph: CodeGraph = 'graphify', codeIntelligence: CodeIntelligenceMode = 'off'): Action[] {
+export function planKilo(canonDir: string, targetDir: string, codeGraph: CodeGraph = 'none', codeIntelligence: CodeIntelligenceMode = 'off', browserTools = false): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const baseline = readFileSync(join(canonDir, 'AGENTS.md'), 'utf8')
   const actions: Action[] = manifest.skills.flatMap(skill => skillPackageActions(canonDir, skill, 'kilo'))
@@ -37,7 +37,7 @@ export function planKilo(canonDir: string, targetDir: string, codeGraph: CodeGra
       content: JSON.stringify({
         $schema: 'https://app.kilo.ai/config.json',
         instructions: ['AGENTS.md', '.yoke/context/*.md'],
-        mcp: openCodeMcpServers(codeGraph, codeIntelligence, targetDir),
+        mcp: openCodeMcpServers(codeGraph, codeIntelligence, targetDir, browserTools),
       }, null, 2) + '\n',
       reason: 'Kilo instructions + MCP servers',
     },

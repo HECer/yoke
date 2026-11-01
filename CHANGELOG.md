@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — 2026-11-01
+
+### Fixed
+- Reject contradictory review approvals and malformed/error dependency-audit reports; distinguish unsupported dependency coverage and add Cargo audit parsing.
+- Preserve POSIX process-group ownership until descendant termination is confirmed; archive confirmed supervision and select latest check evidence by timestamp rather than UUID order.
+- Publish PRD/requirements changes through a recoverable journal. Support ledger-backed additive change intake, coverage remapping, exact-state retry, and per-relevant-requirement assessment identity.
+- Supply strict critic decision schemas and bind provenance in the host. Correct temporary Codex critic invocation, use opaque A/B bundles, and retain complete repair evidence while bounding inline diffs.
+- Harden optional Code Intelligence paths, exclusion codecs, grouped references, evidence retrieval, MCP initialization/restarts, snapshots, and backend capability dispatch. Disable incomplete preview/apply APIs in every mode.
+- Migrate runtime validation to Zod 4 and refresh vulnerable development dependencies.
+
+### Added
+- Durable project-wide execution admission for planning, implementation, review, critics, repairs, candidates and native-goal dispatch. Include frozen host policies, shared call/time/token limits, prompt-byte rejection, explicit status/reset and honest unknown usage.
+- Versioned provider contract smoke with a model-free availability mode and an explicit single-provider live check; unsupported enforcement dimensions remain untested.
+- Opt-in declared reusable input paths and cache diagnostics, with streaming identities and eligibility bounds before content reads.
+
+### Changed
+- Make dashboard aggregation linear and page heavy history; retain full aggregate totals with bounded response detail.
+- Use adaptive quality consistency checks for current low-risk/high-confidence reference comparisons; preserve explicit paired checks and paired candidate tournaments.
+- Remove a label-only debugging capability floor and identical-invocation escalation. Keep risk/testability floors and report missing profile coverage.
+- Shorten the canonical workflows, retain all 34 skills, and make expensive specialist workflows explicit. Keep required acceptance, integration and release evidence.
+- Default new code-graph/browser exposure and UI-style gates off. Pin the opt-in Playwright MCP server and replace its argument vector atomically while preserving unrelated JSON-configured servers.
+- Run shared CI checks once and keep exact test counts in execution reports instead of rediscovering the suite for README metadata, while retaining Linux/Windows tests on Node 20/24; cancel superseded runs and bound job duration.
+
+### Migration and limits
+- Existing configurations opt into the new aggregate budget; newly configured projects (`setup`, `new`, or first `retrofit`) receive 24 calls, 120 aggregate agent-minutes, and a 128,000-byte submitted-prompt cap. Admitted calls can overshoot token/time ceilings; unknown usage is never free.
+- Code Intelligence is read-only until a complete, approved, validated worktree edit transaction is implemented. External backends require explicit trusted execution acknowledgment; portable path filtering is not an OS sandbox.
+- Local measurements cover dashboard/cache components and skill source bytes. No authenticated provider-cost saving, native Windows lifecycle result, Rust speedup, package publication or release is claimed. See [implementation and migration](docs/AUDIT-REMEDIATION-2026-11.md), [provider contracts](docs/PROVIDER-CONTRACTS.md), and [Rust decision](docs/RUST-DECISION-2026-11.md).
+
 ## 1.25.1 — 2026-10-13
 
 ### Fixed

@@ -65,7 +65,7 @@ describe('planGemini', () => {
   it('settings.json wires mcpServers and AGENTS.md context', () => {
     const s = planGemini(canon, '/t').find(a => a.target === '.gemini/settings.json')!
     const cfg = JSON.parse(s.content)
-    expect(Object.keys(cfg.mcpServers)).toContain('graphify')
+    expect(cfg.mcpServers).toEqual({})
     expect(cfg.context.fileName).toContain('AGENTS.md')
   })
 

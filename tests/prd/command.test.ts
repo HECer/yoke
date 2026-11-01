@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { spawnSync } from 'node:child_process'
+import { pathToFileURL } from 'node:url'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,7 +8,7 @@ import { runPrdDraft, runPrdCheck, buildPrdDraftPrompt, PRD_TEMPLATE } from '../
 import { loadPrd } from '../../src/loop/prd.js'
 import { saveConfig } from '../../src/retrofit/config.js'
 import type { Invocation } from '../../src/loop/runner.js'
-import { writeDraftCoverage } from './draft-fixture.js'
+import { draftFile, writeDraftCoverage } from './draft-fixture.js'
 import { parse } from 'yaml'
 import type { Story } from '../../src/loop/prd.js'
 
@@ -22,7 +24,7 @@ const VALID_PRD = `- id: STORY-1\n  title: scaffold project\n  priority: 1\n  wr
 function writingRun(content: string, calls: Invocation[] = []) {
   return (inv: Invocation) => {
     calls.push(inv)
-    writeFileSync(join(dir, '.yoke', 'prd.yaml'), content)
+    writeFileSync(draftFile(inv), content)
     if (content === VALID_PRD) writeDraftCoverage(dir, inv, parse(content) as Story[])
     return { success: true, summary: 'exited 0' }
   }
@@ -135,17 +137,39 @@ describe('runPrdDraft', () => {
     expect(runPrdDraft(dir, { idea: 'x', isAvailable: () => true, run })).toBe(1)
   })
 
-  it('restores the previous PRD when the measured runner writes and throws', () => {
+  it('keeps the previous PRD untouched when the staged draft runner writes and throws', () => {
     const path = join(dir, '.yoke', 'prd.yaml')
     writeFileSync(path, VALID_PRD)
-    const code = runPrdDraft(dir, { idea: 'x', force: true, isAvailable: () => true, run: () => {
-      writeFileSync(path, 'partial replacement')
+    const code = runPrdDraft(dir, { idea: 'x', force: true, isAvailable: () => true, run: inv => {
+      writeFileSync(draftFile(inv), 'partial replacement')
       throw Error('provider interrupted')
     } })
     expect(code).toBe(1)
     expect(readFileSync(path, 'utf8')).toBe(VALID_PRD)
     // The failed call also releases planner ownership.
     expect(runPrdDraft(dir, { idea: 'x', force: true, isAvailable: () => true, run: writingRun(VALID_PRD) })).toBe(0)
+  })
+
+  it('survives an actual planner-controller exit without exposing its partial staged replacement', () => {
+    const path = join(dir, '.yoke', 'prd.yaml')
+    writeFileSync(path, VALID_PRD)
+    const module = pathToFileURL(join(process.cwd(), 'src/prd/command.ts')).href
+    const script = `import {writeFileSync} from 'node:fs'; import {runPrdDraft} from ${JSON.stringify(module)}; runPrdDraft(process.argv[1], {idea:'replacement',force:true,isAvailable:()=>true,run:inv=>{const path=inv.input.match(/^Write (.+) as a YAML array/m)[1];writeFileSync(path,'partial proposal');process.exit(73)}});`
+    const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script, dir], { cwd: process.cwd(), env: process.env, encoding: 'utf8' })
+    expect(result.status, result.stderr).toBe(73)
+    expect(readFileSync(path, 'utf8')).toBe(VALID_PRD)
+    expect(runPrdDraft(dir, { idea: 'replacement', force: true, isAvailable: () => true, run: writingRun(VALID_PRD) })).toBe(0)
+  })
+
+  it('rejects a staged draft after a concurrent canonical edit and preserves that edit', () => {
+    const path = join(dir, '.yoke', 'prd.yaml'), edited = VALID_PRD + '# edited while drafting\n'
+    writeFileSync(path, VALID_PRD)
+    expect(runPrdDraft(dir, { idea: 'replacement', force: true, isAvailable: () => true, run: inv => {
+      const result = writingRun(VALID_PRD)(inv)
+      writeFileSync(path, edited)
+      return result
+    } })).toBe(1)
+    expect(readFileSync(path, 'utf8')).toBe(edited)
   })
 })
 

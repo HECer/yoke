@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os'
 import { runPrdExplore } from '../../src/prd/explore.js'
 import { loadPrd } from '../../src/loop/prd.js'
 import { realGitOps } from '../../src/loop/git.js'
+import { saveConfig } from '../../src/retrofit/config.js'
+import { executionBudgetStatus } from '../../src/execution/budget.js'
 
 let dir: string
 
@@ -30,7 +32,7 @@ beforeEach(() => {
   execFileSync('git', ['commit', '-m', 'fixture'], { cwd: dir, stdio: 'ignore' })
 })
 
-afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+afterEach(() => { vi.unstubAllEnvs(); rmSync(dir, { recursive: true, force: true }); rmSync(`${dir}-host-state`, { recursive: true, force: true }) })
 
 function plannedOutput(): string {
   return `YOKE_EXPLORATION\n${JSON.stringify({
@@ -53,6 +55,19 @@ function plannedOutput(): string {
 }
 
 describe('continuous exploration planning', () => {
+  it('charges exploration planning and blocks another cycle after the shared allowance is exhausted', () => {
+    vi.stubEnv('LOCALAPPDATA', `${dir}-host-state`)
+    saveConfig(dir, { canonVersion: 'test', agents: ['codex'], loop: { enabled: true }, executionBudget: { id: 'exploration', maxCalls: 1 } })
+    execFileSync('git', ['add', '.yoke/config.yaml'], { cwd: dir, stdio: 'ignore' })
+    execFileSync('git', ['commit', '-m', 'budget fixture'], { cwd: dir, stdio: 'ignore' })
+    const run = vi.fn(() => ({ success: true, summary: 'malformed', output: 'invalid proposal', tokens: { inputTokens: 8, outputTokens: 2 } }))
+    expect(runPrdExplore(dir, { runner: 'codex', isAvailable: () => true, run, onUsage: () => {} }).kind).toBe('retry')
+    runPrdExplore(dir, { runner: 'codex', isAvailable: () => true, run, onUsage: () => {} })
+    expect(run).toHaveBeenCalledTimes(1)
+    const budget = executionBudgetStatus(dir)
+    expect(budget).toMatchObject({ configured: true, admittedCalls: 1, knownTokens: 10 })
+    expect(budget.configured && budget.calls[0].role).toBe('exploration')
+  })
   it('validates, appends and commits an evidence-backed task before implementation', () => {
     const run = vi.fn(() => ({ success: true, summary: 'planned', output: plannedOutput() }))
     const result = runPrdExplore(dir, { runner: 'codex', isAvailable: () => true, run, onUsage: () => {} })

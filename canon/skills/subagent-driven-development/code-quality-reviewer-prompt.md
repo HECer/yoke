@@ -1,6 +1,6 @@
 # Code quality reviewer handoff
 
-Supply the task, Acceptance criteria, base and candidate commits, architecture constraints, test evidence, and known risks. Review with read-only permissions after the specification review.
+Supply the task, Acceptance criteria, base and candidate commits, architecture constraints, test evidence, and known risks. Review with read-only permissions. This can be combined with acceptance review; use a separate pass only for a concrete specialist risk.
 
 Inspect correctness, error paths, concurrency, resource cleanup, security boundaries, compatibility, and regression coverage. Prioritize reproducible defects over stylistic preferences. Check that optimizations preserve required gates and that unknown usage or timing evidence is not reported as zero or certainty.
 

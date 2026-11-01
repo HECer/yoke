@@ -1,3 +1,7 @@
-# Tool: Playwright MCP (browser / dogfooding)
+# Tool: Playwright MCP
 
-Microsoft Playwright MCP, Apache-2.0. Wired as an MCP server for the harnesses that support native MCP configuration (Claude, Codex, Gemini, Qwen, OpenCode and Kilo). Pi has no native MCP layer, so Pi projects use the portable skills and explicit Yoke gates instead. Used for QA, dogfooding user flows, screenshots, and deploy verification.
+Use browser tools when UI inspection or interaction is required. Select them explicitly with `yoke setup . --browser-tools` or `yoke retrofit . --browser-tools`. New setups do not expose browser tools automatically. Generated launch configuration pins `@playwright/mcp@0.0.84`; verify compatibility before updating that pin.
+
+Claude, Codex, Gemini, Qwen, OpenCode, and Kilo receive their native MCP configuration. Pi and Hermes use available host browser capabilities or explicit Yoke smoke gates. `--no-browser-tools` removes recognized Yoke browser launch entries while preserving unrelated JSON-configured servers.
+
+The browser server is a local executable with access determined by its host. Choosing it does not establish a sandbox or authorize unrelated website actions. Keep functional acceptance and source-bound screenshot evidence separate from optional visual-style heuristics.

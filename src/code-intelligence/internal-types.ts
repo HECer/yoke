@@ -1,5 +1,5 @@
 export type Item = { item_id: string; kind: 'symbol' | 'code' | 'document' | 'memory' | 'summary'; path: string | null; excerpt: string; evidence_ids: string[]; rank: number }
-export type Symbol = { symbol_id: string; name: string; path: string | null; kind: string; signature: string | null; evidence_ids: string[] }
+export type Symbol = { symbol_id: string; name: string; path: string | null; kind: string; signature: string | null; line?: number | null; reference_line?: number | null; evidence_ids: string[] }
 export type Reference = { symbol_id: string; path: string | null; line: number | null; excerpt: string; evidence_ids: string[] }
 export type Diagnostic = { path: string | null; line: number | null; severity: 'error' | 'warning' | 'info' | 'unknown'; message: string; evidence_ids: string[] }
 export type Edge = { from: string; to: string; relation: 'calls' | 'references' | 'imports' | 'implements' | 'extends' | 'docs' | 'rationale_for' | 'related_to'; evidence_ids: string[] }

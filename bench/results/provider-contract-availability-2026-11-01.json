@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "yoke-provider-contract/2026-11/v1",
+  "measuredAt": "2026-11-01T15:40:22.391Z",
+  "node": "v24.22.1",
+  "platform": "linux",
+  "mode": "availability-only",
+  "results": [
+    {
+      "agent": "claude",
+      "availability": "unavailable",
+      "version": null,
+      "modelRequested": null,
+      "contract": {
+        "status": "not-run"
+      }
+    },
+    {
+      "agent": "codex",
+      "availability": "unavailable",
+      "version": null,
+      "modelRequested": null,
+      "contract": {
+        "status": "not-run"
+      }
+    },
+    {
+      "agent": "gemini",
+      "availability": "unavailable",
+      "version": null,
+      "modelRequested": null,
+      "contract": {
+        "status": "not-run"
+      }
+    },
+    {
+      "agent": "qwen",
+      "availability": "unavailable",
+      "version": null,
+      "modelRequested": null,
+      "contract": {
+        "status": "not-run"
+      }
+    },
+    {
+      "agent": "opencode",
+      "availability": "unavailable",
+      "version": null,
+      "modelRequested": null,
+      "contract": {
+        "status": "not-run"
+      }
+    },
+    {
+      "agent": "kilo",
+      "availability": "unavailable",
+      "version": null,
+      "modelRequested": null,
+      "contract": {
+        "status": "not-run"
+      }
+    },
+    {
+      "agent": "pi",
+      "availability": "unavailable",
+      "version": null,
+      "modelRequested": null,
+      "contract": {
+        "status": "not-run"
+      }
+    },
+    {
+      "agent": "hermes",
+      "availability": "unavailable",
+      "version": null,
+      "modelRequested": null,
+      "contract": {
+        "status": "not-run"
+      }
+    }
+  ],
+  "limits": [
+    "Availability probes do not validate CLI contracts.",
+    "A live pass validates only benign structured output on the recorded version/model.",
+    "No permission-denial, native delegation, real tool execution, or cancellation claim follows from this smoke.",
+    "Unknown usage is retained as unknown; no token or price estimate is substituted."
+  ]
+}

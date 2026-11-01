@@ -16,9 +16,7 @@ const PairRequestSchema = z.object({
   role: z.literal('opaque-comparison-critic'),
   permissions: z.literal('read-only'),
   attemptId: z.string(),
-  promptDigest: z.string(),
-  rubricDigest: z.string(),
-  trustedJudgeProvenance: z.object({ provider: z.string(), model: z.string() }).strict(),
+  responseSchema: z.record(z.string(), z.unknown()),
   rubric: z.string(),
   output: z.string(),
   left: z.object({ label: z.enum(['A', 'B']), digest: z.string(), artifacts: z.array(z.string()).min(1) }),
@@ -39,6 +37,9 @@ const PairVerdictSchema = z.object({
     model: z.string(),
     promptDigest: z.string(),
     rubricDigest: z.string(),
+    requestedModel: z.string(),
+    actualModel: z.string().nullable(),
+    inputDigest: z.string(),
   }),
 })
 
@@ -100,7 +101,7 @@ describe('candidate comparison staging', () => {
         expect(relative(project, invocation.cwd)).not.toBe('')
         expect(resolve(invocation.cwd).startsWith(resolve(project))).toBe(false)
         expect(JSON.stringify(request)).not.toContain('candidate-')
-        expect(request.trustedJudgeProvenance).toEqual({ provider: 'opencode', model: 'critic-model' })
+        expect(request).not.toHaveProperty('trustedJudgeProvenance')
         expect(readdirSync(invocation.cwd).sort()).toEqual([...request.left.artifacts, ...request.right.artifacts].sort())
         const leftBytes = readFileSync(join(invocation.cwd, request.left.artifacts[0] ?? ''), 'utf8')
         const rightBytes = readFileSync(join(invocation.cwd, request.right.artifacts[0] ?? ''), 'utf8')
@@ -111,16 +112,6 @@ describe('candidate comparison staging', () => {
             winner: winner.label,
             evidence: ['selected staged bytes'],
             confidence: 'high',
-            left: { label: request.left.label, digest: request.left.digest },
-            right: { label: request.right.label, digest: request.right.digest },
-            provenance: {
-              leftDigest: request.left.digest,
-              rightDigest: request.right.digest,
-              provider: request.trustedJudgeProvenance.provider,
-              model: request.trustedJudgeProvenance.model,
-              promptDigest: request.promptDigest,
-              rubricDigest: request.rubricDigest,
-            },
           })
         return {
           success: true,
@@ -167,6 +158,8 @@ describe('candidate comparison staging', () => {
 
     expect(requests).toHaveLength(2)
     expect(normal).toMatchObject({ winner: 'B' })
+    expect(normal.provenance).toMatchObject({ requestedModel: 'critic-model', actualModel: 'provider-canonical-model' })
+    expect(normal.provenance.inputDigest).not.toBe(swapped.provenance.inputDigest)
     expect(swapped).toMatchObject({ winner: 'A' })
     expect(reduceCandidatePairComparisons({ expected, normal, swapped })).toMatchObject({
       kind: 'selected',
@@ -178,6 +171,9 @@ describe('candidate comparison staging', () => {
       kind: 'inconsistent',
       reason: 'provenance-mismatch',
     })
+    for (const actualModel of ['different-provider-model', null]) {
+      expect(reduceCandidatePairComparisons({ expected, normal, swapped: { ...swapped, provenance: { ...swapped.provenance, actualModel } } })).toEqual({ kind: 'inconsistent', reason: 'provenance-mismatch' })
+    }
     expect(existsSync(judgeRoot)).toBe(false)
     expect(reads).toBe(2)
   })
