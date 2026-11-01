@@ -25,6 +25,7 @@ import type { QualityCommandHooks } from '../quality/command.js'
 import type { ProviderProcessResult } from '../agents/process.js'
 import { acquireSharedWorker, sharedPoolStatus } from './resource-pool.js'
 import { providerTelemetryUsage } from '../observability/usage.js'
+import { withExecutionBudgetScope } from '../execution/budget.js'
 
 export type ParallelCommandInput = {
   readonly targetDir: string
@@ -62,6 +63,9 @@ export type ParallelCommandInput = {
 }
 
 export async function runParallelLoopCommand(input: ParallelCommandInput): Promise<number> {
+  return withExecutionBudgetScope(input.targetDir, () => parallelCommand(input))
+}
+async function parallelCommand(input: ParallelCommandInput): Promise<number> {
   const originalVerify = input.verify, originalCriterion = input.verifyCriterion
   const cacheProblem = (path: string) => !input.git && path !== input.targetDir ? cacheIsolationProblem(path) : undefined
   input = { ...input, verify: path => {
@@ -372,13 +376,13 @@ function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider,
       orchestratorSelection: input.routing.orchestrator,
       isAvailable: input.isAvailable ?? isAgentAvailable,
       captureRoute: async (agent, context, prompt, selection) => {
-        const result = await startProviderProcess(agent, runnerInvocation(agent, prompt, context.targetDir, true, 'read-only', selection), { idleTimeoutMs: input.idleMs, signal, workerId }).completion
+        const result = await startProviderProcess(agent, { ...runnerInvocation(agent, prompt, context.targetDir, true, 'read-only', selection), execution: { root: input.targetDir, role: 'routing', provider: agent, storyId: context.story.id } }, { idleTimeoutMs: input.idleMs, signal, workerId }).completion
         return { ...providerProcessResultToAgentResult(agent, context.story.id, result), output: result.stdout }
       },
       makeWorker: (agent, selection) => async context => {
         if (signal?.aborted) return { success: false, summary: 'Routing cancelled before worker start' }
         input.reporter.parallelWorker?.({ story: context.story.id, storyTitle: context.story.title, provider: agent, selectedProvider: selection.provider ?? agent, selectedModel: selection.model, selectedVariant: selection.variant, phase: 'implementing' })
-        const run = makeAsyncRunner(agent, { onAmbiguity: input.onAmbiguity, permissions: input.permissions, selection,
+        const run = makeAsyncRunner(agent, { onAmbiguity: input.onAmbiguity, permissions: input.permissions, selection, ownershipRoot: input.targetDir,
           process: { idleTimeoutMs: input.idleMs, signal, workerId } })
         return providerProcessResultToAgentResult(agent, context.story.id, await run(context).completion)
       },
@@ -389,6 +393,7 @@ function asyncRunner(input: ParallelCommandInput, provider: StoryWorkerProvider,
   }
   const { model: _globalModel, reasoningEffort: _globalReasoningEffort, nativeMultiAgent: _globalNative, bare: globalBare, ...selection } = input.selection
   const runner = makeAsyncRunner(provider.provider, {
+    ownershipRoot: input.targetDir,
     onAmbiguity: input.onAmbiguity,
     permissions: input.permissions,
     selection: {

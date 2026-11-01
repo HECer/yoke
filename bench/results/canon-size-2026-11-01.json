@@ -1,0 +1,180 @@
+{
+  "kind": "canonical-entrypoint-source-bytes",
+  "baseline": "a97c5e09aee68c00acede09c92753f56ac754ecb",
+  "entries": 34,
+  "beforeBytes": 257899,
+  "afterBytes": 67366,
+  "files": [
+    {
+      "path": "canon/skills/authoring-prd/SKILL.md",
+      "beforeBytes": 2915,
+      "afterBytes": 2915
+    },
+    {
+      "path": "canon/skills/brainstorming/SKILL.md",
+      "beforeBytes": 10634,
+      "afterBytes": 1554
+    },
+    {
+      "path": "canon/skills/codebase-design/SKILL.md",
+      "beforeBytes": 2316,
+      "afterBytes": 2316
+    },
+    {
+      "path": "canon/skills/dispatching-parallel-agents/SKILL.md",
+      "beforeBytes": 6441,
+      "afterBytes": 1406
+    },
+    {
+      "path": "canon/skills/document-release/SKILL.md",
+      "beforeBytes": 13130,
+      "afterBytes": 1673
+    },
+    {
+      "path": "canon/skills/domain-modeling/SKILL.md",
+      "beforeBytes": 1897,
+      "afterBytes": 1897
+    },
+    {
+      "path": "canon/skills/executing-plans/SKILL.md",
+      "beforeBytes": 2538,
+      "afterBytes": 1481
+    },
+    {
+      "path": "canon/skills/finishing-a-development-branch/SKILL.md",
+      "beforeBytes": 4250,
+      "afterBytes": 1159
+    },
+    {
+      "path": "canon/skills/health/SKILL.md",
+      "beforeBytes": 5892,
+      "afterBytes": 1365
+    },
+    {
+      "path": "canon/skills/maintaining-context/SKILL.md",
+      "beforeBytes": 1673,
+      "afterBytes": 1673
+    },
+    {
+      "path": "canon/skills/minimal-code/SKILL.md",
+      "beforeBytes": 1530,
+      "afterBytes": 1574
+    },
+    {
+      "path": "canon/skills/no-ai-slop/SKILL.md",
+      "beforeBytes": 6060,
+      "afterBytes": 6060
+    },
+    {
+      "path": "canon/skills/performance/SKILL.md",
+      "beforeBytes": 3034,
+      "afterBytes": 3034
+    },
+    {
+      "path": "canon/skills/plan-ceo-review/SKILL.md",
+      "beforeBytes": 25939,
+      "afterBytes": 1543
+    },
+    {
+      "path": "canon/skills/plan-eng-review/SKILL.md",
+      "beforeBytes": 18561,
+      "afterBytes": 1880
+    },
+    {
+      "path": "canon/skills/receiving-code-review/SKILL.md",
+      "beforeBytes": 6314,
+      "afterBytes": 1321
+    },
+    {
+      "path": "canon/skills/requesting-code-review/SKILL.md",
+      "beforeBytes": 3185,
+      "afterBytes": 1393
+    },
+    {
+      "path": "canon/skills/resolving-merge-conflicts/SKILL.md",
+      "beforeBytes": 1212,
+      "afterBytes": 1212
+    },
+    {
+      "path": "canon/skills/retro/SKILL.md",
+      "beforeBytes": 14493,
+      "afterBytes": 1333
+    },
+    {
+      "path": "canon/skills/review/SKILL.md",
+      "beforeBytes": 9854,
+      "afterBytes": 2025
+    },
+    {
+      "path": "canon/skills/ship/SKILL.md",
+      "beforeBytes": 30602,
+      "afterBytes": 2338
+    },
+    {
+      "path": "canon/skills/subagent-driven-development/SKILL.md",
+      "beforeBytes": 12684,
+      "afterBytes": 2129
+    },
+    {
+      "path": "canon/skills/systematic-debugging/SKILL.md",
+      "beforeBytes": 9948,
+      "afterBytes": 1847
+    },
+    {
+      "path": "canon/skills/tdd/SKILL.md",
+      "beforeBytes": 9891,
+      "afterBytes": 1777
+    },
+    {
+      "path": "canon/skills/unslop-ui/SKILL.md",
+      "beforeBytes": 2159,
+      "afterBytes": 1558
+    },
+    {
+      "path": "canon/skills/using-git-worktrees/SKILL.md",
+      "beforeBytes": 5635,
+      "afterBytes": 1325
+    },
+    {
+      "path": "canon/skills/verification-before-completion/SKILL.md",
+      "beforeBytes": 4201,
+      "afterBytes": 1460
+    },
+    {
+      "path": "canon/skills/visual-verification/SKILL.md",
+      "beforeBytes": 3807,
+      "afterBytes": 3732
+    },
+    {
+      "path": "canon/skills/workflow/SKILL.md",
+      "beforeBytes": 1436,
+      "afterBytes": 1307
+    },
+    {
+      "path": "canon/skills/writing-for-agents/SKILL.md",
+      "beforeBytes": 2275,
+      "afterBytes": 2275
+    },
+    {
+      "path": "canon/skills/writing-plans/SKILL.md",
+      "beforeBytes": 6046,
+      "afterBytes": 1786
+    },
+    {
+      "path": "canon/skills/writing-skills/SKILL.md",
+      "beforeBytes": 22624,
+      "afterBytes": 2022
+    },
+    {
+      "path": "canon/skills/yoke-retrofit/SKILL.md",
+      "beforeBytes": 2011,
+      "afterBytes": 2011
+    },
+    {
+      "path": "canon/skills/yoke-workflow/SKILL.md",
+      "beforeBytes": 2712,
+      "afterBytes": 2985
+    }
+  ],
+  "limits": "UTF-8 source bytes, not observed provider tokens; skills load conditionally and task outcome comparisons require authenticated runs."
+}

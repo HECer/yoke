@@ -164,7 +164,7 @@ implementation attempt. A planner may itself incur cost before a later worker
 is refused; that paid call is still reported. Goal callers recheck their durable
 budget after planning and before implementation reservation.
 
-A changed task/plan contract has a new account. Resume an unchanged blocked task
+A changed task/plan contract has a new story-attempt account. The separate project execution budget retains the same configured identity across those changes; it covers planning, review, quality, candidates, repairs, and implementation. See [November budget semantics](AUDIT-REMEDIATION-2026-11.md). Resume an unchanged blocked task
 only after inspecting its reason and performing the required replan or explicit
 configuration change. Do not delete authoritative attempt state to disguise
 retries as a new run.
@@ -178,3 +178,7 @@ blocks, callback/write failures, complete escalation accounting, cold starts,
 model/policy changes and objective selection. They are regression tests for the
 accounting and decision rules, not provider performance benchmarks. No claimed
 cost or speed improvement follows from those test fixtures.
+
+## November routing corrections
+
+A debugging label alone no longer requires a strong model. Difficulty, scope, risk, uncertainty, weak testability, and role floors still determine eligibility. After one targeted retry, an escalation must choose a different provider/model/effort/variant invocation; renaming an identical profile with a higher tier does not qualify. New Gemini presets retain only the distinct light and standard invocations. Configure additional validated profiles when a task's floor is higher; new setup reports missing strong/frontier coverage. Existing operator profiles are preserved.

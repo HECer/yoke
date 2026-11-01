@@ -12,10 +12,12 @@ import { resolvePlanner } from '../routing/planning.js'
 import { AssessmentSchema, assessmentInstructions } from '../routing/assessment.js'
 import { contractKeys, readPlanningFile } from '../routing/contracts.js'
 import { appendEvent } from '../observability/events.js'
-import { requirementsDigest, requirementsPacket } from './requirements.js'
+import { readRequirements, requirementsDigest, requirementsPacket, type RequirementsLedger } from './requirements.js'
+import { recoverPlanningTransaction } from './transaction.js'
+import { budgetedInvocation, withExecutionBudgetScope } from '../execution/budget.js'
 
-export function preparedProblems(stories: Story[], brief = '', requirementDigest = ''): string[] {
-  const keys = contractKeys(stories, brief, requirementDigest)
+export function preparedProblems(stories: Story[], brief = '', requirements: string | RequirementsLedger = ''): string[] {
+  const keys = contractKeys(stories, brief, requirements)
   return stories.filter(s => !s.passes).flatMap(s => {
     const errors = []
     if (!s.assessment || s.assessmentFor !== keys.get(s.id)) errors.push(`${s.id}: missing or stale assessment; run yoke prd assess`)
@@ -24,8 +26,8 @@ export function preparedProblems(stories: Story[], brief = '', requirementDigest
   })
 }
 
-export function bindAssessments(stories: Story[], brief = '', requirementDigest = ''): Story[] {
-  const keys = contractKeys(stories, brief, requirementDigest)
+export function bindAssessments(stories: Story[], brief = '', requirements: string | RequirementsLedger = ''): Story[] {
+  const keys = contractKeys(stories, brief, requirements)
   return stories.map(s => s.assessment ? { ...s, assessmentFor: keys.get(s.id) } : s)
 }
 
@@ -57,16 +59,21 @@ export interface AssessOptions {
 
 /** One bounded read-only model call, then an all-or-nothing parent-owned write. */
 export function runPrdAssess(root: string, options: AssessOptions = {}): number {
+  return withExecutionBudgetScope(root, () => assess(root, options))
+}
+function assess(root: string, options: AssessOptions): number {
   let lock: ReturnType<typeof acquireLock> | undefined
   try {
+    recoverPlanningTransaction(root)
     // Read first to reject linked/oversized files before acquiring a write lease.
     const before = readPlanningFile(root, '.yoke/prd.yaml')
     if (before === undefined) throw Error('No PRD. Draft the work package first.')
     const brief = readPlanningFile(root, '.yoke/plan.md', 80_000) ?? ''
     const stories = loadPrd(join(root, '.yoke/prd.yaml'))
     const requirementDigest = requirementsDigest(root)
+    const ledger = readRequirements(root)
     if (!stories.length) throw Error('PRD has no stories')
-    const keys = contractKeys(stories, brief, requirementDigest)
+    const keys = contractKeys(stories, brief, ledger ?? '')
     if (options.story !== undefined && !stories.some(s => s.id === options.story && !s.passes)) throw Error('Select an existing unfinished story')
     const config = loadConfig(root)
     const targets = stories.filter(s => !s.passes && (!options.story || options.story === s.id) && (options.reassess || !s.assessment || s.assessmentFor !== keys.get(s.id)))
@@ -90,9 +97,9 @@ export function runPrdAssess(root: string, options: AssessOptions = {}): number 
     lock = acquireLock(root)
     if (!lock.acquired) throw Error('A loop or planner already owns this project; wait or use yoke loop cleanup for stale state')
     const started = Date.now(), runId = randomUUID()
-    const invocation = buildWatchdogInvocation(runnerInvocation(planner.agent, prompt, root, true, 'read-only', planner.selection), 5 * 60_000)
+    const invocation = buildWatchdogInvocation({ ...runnerInvocation(planner.agent, prompt, root, true, 'read-only', planner.selection), execution: { root, role: 'assessment', provider: planner.agent } }, 5 * 60_000)
     console.log(`Assessing ${targets.length} tasks together with ${planner.agent}/${planner.selection.model ?? 'provider default'}...`)
-    const result = (options.run ?? runCapturedAgent)(planner.agent, invocation)
+    const result = budgetedInvocation(planner.agent, invocation, admitted => (options.run ?? runCapturedAgent)(planner.agent, admitted))
     appendEvent(root, { runId, timestamp: new Date().toISOString(), type: 'tokens', data: { ...result.tokens, provider: planner.agent, role: 'planner', usageAvailable: !!result.tokens && result.tokens.measurementComplete !== false }, durationMs: Date.now() - started })
     if (!result.success) throw Error(`Batch planning failed: ${result.summary}`)
     const batch = parseBatch(result.output)
@@ -105,7 +112,7 @@ export function runPrdAssess(root: string, options: AssessOptions = {}): number 
     const temp = join(root, '.yoke', `assessment-${randomUUID()}.tmp`)
     try { writeFileSync(temp, stringify(next), { flag: 'wx' }); renameSync(temp, join(root, '.yoke/prd.yaml')) }
     finally { rmSync(temp, { force: true }) }
-    console.log(`Prepared ${targets.length} assessments; ${preparedProblems(next, brief, requirementDigest).length} remaining readiness issue(s).`)
+    console.log(`Prepared ${targets.length} assessments; ${preparedProblems(next, brief, ledger ?? '').length} remaining readiness issue(s).`)
     return 0
   } catch (error) { console.error(`Assessment: ${(error as Error).message}`); return 1 }
   finally { if (lock?.acquired) releaseLock(root, lock.ownerToken) }

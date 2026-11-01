@@ -13,6 +13,7 @@ import { pruneWorktrees } from '../loop/cleanup.js'
 export interface RetrofitOptions {
   loop: boolean
   agents?: Agent[]
+  browserTools?: boolean
   codeGraph?: CodeGraph
   codeIntelligence?: CodeIntelligenceMode
   host?: Agent
@@ -40,10 +41,11 @@ export function runRetrofit(targetDir: string, opts: RetrofitOptions): number {
     : (detection.agents.length > 0 ? detection.agents : [opts.host ?? detectHostAgent() ?? 'claude'])
 
   const existing = loadConfig(targetDir)
-  const codeGraph: CodeGraph = opts.codeGraph ?? existing?.codeGraph ?? 'graphify'
+  const codeGraph: CodeGraph = opts.codeGraph ?? existing?.codeGraph ?? 'none'
   const codeIntelligence: CodeIntelligenceMode = opts.codeIntelligence ?? existing?.codeIntelligence?.mode ?? 'off'
 
-  const actions = planRetrofit(canonDir, targetDir, agents, codeGraph, codeIntelligence)
+  const browserTools = opts.browserTools ?? existing?.browserTools ?? false
+  const actions = planRetrofit(canonDir, targetDir, agents, codeGraph, codeIntelligence, browserTools)
   const backupDir = join(targetDir, '.yoke', 'backup', String(Date.now()))
   const applied = applyActions(actions, targetDir, { backupDir })
 
@@ -69,16 +71,18 @@ export function runRetrofit(targetDir: string, opts: RetrofitOptions): number {
 
   const config: YokeConfig = {
     ...(existing ?? defaultConfig(canonVersion)),
+    ...(!existing ? { executionBudget: { id: 'default', maxCalls: 24, maxMinutes: 120, maxPromptBytes: 128000 } } : {}),
     canonVersion,
     agents: mergedAgents,
     loop: { ...existing?.loop, enabled: opts.loop },
     codeGraph,
+    browserTools,
     codeIntelligence: { ...(existing?.codeIntelligence ?? {}), mode: codeIntelligence },
     ...(Object.keys(runnerConfig).length > 0 ? { runner: runnerConfig } : {}),
     ...(existing?.routing && updatedWorkers ? { routing: { ...existing.routing, workers: updatedWorkers } } : {}),
     ...(existing?.design
       ? { design: existing.design }
-      : detection.ui.detected ? { design: { mode: 'auto' as const, max: 4 } } : {}),
+      : detection.ui.detected ? { design: { mode: 'off' as const, max: 4 } } : {}),
   }
   saveConfig(targetDir, config)
 

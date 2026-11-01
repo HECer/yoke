@@ -1,22 +1,14 @@
 ---
 name: workflow
-description: Use at the start of any non-trivial task — the default order of operations for shipping quality work, from idea to deploy.
+description: "Coordinate a multi-step software change when no more specific workflow applies. Use yoke-workflow when Yoke owns the backlog and loop; do not apply every methodology to every task."
 ---
 
-# Workflow — the default order of operations
+# Deliver an accepted change
 
-For any non-trivial change, move through these phases in order (skip only what genuinely does not apply):
+Read the user's objective, repository instructions, and relevant code. Establish enough acceptance evidence to distinguish success from a plausible implementation. Reuse an existing specification or approved plan.
 
-When `.yoke/config.yaml` exists and the user wants Yoke to own planning plus autonomous
-execution, use `yoke-workflow` as the entrypoint. It adds the approved-plan → PRD → loop
-handoff and the configured critical-decision behavior to the phases below.
+Resolve material uncertainty, then implement the smallest complete change. Write a plan only when dependencies or a handoff require it. Reproduce behavioral defects where feasible and choose checks that can detect the relevant failure. Run focused checks during iteration and all required acceptance, integration, and release gates at their boundaries.
 
-1. **Brainstorm** the idea into a clear design — see `brainstorming`.
-2. **Plan** a concrete, testable implementation — see `writing-plans`.
-3. **Understand the code** — map the blast radius with the code-graph before changing anything.
-4. **Implement test-first** — RED → GREEN → REFACTOR, smallest steps — see `tdd` and `minimal-code`.
-5. **Verify** — run the real tests and exercise the change; never trust "it should work" — see `verification-before-completion`.
-6. **Review** — get an independent review of the diff before landing — see `review` / `requesting-code-review`.
-7. **Ship** — bump version, update changelog and docs, open the PR — see `ship` / `document-release`.
+Keep one execution controller and a shared budget. Load only the specific skill needed for the current uncertainty. Use deterministic actions for routine work; do not automatically chain brainstorming, a full plan, multiple reviewers, and a release process.
 
-Stop-the-Line applies throughout: no implementation before acceptance criteria exist. Always prefer the least code that solves the task (`minimal-code`).
+Inspect the integrated diff, resolve blockers, and complete the authorized handoff. A PR does not imply a version bump, merge, deployment, or package publication. Report what changed, the evidence, and material unverified risks.

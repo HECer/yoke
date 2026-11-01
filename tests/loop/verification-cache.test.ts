@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { commandVerifier } from '../../src/loop/verify.js'
@@ -114,4 +114,104 @@ it('frames ignored file boundaries so moving path-shaped bytes cannot preserve i
   writeFileSync(second, 'z')
   session.run(root, 'reads ignored inputs', 'criterion', execute)
   expect(executions).toBe(2)
+})
+
+it('rejects an oversized tree before reading workspace content or the Node executable', async () => {
+  const { createVerificationSession } = await api(), notices: unknown[] = []
+  const session = createVerificationSession({ onDiagnostic: (notice: unknown) => notices.push(notice) })
+  const large = join(root, 'large.bin')
+  writeFileSync(large, ''); truncateSync(large, 65 * 1024 * 1024)
+  let executions = 0
+  const execute = () => { executions++; return { passed: true, summary: 'passed' } }
+  session.run(root, 'check', 'criterion', execute); session.run(root, 'check', 'criterion', execute)
+  expect(executions).toBe(2)
+  expect(session.diagnostics()).toMatchObject({ identityChecks: 2, workspaceFilesHashed: 0, workspaceBytesHashed: 0, runtimeBytesHashed: 0, skipped: { byte_limit: 2 } })
+  expect(notices).toHaveLength(1)
+})
+
+it('reads each workspace file only once per identity and includes executable permissions', async () => {
+  const { createVerificationSession } = await api(), session = createVerificationSession()
+  const execute = () => ({ passed: true, summary: 'passed' })
+  session.run(root, 'check', 'criterion', execute)
+  session.run(root, 'check', 'criterion', execute)
+  expect(session.stats()).toEqual({ executed: 1, reused: 1 })
+  expect(session.diagnostics()).toMatchObject({ identityChecks: 3, workspaceFilesHashed: 3, workspaceBytesHashed: 3 * Buffer.byteLength('original') })
+  if (process.platform !== 'win32') {
+    chmodSync(join(root, 'source.ts'), 0o755)
+    session.run(root, 'check', 'criterion', execute)
+    expect(session.stats().executed).toBe(2)
+  }
+})
+
+it('reports linked inputs and successful input mutations without caching them', async () => {
+  const { createVerificationSession } = await api(), session = createVerificationSession()
+  session.run(root, 'mutate', 'criterion', () => { writeFileSync(join(root, 'source.ts'), 'different'); return { passed: true, summary: 'passed' } })
+  expect(session.diagnostics().skipped.mutating_command).toBe(1)
+  if (process.platform !== 'win32') {
+    symlinkSync(join(root, 'source.ts'), join(root, 'linked'))
+    session.run(root, 'check', 'criterion', () => ({ passed: true, summary: 'passed' }))
+    expect(session.diagnostics().lastSkip?.reason).toBe('linked_input')
+  }
+})
+
+it('binds Git HEAD even when a new commit has exactly the same working tree', async () => {
+  const { execFileSync } = await import('node:child_process')
+  execFileSync('git', ['init', '--quiet'], { cwd: root })
+  execFileSync('git', ['add', '.'], { cwd: root })
+  const gitCommit = (message: string) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '--quiet', '--allow-empty', '-m', message], { cwd: root })
+  gitCommit('initial')
+  const { createVerificationSession } = await api(), session = createVerificationSession()
+  const execute = () => ({ passed: true, summary: 'passed' })
+  session.run(root, 'reads git head', 'criterion', execute)
+  gitCommit('empty commit')
+  session.run(root, 'reads git head', 'criterion', execute)
+  expect(session.stats().executed).toBe(2)
+})
+
+it('requires an explicit complete input declaration to avoid unrelated runtime-state invalidation', async () => {
+  const { createVerificationSession } = await api()
+  mkdirSync(join(root, '.yoke'))
+  writeFileSync(join(root, '.yoke/status.json'), 'first')
+  writeFileSync(join(root, '.yoke/requirements.yaml'), 'approved')
+  const session = createVerificationSession({ inputPaths: ['source.ts'] })
+  const execute = () => ({ passed: true, summary: 'passed' })
+  session.run(root, 'check', 'criterion', execute)
+  writeFileSync(join(root, '.yoke/status.json'), 'later')
+  session.run(root, 'check', 'criterion', execute)
+  expect(session.stats()).toEqual({ executed: 1, reused: 1 })
+  writeFileSync(join(root, '.yoke/requirements.yaml'), 'changed approval')
+  session.run(root, 'check', 'criterion', execute)
+  expect(session.stats().executed).toBe(2)
+  writeFileSync(join(root, 'source.ts'), 'changed source')
+  session.run(root, 'check', 'criterion', execute)
+  expect(session.stats().executed).toBe(3)
+})
+
+it.each([[], ['../outside'], ['/tmp'], ['src/**/*.ts'], ['missing'], Array.from({ length: 257 }, () => 'source.ts')].map(inputPaths => ({ inputPaths })))('disables reuse for invalid declared inputs $inputPaths', async ({ inputPaths }) => {
+  const { createVerificationSession } = await api(), session = createVerificationSession({ inputPaths })
+  const execute = () => ({ passed: true, summary: 'passed' })
+  session.run(root, 'check', 'criterion', execute); session.run(root, 'check', 'criterion', execute)
+  expect(session.stats()).toEqual({ executed: 2, reused: 0 })
+  expect(session.diagnostics()).toMatchObject({ runtimeBytesHashed: 0, workspaceBytesHashed: 0, skipped: { invalid_inputs: 2 } })
+})
+
+it.skipIf(process.platform === 'win32')('refuses a declared file behind a symlink ancestor', async () => {
+  const { createVerificationSession } = await api()
+  mkdirSync(join(root, 'actual')); writeFileSync(join(root, 'actual/input.ts'), 'input')
+  symlinkSync(join(root, 'actual'), join(root, 'alias'))
+  const session = createVerificationSession({ inputPaths: ['alias/input.ts'] })
+  session.run(root, 'check', 'criterion', () => ({ passed: true, summary: 'passed' }))
+  expect(session.diagnostics()).toMatchObject({ runtimeBytesHashed: 0, workspaceBytesHashed: 0, skipped: { linked_input: 1 } })
+})
+
+it('keeps declared dependencies, environment and policy in the reuse identity', async () => {
+  const { createVerificationSession } = await api()
+  mkdirSync(join(root, 'node_modules')); writeFileSync(join(root, 'node_modules/tool.js'), 'one')
+  const session = createVerificationSession({ inputPaths: ['source.ts', 'node_modules'] }), execute = () => ({ passed: true, summary: 'passed' })
+  session.run(root, 'check', 'verify', execute, { env: { FLAG: 'one' }, policyKey: 'one' })
+  writeFileSync(join(root, 'node_modules/tool.js'), 'two')
+  session.run(root, 'check', 'verify', execute, { env: { FLAG: 'one' }, policyKey: 'one' })
+  session.run(root, 'check', 'verify', execute, { env: { FLAG: 'two' }, policyKey: 'one' })
+  session.run(root, 'check', 'verify', execute, { env: { FLAG: 'two' }, policyKey: 'two' })
+  expect(session.stats()).toEqual({ executed: 4, reused: 0 })
 })

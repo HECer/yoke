@@ -1,11 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { planCodex } from '../../src/retrofit/planners/codex.js'
 import { applyActions } from '../../src/retrofit/apply.js'
 
 let canon: string
+const targets: string[] = []
+function targetWithConfig(source: string): string {
+  const target = mkdtempSync(join(tmpdir(), 'yoke-codex-config-'))
+  targets.push(target)
+  mkdirSync(join(target, '.codex'))
+  writeFileSync(join(target, '.codex/config.toml'), source)
+  return target
+}
 beforeEach(() => {
   canon = mkdtempSync(join(tmpdir(), 'yoke-canon-'))
   const w = (rel: string, c: string | Uint8Array) => { mkdirSync(join(canon, rel, '..'), { recursive: true }); writeFileSync(join(canon, rel), c) }
@@ -27,7 +36,7 @@ tools: []
   w('skills/release/SKILL.md', '---\nname: release\ndescription: Release\n---\nBody\n')
   w('tools/codex-rtk-hook.mjs', '#!/usr/bin/env node\n')
 })
-afterEach(() => { rmSync(canon, { recursive: true, force: true }) })
+afterEach(() => { rmSync(canon, { recursive: true, force: true }); for (const target of targets.splice(0)) rmSync(target, { recursive: true, force: true }) })
 
 describe('planCodex', () => {
   it('plans native skills, hooks, role agents, AGENTS.md, config, and RTK guidance', () => {
@@ -81,10 +90,82 @@ describe('planCodex', () => {
   })
 
   it('config.toml has [mcp_servers.graphify] and [mcp_servers.playwright]', () => {
-    const toml = planCodex(canon, '/t').find(a => a.target === '.codex/config.toml')!
+    const toml = planCodex(canon, '/t', 'graphify', 'off', true).find(a => a.target === '.codex/config.toml')!
     expect(toml.content).toContain('[mcp_servers.graphify]')
     expect(toml.content).toContain('[mcp_servers.playwright]')
     expect(toml.content).not.toContain('Merge into ~/.codex/config.toml')
+  })
+
+  it.each(['C:\\Users\\operator\\project', '/projects/quoted"name', '/projects/line\nbreak'])('round-trips a workspace path without changing TOML structure: %j', target => {
+    const action = planCodex(canon, target, 'none', 'active').find(action => action.target === '.codex/config.toml')!
+    expect(parseToml(String(action.content))).toEqual({
+      features: { hooks: true },
+      mcp_servers: { 'code-intelligence': { command: 'yoke', args: ['code-intelligence-server', `--workspace=${target}`, '--mode=active'] } },
+    })
+  })
+
+  it('preserves unrelated settings and servers while removing only recognized opted-out tools', () => {
+    const source = `model = "operator-model"
+approval_policy = "on-request"
+[features]
+hooks = false
+shell_snapshot = true
+[profiles.company]
+model = "company-model"
+precise_integer = 9223372036854775807
+whole_float = 1.0
+[mcp_servers.foreign]
+url = "https://example.test/mcp"
+enabled_tools = ["inspect", "lookup"]
+[mcp_servers.graphify]
+command = "graphify"
+args = ["serve"]
+[mcp_servers.playwright]
+command = "npx"
+args = ["@playwright/mcp@latest"]
+[mcp_servers.serena]
+command = "custom-serena-wrapper"
+args = ["--operator-setting"]
+`
+    const target = targetWithConfig(source)
+    const apply = () => applyActions(planCodex(canon, target, 'none', 'off', false).filter(action => action.target === '.codex/config.toml'), target, { backupDir: join(target, 'backups') })
+    apply()
+    const bytes = readFileSync(join(target, '.codex/config.toml'), 'utf8')
+    const expected = parseToml(source, { integersAsBigInt: true })
+    ;(expected.features as Record<string, unknown>).hooks = true
+    const servers = expected.mcp_servers as Record<string, unknown>
+    delete servers.graphify; delete servers.playwright
+    expect(parseToml(bytes, { integersAsBigInt: true })).toEqual(expected)
+    expect(readFileSync(join(target, 'backups/.codex/config.toml'), 'utf8')).toBe(source)
+    expect(apply()[0].status).toBe('unchanged')
+    expect(readFileSync(join(target, '.codex/config.toml'), 'utf8')).toBe(bytes)
+  })
+
+  it('replaces MCP launch arguments as a whole while preserving operator server settings', () => {
+    const target = targetWithConfig(stringifyToml({
+      features: { shell_snapshot: true },
+      mcp_servers: {
+        'code-intelligence': { command: 'yoke', args: ['code-intelligence-server', '--workspace=/old/project', '--mode=shadow'], startup_timeout_sec: 30, env: { CUSTOM: 'keep' } },
+        foreign: { command: 'custom-server', args: ['--operator-arg'] },
+      },
+    }))
+    const action = planCodex(canon, target, 'none', 'active').find(action => action.target === '.codex/config.toml')!
+    expect(parseToml(String(action.content))).toEqual({
+      features: { hooks: true, shell_snapshot: true },
+      mcp_servers: {
+        'code-intelligence': { command: 'yoke', args: ['code-intelligence-server', `--workspace=${target}`, '--mode=active'], startup_timeout_sec: 30, env: { CUSTOM: 'keep' } },
+        foreign: { command: 'custom-server', args: ['--operator-arg'] },
+      },
+    })
+  })
+
+  it.each(['[mcp_servers.\n', '[features]\nhooks = true\n[features]\nhooks = false\n'])('rejects malformed existing TOML before applying any actions', source => {
+    const target = targetWithConfig(source)
+    expect(() => applyActions(planCodex(canon, target), target, { backupDir: join(target, 'backups') })).toThrow(/cannot merge \.codex\/config\.toml.*not valid TOML/u)
+    expect(readFileSync(join(target, '.codex/config.toml'), 'utf8')).toBe(source)
+    expect(existsSync(join(target, 'AGENTS.md'))).toBe(false)
+    expect(existsSync(join(target, '.agents'))).toBe(false)
+    expect(existsSync(join(target, 'backups'))).toBe(false)
   })
 
   it('defines narrow, named role agents', () => {

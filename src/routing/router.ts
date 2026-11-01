@@ -217,7 +217,7 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
   const eligibleWorkers = options.workers.filter(worker => eligibleAgents.has(worker.agent))
   const failedStories = new Set<string>()
   const makeWorker = options.makeWorker ?? ((agent, selection) => makeRunner(agent, options.idleTimeoutMs ?? 0, {
-    ...options.runnerOpts, permissions: options.permissions ?? 'safe', selection,
+    ...options.runnerOpts, permissions: options.permissions ?? 'safe', selection, ownershipRoot: options.projectRoot,
   }))
   type RunValue = CapturedAgentRun & AgentResult
   type Work = () => CapturedAgentRun | AgentResult | Promise<CapturedAgentRun | AgentResult>
@@ -275,7 +275,7 @@ function routingSteps(options: AdaptiveRunnerOptions | AsyncAdaptiveRunnerOption
     }
     const capture = (provider: Agent, prompt: string, selection: ModelSelection): Work => () => options.captureRoute
       ? options.captureRoute(provider, ctx, prompt, selection)
-      : runCapturedAgent(provider, buildWatchdogInvocation(runnerInvocation(provider, prompt, ctx.targetDir, true, 'read-only', selection), options.idleTimeoutMs ?? 0))
+      : runCapturedAgent(provider, buildWatchdogInvocation({ ...runnerInvocation(provider, prompt, ctx.targetDir, true, 'read-only', selection), execution: { root, role: 'routing', provider, storyId: ctx.story.id } }, options.idleTimeoutMs ?? 0, root))
     const reserveWorker = (provider: Agent, selection: ModelSelection, profile: string, limit: number) => {
       reservation = reserveRoutingAttempt({ root, storyId: ctx.story.id, contractKey: routingAssessmentKey(root, ctx.story), limit,
         provider, profile, selection, startedAt: routeStartedAt, accountingScope: options.accountingScope,

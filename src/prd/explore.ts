@@ -17,6 +17,7 @@ import { writeScopesOverlap, validWriteScope } from '../loop/scheduler.js'
 import { withSharedWorkerSync } from '../loop/resource-pool.js'
 import { buildWatchdogInvocation, isAgentAvailable, runnerInvocation, runCapturedAgent, type CapturedAgentRun, type Invocation } from '../loop/runner.js'
 import type { TokenUsage } from '../loop/reporter.js'
+import { budgetedInvocation, withExecutionBudgetScope } from '../execution/budget.js'
 
 const EvidenceSchema = z.object({
   path: z.string().min(1).max(500),
@@ -328,6 +329,9 @@ function validateTasks(tasks: readonly ExplorationTask[], stories: readonly Stor
 }
 
 export function runPrdExplore(root: string, options: PrdExploreOptions = {}): ExplorationResult {
+  return withExecutionBudgetScope(root, () => explore(root, options))
+}
+function explore(root: string, options: PrdExploreOptions): ExplorationResult {
   let lock: ReturnType<typeof acquireLock> | undefined
   let plannerAgent: Agent | undefined
   try {
@@ -376,13 +380,13 @@ export function runPrdExplore(root: string, options: PrdExploreOptions = {}): Ex
       || !realGitOps.isClean(root)) throw Error('project changed while exploration was being prepared')
 
     const invocation = buildWatchdogInvocation(
-      runnerInvocation(planner.agent, prompt, root, true, 'read-only', options.selection ?? planner.selection),
+      { ...runnerInvocation(planner.agent, prompt, root, true, 'read-only', options.selection ?? planner.selection), execution: { root, role: 'exploration', provider: planner.agent } },
       options.timeoutMinutes === undefined ? 20 * 60_000 : options.timeoutMinutes > 0 ? options.timeoutMinutes * 60_000 : 0,
     )
     const started = Date.now()
     const result = withSharedWorkerSync(
       { targetDir: root, storyId: 'project-exploration', provider: planner.agent, role: 'implementation' },
-      () => (options.run ?? runCapturedAgent)(planner.agent, invocation),
+      () => budgetedInvocation(planner.agent, invocation, admitted => (options.run ?? runCapturedAgent)(planner.agent, admitted)),
     )
     options.onUsage?.({
       ...(result.tokens ?? { inputTokens: 0, outputTokens: 0, measurementComplete: false }),

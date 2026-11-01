@@ -19,7 +19,7 @@ export const tiers: CapabilityTier[] = ['light', 'standard', 'strong', 'frontier
 /** High testability means executable evidence can reliably detect wrong work. */
 export function requiredTier(a: TaskAssessment, role = 'implementation'): CapabilityTier {
   let level = a.taskClass === 'architecture' || a.risk === 'high' || a.uncertainty === 'high' ? 3
-    : a.difficulty === 'high' || a.scope === 'high' || a.taskClass === 'debugging' ? 2
+    : a.difficulty === 'high' || a.scope === 'high' ? 2
     : a.taskClass === 'mechanical' && a.difficulty === 'low' && a.risk === 'low' && a.uncertainty === 'low' && a.testability === 'high' ? 0 : 1
   if (a.testability === 'low') level = Math.max(level, 2)
   if (role === 'reviewer' || role === 'critic') level = Math.max(level, a.risk === 'low' ? 1 : 2)

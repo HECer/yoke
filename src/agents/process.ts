@@ -10,11 +10,14 @@ import {
 } from './process-record.js'
 import { createBoundedOutput, createTelemetryAccumulator } from './process-streams.js'
 import { processIncarnation } from './process-incarnation.js'
+import { ownedPosixGroupTerminator } from './owned-process-group.js'
 import { prepareWindowsInvocation, resolveWindowsCommand } from './windows-launch.js'
 import { createSupervision, supervisionLimits, assertPreviousProvidersStopped } from './supervision.js'
 import { prepareSolPiTemporaryConfig } from './sol-pi-runtime.js'
 import { executionFailure, failureObservation, type FailureObservation } from '../observability/failure.js'
 import { prepareChildEnvironment } from './child-environment.js'
+import { beginBudgetCall, finishBudgetCall } from '../execution/budget.js'
+import { providerTelemetryUsage } from '../observability/usage.js'
 
 export type ProviderProcessOutput = {
   readonly stream: 'stdout' | 'stderr'
@@ -99,6 +102,26 @@ function preflightFailureHandle(invocation: AgentInvocation, error: unknown, mes
 }
 
 export function startProviderProcess(agent: Agent, invocation: AgentInvocation, options: ProviderProcessOptions = {}): ProviderProcessHandle {
+  if (options.signal?.aborted) return startUnbudgetedProviderProcess(agent, invocation, options)
+  let ticket: ReturnType<typeof beginBudgetCall>
+  try { ticket = beginBudgetCall({ root: invocation.execution?.root ?? invocation.cwd, role: invocation.execution?.role ?? 'agent', provider: agent, storyId: invocation.execution?.storyId, prompt: invocation.input, dispatch: true }) }
+  catch (error) { return preflightFailureHandle(invocation, error) }
+  let handle: ProviderProcessHandle
+  try { handle = startUnbudgetedProviderProcess(agent, invocation, options) }
+  catch (error) {
+    try { finishBudgetCall(ticket, { success: false, notStarted: true }) }
+    catch (accounting) { return preflightFailureHandle(invocation, accounting) }
+    return preflightFailureHandle(invocation, error)
+  }
+  if (!ticket) return handle
+  return { ...handle, completion: handle.completion.then(result => {
+    try { finishBudgetCall(ticket, { tokens: providerTelemetryUsage(result.telemetry, agent), success: result.kind === 'succeeded', notStarted: result.pid === undefined || result.failure?.modelExecution === 'not-started' }) }
+    catch (error) { return { ...result, kind: 'spawn-failed' as const, error: `Execution budget accounting failed: ${(error as Error).message}`, failure: failureObservation('storage', result.pid === undefined ? 'not-started' : 'unknown') } }
+    return result
+  }) }
+}
+
+function startUnbudgetedProviderProcess(agent: Agent, invocation: AgentInvocation, options: ProviderProcessOptions = {}): ProviderProcessHandle {
   // A pre-cancelled call must not start a CLI or send a billable prompt.
   if (options.signal?.aborted) return {
     pid: undefined, invocation, recordPath: '', cancel: () => false,
@@ -159,7 +182,10 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
   const startedAt = pid === undefined ? `unverified:${new Date().toISOString()}` : processIncarnation(pid) ?? `unverified:${new Date().toISOString()}`
   const record = createProviderProcessRecord(targetDir, pid ?? 0, options.workerId, startedAt)
   const recordAdapter = options.recordAdapter ?? filesystemProviderProcessRecordAdapter
+  const terminatePosixGroup = pid === undefined || process.platform === 'win32' ? undefined
+    : ownedPosixGroupTerminator(pid, child, startedAt.startsWith('unverified:') ? undefined : startedAt)
   const terminateProcessTree = options.terminateProcessTree ?? ((processPid: number) => {
+    if (terminatePosixGroup) return terminatePosixGroup()
     try { process.kill(processPid, 0) } catch { return true }
     // A slow or unavailable Windows identity query must not strand the exact
     // child process Yoke just spawned. The live ChildProcess handle proves
@@ -175,6 +201,7 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
         if (killed && process.platform === 'win32') {
           try {
             const tree = spawn('taskkill', ['/PID', String(processPid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+            tree.on('error', () => {})
             tree.unref()
           } catch { /* direct child termination already succeeded */ }
         }
@@ -257,7 +284,7 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
     catch (error) { recordFailure ??= `provider supervision flush failed: ${error instanceof Error ? error.message : String(error)}` }
     // Windows can emit close before taskkill's process-tree state is observable.
     // Reconfirm here so successful termination does not leave a stale ownership record.
-    if (termination && pid !== undefined && !terminationConfirmed && !forcedTerminationAttempted) {
+    if (termination && pid !== undefined && !terminationConfirmed && (!forcedTerminationAttempted || (!options.terminateProcessTree && terminatePosixGroup))) {
       terminationConfirmed = terminateProcessTree(pid, true)
       if (terminationConfirmed) forceTerminateExactChild()
     }
@@ -295,7 +322,8 @@ export function startProviderProcess(agent: Agent, invocation: AgentInvocation, 
       if (!settled) completionTimer = setTimeout(() => {
         if (settled) return
         // A killer's return value is not an observed process exit.
-        if (pid !== undefined) { try { process.kill(pid, 0); terminationConfirmed = false } catch { /* exited */ } }
+        if (!options.terminateProcessTree && terminatePosixGroup) terminationConfirmed = terminatePosixGroup()
+        else if (pid !== undefined) { try { process.kill(pid, 0); terminationConfirmed = false } catch { /* exited */ } }
         finalize(null)
       }, 5000)
     }, terminationGraceMs)

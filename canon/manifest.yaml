@@ -8,10 +8,10 @@ skills:
   - { id: minimal-code, path: skills/minimal-code, kind: methodology, invocation: auto }
   - { id: maintaining-context, path: skills/maintaining-context, kind: methodology, invocation: auto }
   # superpowers skills (kind: methodology)
-  - { id: brainstorming, path: skills/brainstorming, kind: methodology, invocation: auto }
+  - { id: brainstorming, path: skills/brainstorming, kind: methodology, invocation: manual }
   - { id: writing-plans, path: skills/writing-plans, kind: methodology, invocation: auto }
   - { id: executing-plans, path: skills/executing-plans, kind: methodology, invocation: auto }
-  - { id: subagent-driven-development, path: skills/subagent-driven-development, kind: methodology, invocation: auto }
+  - { id: subagent-driven-development, path: skills/subagent-driven-development, kind: methodology, invocation: manual }
   - { id: systematic-debugging, path: skills/systematic-debugging, kind: methodology, invocation: auto }
   - { id: verification-before-completion, path: skills/verification-before-completion, kind: methodology, invocation: auto }
   - { id: using-git-worktrees, path: skills/using-git-worktrees, kind: methodology, invocation: auto }
@@ -22,16 +22,16 @@ skills:
   - { id: writing-skills, path: skills/writing-skills, kind: methodology, invocation: auto }
   # gstack skills (kind: role)
   - { id: review, path: skills/review, kind: role, invocation: auto }
-  - { id: ship, path: skills/ship, kind: role, invocation: auto }
-  - { id: health, path: skills/health, kind: role, invocation: auto }
-  - { id: retro, path: skills/retro, kind: role, invocation: auto }
-  - { id: document-release, path: skills/document-release, kind: role, invocation: auto }
-  - { id: plan-ceo-review, path: skills/plan-ceo-review, kind: role, invocation: auto }
-  - { id: plan-eng-review, path: skills/plan-eng-review, kind: role, invocation: auto }
+  - { id: ship, path: skills/ship, kind: role, invocation: manual }
+  - { id: health, path: skills/health, kind: role, invocation: manual }
+  - { id: retro, path: skills/retro, kind: role, invocation: manual }
+  - { id: document-release, path: skills/document-release, kind: role, invocation: manual }
+  - { id: plan-ceo-review, path: skills/plan-ceo-review, kind: role, invocation: manual }
+  - { id: plan-eng-review, path: skills/plan-eng-review, kind: role, invocation: manual }
   # authored workflow skill (kind: methodology)
-  - { id: workflow, path: skills/workflow, kind: methodology, invocation: auto }
+  - { id: workflow, path: skills/workflow, kind: methodology, invocation: manual }
   # visual & design verification (kind: methodology)
-  - { id: unslop-ui, path: skills/unslop-ui, kind: methodology, invocation: auto }
+  - { id: unslop-ui, path: skills/unslop-ui, kind: methodology, invocation: manual }
   - { id: visual-verification, path: skills/visual-verification, kind: methodology, invocation: auto }
   # zero-to-100 bootstrap (kind: methodology)
   - { id: authoring-prd, path: skills/authoring-prd, kind: methodology, invocation: auto }

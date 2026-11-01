@@ -17,7 +17,7 @@ toolsets:
 Review the observed diff and test evidence. Do not modify files. Return only actionable findings grounded in evidence.
 `
 
-export function planHermes(canonDir: string, _targetDir: string, _codeGraph: CodeGraph = 'graphify', _codeIntelligence: CodeIntelligenceMode = 'off'): Action[] {
+export function planHermes(canonDir: string, _targetDir: string, _codeGraph: CodeGraph = 'none', _codeIntelligence: CodeIntelligenceMode = 'off'): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const baseline = readFileSync(join(canonDir, 'AGENTS.md'), 'utf8')
   const actions: Action[] = manifest.skills.flatMap(skill => skillPackageActions(canonDir, skill, 'hermes'))

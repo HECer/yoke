@@ -12,26 +12,21 @@ let dir: string
 
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex')
 
-function qualityVerdict(attemptId: string, candidateLabel: 'A' | 'B', promptDigest: string, rubricDigest: string): string {
+function qualityVerdict(attemptId: string, winner: 'A' | 'B'): string {
   return JSON.stringify({
     schemaVersion: 1,
     attemptId,
-    winner: 'candidate',
+    winner,
     biggestGap: 'none',
     evidence: ['candidate matches the approved reference'],
     confidence: 'high',
-    candidate: { label: candidateLabel, digest: digest('candidate artifact') },
-    reference: { label: candidateLabel === 'A' ? 'B' : 'A', digest: digest('trusted reference') },
-    provenance: {
-      provider: 'codex', model: 'test-critic', promptDigest, rubricDigest,
-      referenceDigest: digest('trusted reference'), candidateDigest: digest('candidate artifact'),
-    },
   })
 }
 
 function qualityVerdictFor(input: string): string {
-  const request = JSON.parse(input) as { attemptId: string; candidateLabel: 'A' | 'B'; promptDigest: string; rubricDigest: string }
-  return qualityVerdict(request.attemptId, request.candidateLabel, request.promptDigest, request.rubricDigest)
+  const request = JSON.parse(input) as { attemptId: string; bundles: Array<{ label: 'A' | 'B'; artifacts: Array<{ sha256: string }> }> }
+  const selected = request.bundles.find(bundle => bundle.artifacts.some(artifact => artifact.sha256 === digest('candidate artifact')))!
+  return qualityVerdict(request.attemptId, selected.label)
 }
 
 beforeEach(() => {

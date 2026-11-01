@@ -1,34 +1,16 @@
 ---
 name: unslop-ui
-description: Use when building or reviewing any UI — detect and remove the visual "tells" of AI-generated/vibecoded design (AI-purple gradients, gradient hero text, neon glow, emoji-as-icons, untouched shadcn defaults, centered-hero-plus-three-cards) so the result looks deliberately designed, not machine-default.
+description: Review visual consistency, hierarchy, and fit to an explicit design brief. Use when asked to improve visual design or assess repetitive template choices; do not infer authorship or block functionality from colors alone.
 ---
 
-# Un-slop the UI
+# Review intentional UI design
 
-AI-built UIs are "recognizable on sight" — a homogeneous look from a handful of default choices.
-Before finishing UI work, remove these tells. Run `yoke design-scan .` for the statically
-detectable ones, then apply judgement for the structural ones the scanner can't see.
+Read the brand, design brief, target users, and relevant existing screens. Inspect the rendered result, including responsive states, accessibility, content hierarchy, and the primary action.
 
-## The ranked tells (and the fix)
+Use the project's tokens and component system. Look for inconsistent spacing, weak contrast, unclear navigation, overloaded decoration, and layouts that obscure the actual content. Recommend a change because it improves the intended experience, not because purple, gradients, rounded cards, or a particular icon style supposedly prove AI authorship.
 
-- **AI-purple gradients** (the #1 tell) — purple/violet gradients and `#6c5ce7`-family accents.
-  → Choose one real brand color with intent; avoid purple-by-default.
-- **Gradient hero text** — `bg-clip-text text-transparent` rainbow headings.
-  → Solid color + type weight/scale for emphasis.
-- **Neon glow** — `0 0 Npx` colored box-shadows / `shadow-[0_0_...]`.
-  → Subtle, neutral elevation (small offset, low blur, low opacity).
-- **Emoji-as-icons** — 🚀✨🔥 in buttons/nav/feature lists.
-  → A real icon set (lucide, etc.), consistent stroke + size.
-- **Untouched shadcn/Tailwind defaults** — default radius, default slate everywhere.
-  → Set deliberate tokens (radius, spacing scale, one accent) so it doesn't look boilerplate.
-- **Centered hero + three feature cards** — the canonical AI landing layout.
-  → Vary rhythm: asymmetry, a real product shot, content density that fits the product.
-- **Homogeneous spacing / no hierarchy** — everything the same size and gap.
-  → Establish a type scale and spacing rhythm; make the primary action obviously primary.
+`yoke design-scan .` is a deterministic heuristic report. It is optional and only becomes an acceptance gate when the operator explicitly chooses its policy and budget. Treat findings as prompts for inspection; preserve deliberate, accessible brand choices. Do not rewrite unrelated UI or add browser/model passes merely to satisfy a style ritual.
 
-## Rule
+Verify concrete improvements against the brief and relevant user flows. Preserve screenshot evidence where useful and distinguish an aesthetic judgment from a functional defect.
 
-Treat `yoke design-scan .` as a gate (it exits non-zero over budget). Fix findings, then
-eyeball the structural tells above. Distinctive, intentional > generic-but-safe.
-
-*Rubric informed by the MIT-licensed research in [vibecoded-design-tells](https://github.com/JCarterJohnson/vibecoded-design-tells) (© Carter Johnson). Yoke implements the idea natively; no code/data copied.*
+*The original heuristic inspiration is the MIT-licensed [vibecoded-design-tells](https://github.com/JCarterJohnson/vibecoded-design-tells) research (© Carter Johnson). No code or data is copied.*

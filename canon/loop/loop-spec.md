@@ -36,8 +36,7 @@ runs do not combine with adaptive routing.
 At every story boundary, Yoke consumes at most one queued change. The configured Claude,
 Codex, or Gemini provider may propose only new stories in a separate runtime file. A fresh
 coverage-review pass must account for every distinct requested outcome before Yoke validates
-strict criterion evidence, appends the stories itself, commits only the PRD, and leaves existing
-stories untouched. The request stays pending on any failure or uncovered outcome.
+strict criterion evidence, publishes the PRD and requirement-ledger changes through the host transaction, commits the changed planning files, and preserves existing story semantics. The request stays pending on any failure or uncovered outcome.
 
 For each story:
 
@@ -54,9 +53,9 @@ For each story:
    `.yoke/proof/<story>/evidence.json`. Then run project-wide `verify.command` (or detected
    `npm test`). Performance and audit follow when configured. If quality is enabled, collect the
    declared artifact, run the blind critic, and repair within the configured round/time bounds.
-   Independent review follows. Any blocking failure stops the candidate.
+   Independent review follows when enabled by `--review` or `--reviewer`. Any blocking failure stops the candidate.
 6. Parallel workers enqueue green candidate commits. The integrator applies one at a time and
-   reruns mechanical gates, fresh quality, and review against the integrated tree. Failed
+   reruns mechanical gates and any configured quality/review gates against the integrated tree. Failed
    integration reopens the story and retains proof.
 7. Only after all gates pass, mark the story `passes: true`, log the decision, and commit
    atomically. A failed commit restores the PRD state.

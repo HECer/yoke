@@ -68,7 +68,13 @@ export function chooseCapability(input: {
   const attemptLimit = Math.min(input.maxAttempts ?? 5, 5 - tiers.indexOf(baseTier))
   const budget = routingAttemptBudget(attempts, attemptLimit)
   const exhausted = budget.semanticExhausted || budget.infrastructureExhausted
-  const candidates = input.workers.filter(w => w.tier && tiers.indexOf(w.tier) >= level && (!input.maxTier || tiers.indexOf(w.tier) <= tiers.indexOf(input.maxTier)) && (!w.roles || w.roles.includes(role)) && (!input.story.agent || w.agent === input.story.agent) && (input.available?.(w.agent) ?? true))
+  // A renamed profile or higher tier label is not a different model invocation.
+  // Permit one targeted repair, then require an untried execution configuration.
+  const escalating = failures.length >= 2
+  const previouslyFailed = (w: RoutingWorker) => failures.some(({ reservation: r }) =>
+    r.provider === w.agent && r.requestedProvider === w.provider && r.requestedModel === w.model
+    && r.requestedReasoningEffort === w.reasoningEffort && r.requestedVariant === w.variant)
+  const candidates = input.workers.filter(w => w.tier && tiers.indexOf(w.tier) >= level && (!input.maxTier || tiers.indexOf(w.tier) <= tiers.indexOf(input.maxTier)) && (!w.roles || w.roles.includes(role)) && (!input.story.agent || w.agent === input.story.agent) && (input.available?.(w.agent) ?? true) && (!escalating || !previouslyFailed(w)))
   const history = readRoutingObservations().filter(e => e.projectHash === projectHash(input.root) && e.taskClass === input.assessment.taskClass && e.requiredTier === baseTier && e.role === role && Date.now() - Date.parse(e.recordedAt) < 30 * 86400000)
   const evidence = (w: RoutingWorker) => {
     const matching = history.filter(e => e.failureKind !== 'infrastructure' && e.provider === w.agent && e.requestedProvider === w.provider && e.requestedModel === w.model && e.requestedReasoningEffort === w.reasoningEffort && e.requestedVariant === w.variant && e.actualModel)
@@ -81,7 +87,7 @@ export function chooseCapability(input: {
   reliable.sort((a, b) => tiers.indexOf(a.tier!) - tiers.indexOf(b.tier!) || cost[a.costTier] - cost[b.costTier] || a.id.localeCompare(b.id))
   const economic = optimizeCapability({ workers: reliable, observations: history, assessment: input.assessment, settings: input.optimization, executionPolicyKey: input.executionPolicyKey, role })
   const worker = economic.worker
-  const blocked = !worker && (input.fallback === 'block' || input.maxTier !== undefined)
+  const blocked = !worker && (input.fallback === 'block' || input.maxTier !== undefined || escalating)
   const provider = worker?.agent ?? input.story.agent ?? input.parent
   const selection: ModelSelection = worker ? { provider: worker.provider, model: worker.model, reasoningEffort: worker.reasoningEffort, variant: worker.variant, nativeMultiAgent: false, ...(provider !== 'gemini' && provider !== 'qwen' && provider !== 'pi' && provider !== 'hermes' && input.parentSelection?.bare !== undefined ? { bare: input.parentSelection.bare } : {}) }
     : { ...(provider === input.parent ? input.parentSelection : {}), nativeMultiAgent: false }

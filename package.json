@@ -35,7 +35,8 @@
     "CHANGELOG.md",
     "TODOS.md",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "bench/provider-contract-smoke.mjs"
   ],
   "engines": {
     "node": ">=20"
@@ -84,15 +85,16 @@
     "audit:ci": "npm audit --audit-level=high",
     "package:check": "npm pack --dry-run",
     "yoke": "tsx src/cli.ts",
-    "prepublishOnly": "npm run lint && npm run build && vitest run && npm run docs:check && npm run package:check"
+    "prepublishOnly": "npm run lint && npm run build && vitest run && npm run docs:check && npm run package:check",
+    "bench:provider-contracts": "npm run build && node bench/provider-contract-smoke.mjs"
   },
   "dependencies": {
+    "smol-toml": "^1.9.1",
     "yaml": "^2.5.0",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.7.0",
-    "smol-toml": "^1.7.0",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",
     "vitest": "^4.1.10"

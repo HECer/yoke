@@ -64,7 +64,8 @@ it('reports missing default backends separately from active configuration', asyn
   try {
     const report = await (codeIntelligence as any).runToolPreflight(root)
     expect(report.codeIntelligence).toMatchObject({ mode: 'active', status: 'degraded' })
-    expect(Object.values(report.codeIntelligence.backends).map((backend: any) => backend.status)).toEqual(['unavailable', 'unavailable', 'unavailable'])
+    expect(Object.values(report.codeIntelligence.backends).map((backend: any) => backend.status)).toEqual(['unprobed', 'unprobed', 'unprobed'])
+    expect(report.codeIntelligence.backends.graft.reason).toContain('Network denial')
     expect(report.rtk).toMatchObject({ status: 'degraded', version: null, nativeRewrite: false })
     expect(files(root)).toEqual(before)
   } finally { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }) }

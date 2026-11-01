@@ -1,5 +1,7 @@
 # Migrating to Yoke 1.4
 
+Historical 1.4 migration notes. For the current adaptive consistency policy and shared budgets, see [November 2026 migration](AUDIT-REMEDIATION-2026-11.md).
+
 Yoke 1.4 adds dependency-aware parallel workers, isolated candidate selection, and a reference-driven quality gauntlet. Existing projects remain serial and skip quality comparison unless you opt in.
 
 Upgrade and refresh generated harness files:

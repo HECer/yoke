@@ -109,7 +109,7 @@ describe('complete response limits', () => {
     const serialized = JSON.stringify(response); const bytes = Buffer.byteLength(serialized)
     expect(bytes).toBeLessThanOrEqual(2100)
     expect(response.metrics.returned_bytes).toBe(bytes)
-    expect(response.metrics.result_tokens).toBe(bytes)
+    expect(response.metrics.result_tokens).toBe(Math.ceil(bytes / 4))
     expect(response.metrics.token_count_kind).toBe('estimated')
     expect(serialized).not.toMatch(/\\ud[89ab][0-9a-f]{2}|\\ud[cdef][0-9a-f]{2}/i)
     expect(response.warnings.join(' ')).toMatch(/budget|truncat/i)

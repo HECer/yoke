@@ -31,6 +31,33 @@ it('requires stronger profiles for risk, uncertainty and weak acceptance despite
   expect(requiredTier(assessment, 'reviewer')).toBe('standard')
 })
 
+it('routes a bounded debugging task to an available standard profile without lowering risk floors', () => {
+  const debug = { ...assessment, taskClass: 'debugging' as const }
+  const choice = chooseCapability({ root, story, assessment: debug, workers: defaultRoutingWorkers(['pi']), parent: 'pi', fallback: 'block' })
+  expect(requiredTier(debug)).toBe('standard')
+  expect(choice.blocked).toBe(false)
+  expect(choice.worker?.id).toBe('pi-standard')
+  expect(requiredTier({ ...debug, risk: 'high' })).toBe('frontier')
+  expect(requiredTier({ ...debug, testability: 'low' })).toBe('strong')
+})
+
+it('stops escalation when higher tier aliases would execute the same model settings', () => {
+  const aliases = defaultRoutingWorkers(['codex']).map(worker => ({ ...worker, model: 'same-model', reasoningEffort: 'medium' }))
+  const makeWorker = vi.fn(() => () => ({ success: true, summary: 'done' }))
+  for (let i = 0; i < 2; i++) {
+    const result = makeAdaptiveRunner({ ...options(), workers: aliases, makeWorker })({ targetDir: root, story: { ...story, assessment } })
+    result.routing!.recordOutcome(false)
+  }
+  const result = makeAdaptiveRunner({ ...options(), workers: aliases, makeWorker })({ targetDir: root, story: { ...story, assessment } })
+  expect(result.routing?.blocked).toBe(true)
+  expect(makeWorker).toHaveBeenCalledTimes(2)
+})
+
+it('does not claim several Gemini capability tiers for identical default invocations', () => {
+  const gemini = defaultRoutingWorkers(['gemini'])
+  expect(gemini.map(worker => worker.tier)).toEqual(['light', 'standard'])
+})
+
 it('validates structured assessments inside provider envelopes and rejects incomplete guesses', () => {
   expect(parseAssessment(JSON.stringify({ result: 'YOKE_ASSESS ' + JSON.stringify(assessment) }))).toEqual(assessment)
   expect(parseAssessment('YOKE_ASSESS {"difficulty":"low"}')).toBeUndefined()

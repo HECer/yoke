@@ -1,0 +1,107 @@
+{
+  "baselineCommit": "a97c5e0",
+  "current": "working-tree operational remediation",
+  "runtime": "v24.22.1",
+  "samplesPerPoint": 3,
+  "fixture": "one synthetic run in one JSONL shard",
+  "totalsComparedWithDeepStrictEqual": true,
+  "limits": "Local aggregation and serialized payload only; no provider calls, whole-task speed claim, production distribution, or monetary estimate.",
+  "results": [
+    {
+      "events": 2000,
+      "inputBytes": 360000,
+      "before": {
+        "samplesMs": [
+          97.58803699999999,
+          65.38862200000017,
+          49.67518599999994
+        ],
+        "medianMs": 65.38862200000017,
+        "serializedBytes": 435321
+      },
+      "after": {
+        "samplesMs": [
+          78.839383,
+          30.492473000000018,
+          41.743797000000086
+        ],
+        "medianMs": 41.743797000000086,
+        "serializedBytes": 21336
+      },
+      "totalsEqual": true,
+      "eventsAccounted": 2000
+    },
+    {
+      "events": 8000,
+      "inputBytes": 1440000,
+      "before": {
+        "samplesMs": [
+          238.06799999999998,
+          397.73896899999977,
+          439.58775700000024
+        ],
+        "medianMs": 397.73896899999977,
+        "serializedBytes": 1677321
+      },
+      "after": {
+        "samplesMs": [
+          121.43241999999964,
+          99.88652999999977,
+          120.10983399999986
+        ],
+        "medianMs": 120.10983399999986,
+        "serializedBytes": 21336
+      },
+      "totalsEqual": true,
+      "eventsAccounted": 8000
+    },
+    {
+      "events": 16000,
+      "inputBytes": 2880000,
+      "before": {
+        "samplesMs": [
+          996.5123039999999,
+          948.7100609999998,
+          1100.4846120000002
+        ],
+        "medianMs": 996.5123039999999,
+        "serializedBytes": 3333384
+      },
+      "after": {
+        "samplesMs": [
+          147.1544670000003,
+          159.68737200000032,
+          129.66524800000025
+        ],
+        "medianMs": 147.1544670000003,
+        "serializedBytes": 21400
+      },
+      "totalsEqual": true,
+      "eventsAccounted": 16000
+    },
+    {
+      "events": 32000,
+      "inputBytes": 5760000,
+      "before": {
+        "samplesMs": [
+          5015.8938259999995,
+          5122.766190999999,
+          4973.867861999999
+        ],
+        "medianMs": 5015.8938259999995,
+        "serializedBytes": 6645384
+      },
+      "after": {
+        "samplesMs": [
+          217.22154500000033,
+          228.82249600000068,
+          258.28619900000194
+        ],
+        "medianMs": 228.82249600000068,
+        "serializedBytes": 21400
+      },
+      "totalsEqual": true,
+      "eventsAccounted": 32000
+    }
+  ]
+}

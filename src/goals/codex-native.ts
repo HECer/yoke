@@ -8,6 +8,7 @@ import { createProviderProcessRecord, filesystemProviderProcessRecordAdapter } f
 import { trackProcessRecordIdentity } from '../agents/process-record-identity.js'
 import { resolve } from 'node:path'
 import { windowsShellEnvironment } from '../agents/windows-launch.js'
+import { withExecutionBudget } from '../execution/budget.js'
 
 export type NativeGoalStatus = 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'complete'
 export interface NativeUsageBaseline { inputTokens: number; outputTokens: number; cachedInputTokens?: number; cacheWriteInputTokens?: number; reasoningOutputTokens?: number }
@@ -178,6 +179,7 @@ export async function executeCodexGoal(input: NativeGoalInput): Promise<GoalExec
     if (budget !== null && !Number.isSafeInteger(budget)) throw new Error('Native goal token budget overflow')
     await goalRequest(transport, 'thread/goal/set', { threadId, objective: input.objective, tokenBudget: budget, status: 'paused' })
     await input.onBinding?.(binding)
+    return await withExecutionBudget({ root: input.root, provider: 'codex', role: 'goal-implementation', prompt: input.prompt }, async () => {
     const turn = await transport.request('turn/start', { threadId, input: [{ type: 'text', text: input.prompt }], ...(input.selection.reasoningEffort ? { effort: input.selection.reasoningEffort } : {}) })
     if (typeof turn?.turn?.id !== 'string') throw new Error('Malformed native turn reply')
     turnId = turn.turn.id
@@ -195,7 +197,8 @@ export async function executeCodexGoal(input: NativeGoalInput): Promise<GoalExec
     }
     if (measured?.decreased) { binding.usageInvalid = true; await input.onBinding?.(binding) }
     if (usage) input.onUsage?.(usage)
-    return { success: result.status === 'completed', summary: result.status === 'completed' ? 'Native Codex turn finished; requires independent Yoke check' : `Native Codex turn ${result.status}`, tokens: usage, ...usage, provider: 'codex', nativeBinding: binding, nativeStatus: 'paused', nativeObservedStatus: observed.status, ...(Number.isSafeInteger(observed.tokensUsed) && observed.tokensUsed >= 0 ? { nativeTokensUsed: observed.tokensUsed } : {}) }
+    return { success: result.status === 'completed', summary: result.status === 'completed' ? 'Native Codex turn finished; requires independent Yoke check' : `Native Codex turn ${result.status}`, tokens: usage, ...usage, provider: 'codex' as const, nativeBinding: binding, nativeStatus: 'paused' as const, nativeObservedStatus: observed.status, ...(Number.isSafeInteger(observed.tokensUsed) && observed.tokensUsed >= 0 ? { nativeTokensUsed: observed.tokensUsed } : {}) }
+    }, undefined, true)
   } finally { clearTimeout(timer); input.signal.removeEventListener('abort', onAbort); await transport.close() }
 }
 export async function synchronizeNativeGoal(input: { root: string; binding: NativeGoalBinding; objective: string; status: NativeGoalStatus; tokenBudget?: number; signal?: AbortSignal; bare?: boolean; transport?: NativeGoalTransport }): Promise<void> {

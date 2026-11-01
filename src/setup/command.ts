@@ -13,6 +13,7 @@ export interface SetupOptions {
   modelProviders?: ModelProvider[]
   host?: Agent
   agents?: Agent[]
+  browserTools?: boolean
   codeGraph?: CodeGraph
   codeIntelligence?: CodeIntelligenceMode
   loop?: boolean
@@ -50,8 +51,6 @@ export function defaultRoutingWorkers(agents: Agent[]): RoutingWorker[] {
     gemini: [
       { id: 'gemini-light', agent: 'gemini', model: 'gemini-2.5-flash', tier: 'light', costTier: 'low', capabilities: ['mechanical', 'tests'] },
       { id: 'gemini-standard', agent: 'gemini', model: 'gemini-2.5-pro', tier: 'standard', costTier: 'medium', capabilities: ['implementation'] },
-      { id: 'gemini-strong', agent: 'gemini', model: 'gemini-2.5-pro', tier: 'strong', costTier: 'medium', capabilities: ['debugging'] },
-      { id: 'gemini-frontier', agent: 'gemini', model: 'gemini-2.5-pro', tier: 'frontier', costTier: 'high', capabilities: ['architecture'] },
     ],
     qwen: [
       // Respect the user's Qwen Code account/model. API presets are opt-in.
@@ -72,7 +71,7 @@ export function defaultRoutingWorkers(agents: Agent[]): RoutingWorker[] {
   }
   return agents.flatMap(agent => workers[agent]).map(worker => ({
     ...worker,
-    profileMetadata: { version: 1 as const, catalog: 'yoke-1.22.0', source: 'yoke-default' as const, basis: 'configured-prior' as const },
+    profileMetadata: { version: 1 as const, catalog: 'yoke-2026-11', source: 'yoke-default' as const, basis: 'configured-prior' as const },
   }))
 }
 
@@ -105,7 +104,7 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
       : detected.agents.length > 0
         ? detected.agents
         : modelProviders.length ? ['qwen' as const] : [host ?? 'claude']
-  const defaultGraph = opts.codeGraph ?? existing?.codeGraph ?? 'graphify'
+  const defaultGraph = opts.codeGraph ?? existing?.codeGraph ?? 'none'
   const defaultCodeIntelligence = opts.codeIntelligence ?? existing?.codeIntelligence?.mode ?? 'off'
   const defaultLoop = opts.loop ?? existing?.loop.enabled ?? true
   const defaultRunner = opts.runner ?? existing?.runner?.agent ?? (host && defaultAgents.includes(host) ? host : defaultAgents[0] ?? host ?? 'claude')
@@ -136,8 +135,8 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
 
     if (interactive && ask) {
       agents = parseAgents(await ask(`Agents [${defaultAgents.join(',')}] (${SUPPORTED_AGENTS.join(',')}|all): `), defaultAgents)
-      const graphAnswer = (await ask(`Code graph [${defaultGraph}] (graphify|serena): `)).trim().toLowerCase()
-      if (graphAnswer === 'graphify' || graphAnswer === 'serena') codeGraph = graphAnswer
+      const graphAnswer = (await ask(`Code graph [${defaultGraph}] (none|graphify|serena): `)).trim().toLowerCase()
+      if (graphAnswer === 'none' || graphAnswer === 'graphify' || graphAnswer === 'serena') codeGraph = graphAnswer
       loop = yes(await ask(`Enable autonomous loop? [${defaultLoop ? 'yes' : 'no'}]: `), defaultLoop)
       const runnerAnswer = (await ask(`Default runner [${runner}] (${SUPPORTED_AGENTS.join('|')}): `)).trim().toLowerCase()
       if (ALL_AGENTS.includes(runnerAnswer as Agent)) runner = runnerAnswer as Agent
@@ -169,7 +168,7 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
       if (opts.runnerModel === undefined) runnerModel = undefined
       if (opts.runnerReasoning === undefined) runnerReasoning = undefined
     }
-    const code = runRetrofit(targetDir, { loop, agents, codeGraph, codeIntelligence, host, cleanWorktrees: opts.cleanWorktrees, runnerModel, runnerReasoning, agentModels, agentReasoning })
+    const code = runRetrofit(targetDir, { loop, agents, codeGraph, codeIntelligence, browserTools: opts.browserTools, host, cleanWorktrees: opts.cleanWorktrees, runnerModel, runnerReasoning, agentModels, agentReasoning })
     if (code !== 0) return code
     applyActions(presetActions, targetDir, { backupDir: join(targetDir, '.yoke', 'backups', `model-presets-${Date.now()}`) })
     const config = loadConfig(targetDir)
@@ -207,6 +206,11 @@ export async function runSetup(targetDir: string, opts: SetupOptions = {}): Prom
     YokeConfigSchema.parse(config)
     saveConfig(targetDir, config)
     console.log(`Yoke setup complete: agents=${agents.join(',')} · runner=${runner}${runnerModel ? ` (${runnerModel})` : ''}${runnerReasoning ? ` [${runnerReasoning}]` : ''} · loop=${loop ? 'on' : 'off'} · routing=${routing ? 'on' : 'off'} · decisions=${decisionPolicy}`)
+    if (routing && config.routing.strategy === 'capability' && config.routing.fallback === 'block') {
+      const covered = new Set(workers.map(worker => worker.tier))
+      const missing = ['strong', 'frontier'].filter(tier => !covered.has(tier as 'strong' | 'frontier'))
+      if (missing.length) console.log(`Routing coverage: no ${missing.join('/')} profiles configured. Tasks requiring those tiers will block; add distinct, validated profiles for those tasks.`)
+    }
     return 0
   } finally {
     close?.()

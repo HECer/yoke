@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { ContextInputSchema, EditApplyInputSchema, EditPreviewInputSchema, TOOL_DEFINITIONS } from '../../src/code-intelligence/contracts.js'
 
 describe('code intelligence contracts', () => {
-  it('publishes exactly the six snapshot-bound facade tools', () => {
-    expect(TOOL_DEFINITIONS.map(tool => tool.name)).toEqual(['code_context', 'code_symbol', 'code_trace', 'code_impact', 'code_edit_preview', 'code_edit_apply'])
+  it('publishes only read tools and a retrievable evidence continuation', () => {
+    expect(TOOL_DEFINITIONS.map(tool => tool.name)).toEqual(['code_context', 'code_symbol', 'code_trace', 'code_impact', 'code_evidence'])
     expect(TOOL_DEFINITIONS.every(tool => tool.annotations.openWorldHint === false)).toBe(true)
   })
 

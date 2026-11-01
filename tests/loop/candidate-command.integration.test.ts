@@ -16,17 +16,10 @@ const PairPromptSchema = z.object({
   attemptId: z.string(),
   left: z.object({ label: z.enum(['A', 'B']), digest: z.string(), artifacts: z.array(z.string()) }),
   right: z.object({ label: z.enum(['A', 'B']), digest: z.string(), artifacts: z.array(z.string()) }),
-  promptDigest: z.string(),
-  rubricDigest: z.string(),
-  trustedJudgeProvenance: z.object({ provider: z.string(), model: z.string() }),
 })
 const QualityPromptSchema = z.object({
   attemptId: z.string(),
-  candidateLabel: z.enum(['A', 'B']),
-  referenceLabel: z.enum(['A', 'B']),
-  candidate: z.object({ digests: z.array(z.string()).min(1) }),
-  promptDigest: z.string(),
-  rubricDigest: z.string(),
+  bundles: z.array(z.object({ label: z.enum(['A', 'B']), artifacts: z.array(z.object({ sha256: z.string() })) })),
 })
 
 afterEach(() => {
@@ -120,7 +113,7 @@ describe('runLoopCommand quality candidates', () => {
           if (pair.success) {
             expect(invocation.input).not.toContain('candidate-')
             expect(invocation.input).not.toContain(project)
-            expect(pair.data.trustedJudgeProvenance).toEqual({ provider: 'codex', model: 'test-critic' })
+            expect(raw).not.toHaveProperty('trustedJudgeProvenance')
             selectedHandle ??= pair.data.right.digest
             const winner = pair.data.left.digest === selectedHandle ? pair.data.left.label : pair.data.right.label
             return {
@@ -131,9 +124,6 @@ describe('runLoopCommand quality candidates', () => {
                 winner,
                 evidence: ['opaque handle selected'],
                 confidence: 'high',
-                left: { label: pair.data.left.label, digest: pair.data.left.digest },
-                right: { label: pair.data.right.label, digest: pair.data.right.digest },
-                provenance: { leftDigest: pair.data.left.digest, rightDigest: pair.data.right.digest, ...pair.data.trustedJudgeProvenance, promptDigest: pair.data.promptDigest, rubricDigest: pair.data.rubricDigest },
               }),
               summary: 'pair judged',
             }
@@ -144,13 +134,10 @@ describe('runLoopCommand quality candidates', () => {
             output: JSON.stringify({
               schemaVersion: 1,
               attemptId: quality.attemptId,
-              winner: 'candidate',
+              winner: quality.bundles.find(bundle => bundle.artifacts.every(artifact => artifact.sha256 !== digest('trusted reference')))!.label,
               biggestGap: 'none',
               evidence: ['candidate is acceptable'],
               confidence: 'high',
-              candidate: { label: quality.candidateLabel, digest: quality.candidate.digests[0] },
-              reference: { label: quality.referenceLabel, digest: digest('trusted reference') },
-              provenance: { provider: 'codex', model: 'test-critic', promptDigest: quality.promptDigest, rubricDigest: quality.rubricDigest, referenceDigest: digest('trusted reference'), candidateDigest: quality.candidate.digests[0] },
             }),
             summary: 'quality judged',
           }

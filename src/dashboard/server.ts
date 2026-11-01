@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer } from 'node:http'
-import { lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from 'yaml'
 import { z } from 'zod'
@@ -16,7 +16,8 @@ import { isPidAlive, readLock } from '../loop/lock.js'
 import { appendEvent } from '../observability/events.js'
 import { queueChange } from '../change/inbox.js'
 import { statePath } from '../workspace/state.js'
-import { parsePeriod, parseRanking, projectAnalytics, projectHistory, workspaceAnalytics } from './analytics.js'
+import { parseHistoryCursor, parsePeriod, parseRanking, projectAnalytics, projectHistory, workspaceAnalytics } from './analytics.js'
+import { latestCheckFile } from './latest-check.js'
 import {
   DASHBOARD_LIMITS,
   DashboardChangePayloadSchema,
@@ -117,13 +118,9 @@ function snapshot(project: RegisteredProject, detail: boolean) {
   let check = null
   if (detail && !project.error) {
     try {
-      const dir = join(project.root, '.yoke/checks')
-      if (lstatSync(join(project.root, '.yoke')).isSymbolicLink() || lstatSync(dir).isSymbolicLink()) throw new Error('Linked checks unavailable')
-      const names = readdirSync(dir).filter(name => /^[a-f0-9-]{36}\.json$/u.test(name))
-      if (names.length > 2000) errors.push('Check history exceeds dashboard scan limit')
-      const latest = names.slice(-2000).map(name => ({ name, time: lstatSync(join(dir, name)).mtimeMs })).sort((a, b) => b.time - a.time)[0]
-      if (latest) check = read(`.yoke/checks/${latest.name}`, Check)
-    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push((error as Error).message) }
+      const latest = latestCheckFile(project.root)
+      if (latest) check = read(latest, Check)
+    } catch (error) { errors.push((error as Error).message) }
   }
   const localCapacity = Math.max(1, status?.parallel?.maxConcurrency ?? 1)
   const estimate = estimateSchedule(stories, localCapacity, history, {
@@ -196,9 +193,9 @@ export async function startDashboard(options: { port?: number } = {}): Promise<{
         }
         if (req.method === 'GET' && (match[2] === '/history' || match[2] === '/events')) {
           if (project.error) { send(409, { error: project.error }); return }
-          let period, limit
-          try { period = parsePeriod(requested.searchParams); limit = parseDashboardLimit(requested.searchParams.get('limit')) } catch (error) { send(400, { error: (error as Error).message }); return }
-          send(200, projectHistory(project.root, period, limit)); return
+          let period, limit, cursor
+          try { period = parsePeriod(requested.searchParams); limit = parseDashboardLimit(requested.searchParams.get('limit')); cursor = parseHistoryCursor(requested.searchParams.get('cursor'), period) } catch (error) { send(400, { error: (error as Error).message }); return }
+          send(200, projectHistory(project.root, period, limit, cursor)); return
         }
         if (req.method === 'GET' && !match[2]) { send(200, snapshot(project, true)); return }
         if (req.method === 'POST' && match[2] === '/pause') {

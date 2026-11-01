@@ -12,7 +12,9 @@ export function supervisionLimits(cwd: string): { totalMs: number; progressMs: n
 }
 
 export function assertPreviousProvidersStopped(cwd: string): void {
-  if (readSupervision(cwd, '', true).some(record => record.state === 'termination-unconfirmed' && (record.liveness !== 'exited' || record.ownershipRetained))) {
+  // Completed records are historical evidence, not active admission state. Legacy
+  // records in the root directory are still validated without a history limit.
+  if (readSupervisionRecords(cwd, '', true, false).some(record => record.state === 'termination-unconfirmed' && (processLiveness(record) !== 'exited' || record.ownershipRetained))) {
     throw Error('A previous provider termination is unconfirmed; inspect owned process records before starting another worker')
   }
 }
@@ -115,45 +117,65 @@ export function createSupervision(cwd: string, onFailure: (reason: string) => vo
       state.lastOutputAt = now()
       ;(stream === 'stdout' ? stdout : stderr).append(text)
     },
-    stop(reason?: string, confirmed = true) { terminal = true; clearInterval(timer); state.reason = failure ?? reason; state.state = confirmed ? 'stopped' : 'termination-unconfirmed'; save() },
+    stop(reason?: string, confirmed = true) {
+      terminal = true; clearInterval(timer); state.reason = failure ?? reason; state.state = confirmed ? 'stopped' : 'termination-unconfirmed'; save()
+      if (confirmed) {
+        const completed = join(dir, 'completed')
+        mkdirSync(completed, { recursive: true })
+        if (lstatSync(completed).isSymbolicLink()) throw Error('Cannot archive supervision through a linked directory')
+        // Atomic move: a crash leaves either the active record or its completed
+        // evidence. Unconfirmed ownership never moves out of admission state.
+        renameSync(path, join(completed, id + '.json'))
+      }
+    },
     get failure() { return failure },
   }
 }
 
-export function readSupervision(root: string, since: string, complete = false): SupervisionState[] {
+function readSupervisionRecords(root: string, since: string, strict: boolean, includeCompleted: boolean): SupervisionState[] {
   const roots = [root]
   try {
     const names = readdirSync(join(root, '.yoke', 'worktrees'))
-    for (const name of complete ? names : names.slice(0, 100)) {
+    for (const name of names) {
       const path = join(root, '.yoke', 'worktrees', name)
       try {
         const stat = lstatSync(path)
         if (stat.isDirectory() && !stat.isSymbolicLink()) roots.push(path)
-        else if (complete && stat.isSymbolicLink()) throw Error('Cannot verify symlinked worktree')
-      } catch (error) { if (complete && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+        else if (strict && stat.isSymbolicLink()) throw Error('Cannot verify symlinked worktree')
+      } catch (error) { if (strict && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
     }
   } catch (error) {
-    if (complete && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    if (strict && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
   const records: SupervisionState[] = []
   for (const cwd of roots) {
-    const dir = join(cwd, '.yoke', 'supervision')
-    try {
-      if (lstatSync(dir).isSymbolicLink()) { if (complete) throw Error('Cannot verify symlinked supervision records'); continue }
-      const names = readdirSync(dir).filter(n => n.endsWith('.json'))
-      for (const name of complete ? names : names.slice(-200)) {
-        try {
-          const path = join(dir, name), stat = lstatSync(path)
-          if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 8192) { if (complete) throw Error('Cannot verify unsafe supervision record'); continue }
-          const record = JSON.parse(readFileSync(path, 'utf8')); if (record && typeof record.startedAt === 'string' && record.startedAt >= since && typeof record.heartbeatAt === 'string'
-            && (!complete || ['preflight', 'running', 'stopping', 'stopped', 'termination-unconfirmed'].includes(record.state))) records.push({ ...record,
-          ownershipRetained: record.state === 'termination-unconfirmed' && retainedOwnership(cwd, record.childPid) })
-          else if (complete) throw Error('Cannot verify malformed supervision record')
-        } catch (error) { if (complete && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
-      }
-    } catch (error) { if (complete && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    const active = join(cwd, '.yoke', 'supervision')
+    try { if (lstatSync(active).isSymbolicLink()) throw Error('Cannot verify symlinked supervision records') }
+    catch (error) { if (strict && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; continue }
+    for (const dir of includeCompleted ? [active, join(active, 'completed')] : [active]) {
+      try {
+        if (lstatSync(dir).isSymbolicLink()) throw Error('Cannot verify symlinked supervision records')
+        const names = readdirSync(dir).filter(n => n.endsWith('.json'))
+        // UUID filenames do not encode recency. Filter and order record timestamps
+        // before applying the display limit, including records in the archive.
+        for (const name of names) {
+          try {
+            const path = join(dir, name), stat = lstatSync(path)
+            if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 8192) { if (strict) throw Error('Cannot verify unsafe supervision record'); continue }
+            const record = JSON.parse(readFileSync(path, 'utf8')); if (record && typeof record.startedAt === 'string' && typeof record.heartbeatAt === 'string'
+              && (!strict || ['preflight', 'running', 'stopping', 'stopped', 'termination-unconfirmed'].includes(record.state))) {
+              if (record.startedAt >= since) records.push({ ...record, ownershipRetained: record.state === 'termination-unconfirmed' && retainedOwnership(cwd, record.childPid) })
+            } else if (strict) throw Error('Cannot verify malformed supervision record')
+          } catch (error) { if (strict && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+        }
+      } catch (error) { if (strict && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    }
   }
-  const sorted = records.sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+  return records
+}
+
+export function readSupervision(root: string, since: string, complete = false): SupervisionState[] {
+  const sorted = readSupervisionRecords(root, since, complete, true).sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.heartbeatAt.localeCompare(a.heartbeatAt) || String(a.id).localeCompare(String(b.id)))
   return (complete ? sorted : sorted.slice(0, 20)).map(record => ({ ...record, liveness: processLiveness(record) }))
 }
 

@@ -26,6 +26,10 @@ export const ReviewVerdictSchema = z.object({
     promptVersion: z.literal(1),
     permissions: PermissionProfileSchema,
   }),
+}).superRefine((verdict, context) => {
+  if (verdict.approved && verdict.findings.some(finding => finding.severity === 'blocking')) {
+    context.addIssue({ code: 'custom', path: ['approved'], message: 'A review with blocking findings cannot be approved' })
+  }
 })
 
 export type ReviewVerdict = z.infer<typeof ReviewVerdictSchema>
@@ -40,7 +44,6 @@ export function parseReviewVerdict(value: unknown, expected?: { readonly provide
 }
 
 export function selectRepairFinding(verdict: ReviewDecision): ReviewDecision['findings'][number] | null {
-  if (verdict.approved) return null
   return verdict.findings.find(candidate => candidate.severity === 'blocking' && (candidate.actionable ?? true)) ?? null
 }
 
@@ -66,7 +69,8 @@ export function readReviewVerdict(path: string, expected?: { readonly provider: 
 export function formatReviewStdoutContract(provider: z.infer<typeof AgentSchema>): string {
   return [
     'Return exactly one JSON object as your final response. Do not write any file.',
-    `{"schemaVersion":1,"approved":boolean,"summary":"non-empty string","findings":[],"provenance":{"provider":"${provider}","model":"provider-reported model","role":"review","promptVersion":1,"permissions":"read-only"}}`,
+    `{"schemaVersion":1,"approved":boolean,"summary":"non-empty string","findings":[{"severity":"blocking|warning|info","message":"non-empty string","file":"optional path","line":1,"actionable":true,"evidence":["optional evidence reference"]}],"provenance":{"provider":"${provider}","model":"provider-reported model","role":"review","promptVersion":1,"permissions":"read-only"}}`,
+    'Set approved=false when any blocking finding exists. Use findings=[] when there are no findings.',
   ].join('\n')
 }
 

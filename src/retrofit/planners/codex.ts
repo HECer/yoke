@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { loadManifest } from '../../canon/manifest.js'
 import type { Action } from '../plan.js'
 import type { CodeGraph, CodeIntelligenceMode } from '../config.js'
@@ -21,25 +22,32 @@ function codexHooks(targetDir: string): string {
   return JSON.stringify(mergeJson(current, { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'rtk hook codex' }] }] } }), null, 2) + '\n'
 }
 
-function tomlMcp(codeGraph: CodeGraph, codeIntelligence: CodeIntelligenceMode, targetDir: string): string {
-  const servers = mcpServers(codeGraph, codeIntelligence, targetDir)
-  // Codex reads MCP servers from ~/.codex/config.toml. This project-level file is a
-  // ready-to-merge snippet; users append these blocks to their global config.
-  return Object.entries(servers)
-    .map(([name, cfg]) => {
-      const args = cfg.args.map(a => `"${a}"`).join(', ')
-      return `[mcp_servers.${name}]\ncommand = "${cfg.command}"\nargs = [${args}]\n`
-    })
-    .join('\n')
+function codexConfig(codeGraph: CodeGraph, codeIntelligence: CodeIntelligenceMode, targetDir: string, browserTools: boolean): string {
+  const path = join(targetDir, '.codex/config.toml')
+  let current = {}
+  if (existsSync(path)) {
+    try {
+      // Preserve TOML integer precision and distinguish integers from floats.
+      current = parseToml(readFileSync(path, 'utf8'), { integersAsBigInt: true })
+    } catch (error) {
+      throw new Error(`yoke: cannot merge .codex/config.toml — existing file is not valid TOML: ${(error as Error).message}`)
+    }
+  }
+  const merged = mergeJson(current, {
+    features: { hooks: true },
+    mcp_servers: mcpServers(codeGraph, codeIntelligence, targetDir, browserTools),
+  })
+  return '# Yoke project configuration. Codex loads this in trusted repositories.\n\n'
+    + stringifyToml(merged, { numbersAsFloat: true }).trimEnd() + '\n'
 }
 
-export function planCodex(canonDir: string, targetDir: string, codeGraph: CodeGraph = 'graphify', codeIntelligence: CodeIntelligenceMode = 'off'): Action[] {
+export function planCodex(canonDir: string, targetDir: string, codeGraph: CodeGraph = 'none', codeIntelligence: CodeIntelligenceMode = 'off', browserTools = false): Action[] {
   const manifest = loadManifest(join(canonDir, 'manifest.yaml'))
   const baseline = readFileSync(join(canonDir, 'AGENTS.md'), 'utf8')
   const actions: Action[] = manifest.skills.flatMap(skill => skillPackageActions(canonDir, skill, 'codex'))
 
   const roles = [
-    ['implementer', 'Implementation specialist for one scoped story.', 'workspace-write', 'Implement only the assigned scope. Use tests first, run verification, and do not review or commit your own work.'],
+    ['implementer', 'Implementation specialist for one scoped story.', 'workspace-write', 'Implement only the assigned scope. Run checks appropriate to the assigned change. Leave final acceptance and integration to the host.'],
     ['reviewer', 'Read-only reviewer for correctness and acceptance criteria.', 'read-only', 'Review observed diffs and test evidence. Do not modify files. Return only findings grounded in evidence.'],
     ['security', 'Read-only security reviewer for changed code.', 'read-only', 'Inspect changed code for exploitable security regressions. Do not modify files and avoid speculative findings.'],
     ['docs', 'Documentation specialist for release and API consistency.', 'workspace-write', 'Update only documentation required by the assigned change. Verify commands and version references against the repository. Use no-ai-slop Detect mode before prose edits, preserve the writer\'s voice, and apply only observed fixes.'],
@@ -55,8 +63,8 @@ export function planCodex(canonDir: string, targetDir: string, codeGraph: CodeGr
     {
       kind: 'write',
       target: '.codex/config.toml',
-      content: `# Yoke project configuration. Codex loads this in trusted repositories.\n\n[features]\nhooks = true\n\n${tomlMcp(codeGraph, codeIntelligence, targetDir)}`,
-      reason: codeIntelligence === 'off' ? 'MCP servers (code-graph + playwright)' : 'Yoke code-intelligence facade + playwright',
+      content: codexConfig(codeGraph, codeIntelligence, targetDir, browserTools),
+      reason: 'Explicitly selected MCP tools; preserves unrelated Codex settings',
     },
     {
       kind: 'write',

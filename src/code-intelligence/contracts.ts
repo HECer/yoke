@@ -37,7 +37,7 @@ export const MetricsSchema = z.object({
   latency_ms: z.number().nonnegative(),
   result_tokens: z.number().int().nonnegative(),
   token_count_kind: z.enum(['exact', 'estimated']),
-  token_count_method: z.literal('utf8_bytes_conservative').optional(),
+  token_count_method: z.enum(['utf8_bytes_conservative', 'utf8_bytes_div4']).optional(),
   returned_bytes: z.number().int().nonnegative(),
 })
 export type Metrics = z.infer<typeof MetricsSchema>
@@ -68,6 +68,8 @@ export const SymbolSchema = z.object({
   path: z.string().nullable(),
   kind: z.string().min(1),
   signature: z.string().nullable(),
+  line: z.number().int().positive().nullable().optional(),
+  reference_line: z.number().int().positive().nullable().optional(),
   evidence_ids: z.array(z.string().min(1)),
 })
 export const ReferenceSchema = z.object({
@@ -103,12 +105,14 @@ export const ResponseBaseSchema = z.object({
   warnings: z.array(z.string()),
   metrics: MetricsSchema,
   artifact_uri: z.string().nullable(),
+  evidence_cursor: z.string().nullable().optional(),
   error: ErrorSchema.nullable(),
 })
 export type ResponseBase = z.infer<typeof ResponseBaseSchema>
 
 const BudgetSchema = z.object({
-  token_budget: z.number().int().min(128).max(16000).default(2400),
+  token_budget: z.number().int().min(128).max(16000).optional().describe('Deprecated: legacy byte cap, not a provider-token count. Use max_output_bytes.'),
+  max_output_bytes: z.number().int().min(128).max(64000).optional().describe('Maximum UTF-8 bytes in the complete structured response.'),
   timeout_ms: z.number().int().min(100).max(60000).default(5000),
 })
 
@@ -126,14 +130,16 @@ export const TraceInputSchema = z.object({
   workspace_id: z.string().min(1), snapshot_id: z.string().min(1), symbol_id: z.string().min(1),
   direction: z.enum(['in', 'out']), relations: z.array(z.enum(['calls', 'references', 'imports', 'implements', 'extends'])).min(1),
   max_depth: z.number().int().min(1).max(6).default(2), max_nodes: z.number().int().min(1).max(2000).default(200),
+  max_output_bytes: BudgetSchema.shape.max_output_bytes,
   require_resolved: z.boolean().default(false), timeout_ms: z.number().int().min(100).max(60000).default(5000),
 })
 const TargetSchema = z.union([z.object({ path: z.string().min(1) }), z.object({ symbol_id: z.string().min(1) })])
 export const ImpactInputSchema = z.object({
-  workspace_id: z.string().min(1), snapshot_id: z.string().min(1), targets: z.array(TargetSchema).max(50).optional(),
-  plan_id: z.string().min(1).optional(), include_docs: z.boolean().default(true), require_semantic: z.boolean().default(true),
+  workspace_id: z.string().min(1), snapshot_id: z.string().min(1), targets: z.array(TargetSchema).min(1).max(50),
+  include_docs: z.boolean().default(false), require_semantic: z.boolean().default(true),
+  max_output_bytes: BudgetSchema.shape.max_output_bytes,
   max_depth: z.number().int().min(1).max(6).default(3), timeout_ms: z.number().int().min(100).max(60000).default(10000),
-}).refine(v => Boolean(v.targets) !== Boolean(v.plan_id), 'exactly one of targets or plan_id is required')
+})
 
 const OperationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('rename'), symbol_id: z.string().min(1), new_name: z.string().regex(/^[A-Za-z_$][\w$]*$/) }),
@@ -148,7 +154,13 @@ export const EditPreviewInputSchema = z.object({
 })
 export const EditApplyInputSchema = z.object({
   workspace_id: z.string().min(1), plan_id: z.string().min(1), expected_snapshot_id: z.string().min(1),
-  idempotency_key: z.string().min(8).max(128),
+  idempotency_key: z.string().min(8).max(128).regex(/^[A-Za-z0-9_-]+$/),
+})
+
+export const EvidenceInputSchema = z.object({
+  workspace_id: z.string().min(1),
+  cursor: z.string().regex(/^[a-f0-9]{64}:[0-9]{1,9}$/).describe('Opaque evidence_cursor from a result or next_cursor from the previous evidence page.'),
+  ...BudgetSchema.shape,
 })
 
 export type ContextInput = z.infer<typeof ContextInputSchema>
@@ -167,12 +179,14 @@ export interface ImpactData { semantic_findings: z.infer<typeof ItemSchema>[]; s
 export interface PreviewData { plan_id: string; plan_hash: string; diff_uri: string; changed_paths: string[]; validation: 'passed' | 'failed' | 'incomplete'; approval_required: true; expires_at: string }
 export interface ApplyData { plan_id: string; transaction_id: string; changed_paths: string[]; new_snapshot_id: string; validation: 'passed' | 'failed' | 'incomplete'; committed: false; merged: false }
 
-export const TOOL_NAMES = ['code_context', 'code_symbol', 'code_trace', 'code_impact', 'code_edit_preview', 'code_edit_apply'] as const
+export const EDITS_UNAVAILABLE = 'Code Intelligence edits are unavailable: host-owned approval, complete change tracking, validation and worktree integration are not implemented. Use the native worker and existing Yoke acceptance workflow.'
+export const INPUT_SCHEMAS = { code_context: ContextInputSchema, code_symbol: SymbolInputSchema, code_trace: TraceInputSchema, code_impact: ImpactInputSchema, code_evidence: EvidenceInputSchema }
+export const TOOL_NAMES = ['code_context', 'code_symbol', 'code_trace', 'code_impact', 'code_evidence'] as const
 export type ToolName = typeof TOOL_NAMES[number]
 
 export const TOOL_DEFINITIONS = TOOL_NAMES.map(name => ({
   name,
-  description: `Yoke-controlled ${name.replace('code_', '').replace('_', ' ')} with snapshot-bound evidence.`,
-  inputSchema: { type: 'object', additionalProperties: false },
-  annotations: { openWorldHint: false, destructiveHint: name === 'code_edit_apply', readOnlyHint: name !== 'code_edit_preview' && name !== 'code_edit_apply', idempotentHint: name !== 'code_edit_apply' },
+  description: name === 'code_evidence' ? 'Read the next bounded page of retained evidence using evidence_cursor; does not repeat a backend query. Evidence is historical and checked against current workspace policy.' : `Read-only ${name.replace('code_', '').replace('_', ' ')} with a workspace snapshot and attributed evidence. Backend freshness is unverified. Partial output includes evidence_cursor for code_evidence.`,
+  inputSchema: { ...z.toJSONSchema(INPUT_SCHEMAS[name], { io: 'input' }), ...(name === 'code_symbol' ? { oneOf: [{ required: ['symbol_id'], not: { required: ['query'] } }, { required: ['query'], not: { required: ['symbol_id'] } }] } : {}) },
+  annotations: { openWorldHint: false, destructiveHint: false, readOnlyHint: true, idempotentHint: true },
 }))

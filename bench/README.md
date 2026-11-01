@@ -133,3 +133,29 @@ work. Run `npm run build` first so `dist/loop/dispatcher.js` exists.
 
 Results live in [`results/`](results/) — one JSON per run, summarized in
 [`RESULTS.md`](RESULTS.md).
+
+## November remediation measurements and provider contracts
+
+### Reproduce the dashboard comparison
+
+From a source checkout with `npm ci` completed and audit base `a97c5e0` present locally, run:
+
+```bash
+node bench/dashboard-remediation.mjs --out=dashboard-comparison.json
+```
+
+The script uses `git show` for the pinned baseline analytics module and loads TypeScript locally
+with `tsx`; it needs no old checkout, old dependency installation, or provider account. Both arms
+use the current helper implementations, matching the original comparison. It measures three
+samples at 2,000, 8,000, 16,000, and 32,000 events in one synthetic run, checks identical project
+and run totals and complete event counts, and reports source/fixture/dependency-lock hashes.
+Timing covers file reads, parsing, and aggregation; response byte sizes are measured separately.
+Fixed-order, same-process samples are local component evidence, without a whole-task or model
+cost claim. Output goes to stdout and optionally a **new** JSON file; an existing output file
+is never overwritten. The dated checked-in November report remains the original observation.
+
+### Provider contracts and checked-in reports
+
+`npm run bench:provider-contracts` builds Yoke and records CLI availability without model calls. `node bench/provider-contract-smoke.mjs --live --agent=codex --model=YOUR_MODEL --out=provider-contract.json` deliberately runs one authenticated benign structured-output check; replace the model placeholder first. It does not establish permission enforcement or nested-agent denial. Read [the contract](../docs/PROVIDER-CONTRACTS.md) for scopes and exit behavior.
+
+The checked-in November `dashboard-remediation`, `verification-cache-remediation`, and `canon-size` JSON reports record local component evidence and their limitations. They are not historical individual-run schema-v1 provider benchmarks. The [remediation guide](../docs/AUDIT-REMEDIATION-2026-11.md) maps each audit finding to implementation and remaining limits. Retain the controlled native/Yoke comparison harness and immutable replay for paid economic studies; no new authenticated comparison was possible in this environment.

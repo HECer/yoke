@@ -30,6 +30,7 @@ import { runCodeIntelligenceServer } from './code-intelligence/mcp-server.js'
 import { pendingChanges, queueChange } from './change/inbox.js'
 import { localUsageReport } from './observability/local-report.js'
 import { runToolPreflight } from './code-intelligence/preflight.js'
+import { executionBudgetStatus, resetExecutionBudget } from './execution/budget.js'
 import {
   answerPendingDecision, answeredDecisionResumeIsValid, clearDecisionResume, decisionProcessingExists, decisionResumeMatchesCurrent,
   finalizeCommittedDecisionResume,
@@ -157,8 +158,9 @@ export function main(argv: string[]): number | Promise<number> {
   // Help must exit before any command can write configuration or start a process.
   if (argv.includes('--help') || argv.includes('-h')) return main([])
   const mutationFlags: Record<string, readonly string[]> = {
-    setup: ['--yes', '--host=', '--agent=', '--runner=', '--code-graph=', '--code-intelligence=', '--decision-policy=', '--loop', '--no-loop', '--routing', '--no-routing', '--routing-strategy=', '--model-provider=', '--runner-model=', '--runner-reasoning=', '--model=', '--reasoning=', '--clean-worktrees', '--configure-models', '--routing-preset'],
-    retrofit: ['--loop', '--agent=', '--code-graph=', '--code-intelligence=', '--clean-worktrees', '--runner-model=', '--runner-reasoning=', '--model=', '--reasoning='],
+    setup: ['--yes', '--host=', '--agent=', '--runner=', '--code-graph=', '--browser-tools', '--no-browser-tools', '--code-intelligence=', '--decision-policy=', '--loop', '--no-loop', '--routing', '--no-routing', '--routing-strategy=', '--model-provider=', '--runner-model=', '--runner-reasoning=', '--model=', '--reasoning=', '--clean-worktrees', '--configure-models', '--routing-preset'],
+    retrofit: ['--loop', '--agent=', '--code-graph=', '--browser-tools', '--no-browser-tools', '--code-intelligence=', '--clean-worktrees', '--runner-model=', '--runner-reasoning=', '--model=', '--reasoning='],
+    budget: ['--json'],
     context: [],
     projects: [],
     worktrees: ['--all', '--force'],
@@ -235,7 +237,8 @@ export function main(argv: string[]): number | Promise<number> {
       const runnerArg = rest.find(a => a.startsWith('--runner='))?.slice('--runner='.length)
       if (runnerArg && !valid.includes(runnerArg as Agent)) { console.error(`Invalid --runner value: ${runnerArg}`); return 1 }
       const graphArg = rest.find(a => a.startsWith('--code-graph='))?.slice('--code-graph='.length)
-      if (graphArg && graphArg !== 'graphify' && graphArg !== 'serena') { console.error(`Invalid --code-graph value: ${graphArg}`); return 1 }
+      if (graphArg && !['none', 'graphify', 'serena'].includes(graphArg)) { console.error(`Invalid --code-graph value: ${graphArg}`); return 1 }
+      if (rest.includes('--browser-tools') && rest.includes('--no-browser-tools')) { console.error('Choose --browser-tools or --no-browser-tools'); return 1 }
       const intelligenceArg = rest.find(a => a.startsWith('--code-intelligence='))?.slice('--code-intelligence='.length)
       if (intelligenceArg && !['off', 'shadow', 'active'].includes(intelligenceArg)) { console.error(`Invalid --code-intelligence value: ${intelligenceArg}`); return 1 }
       const policyArg = rest.find(a => a.startsWith('--decision-policy='))?.slice('--decision-policy='.length)
@@ -257,13 +260,25 @@ export function main(argv: string[]): number | Promise<number> {
         host: hostArg as Agent | undefined, agents, runner: runnerArg as Agent | undefined,
         runnerModel, runnerReasoning, agentModels, agentReasoning, cleanWorktrees,
         configureModels: rest.includes('--configure-models'),
-        codeGraph: graphArg as 'graphify' | 'serena' | undefined,
+        codeGraph: graphArg as 'none' | 'graphify' | 'serena' | undefined,
+        browserTools: rest.includes('--browser-tools') ? true : rest.includes('--no-browser-tools') ? false : undefined,
         codeIntelligence: intelligenceArg as CodeIntelligenceMode | undefined,
         loop, routing, decisionPolicy: policyArg as DecisionPolicy | undefined,
         routingStrategy: routingStrategy as import('./retrofit/config.js').RoutingStrategy | undefined,
         routingPreset: rest.includes('--routing-preset'),
         interactive: rest.includes('--yes') ? false : undefined,
       })
+    }
+    case 'budget': {
+      const positionals = rest.filter(arg => !arg.startsWith('-'))
+      const sub = positionals[0] ?? 'status'
+      const targetDir = positionals[1] ?? '.'
+      try {
+        if (positionals.length > 2) throw Error('Use yoke budget status|reset [dir] [--json]')
+        if (sub === 'status') { console.log(JSON.stringify(executionBudgetStatus(targetDir))); return 0 }
+        if (sub === 'reset') { console.log(JSON.stringify(resetExecutionBudget(targetDir))); return 0 }
+        throw Error('Use yoke budget status|reset [dir] [--json]')
+      } catch (error) { console.error(`Execution budget: ${(error as Error).message}`); return 1 }
     }
     case 'projects': {
       try {
@@ -397,14 +412,16 @@ export function main(argv: string[]): number | Promise<number> {
         console.warn('Unknown agent(s) in --agent; falling back to detection')
       }
       const cgArg = rest.find(a => a.startsWith('--code-graph='))?.slice('--code-graph='.length)
-      const codeGraph = cgArg === 'serena' || cgArg === 'graphify' ? cgArg : undefined
+      const codeGraph = cgArg === 'none' || cgArg === 'serena' || cgArg === 'graphify' ? cgArg : undefined
       if (cgArg && !codeGraph) {
-        console.error(`Invalid --code-graph value: ${cgArg} (expected graphify|serena)`)
+        console.error(`Invalid --code-graph value: ${cgArg} (expected none|graphify|serena)`)
         return 1
       }
       const ciArg = rest.find(a => a.startsWith('--code-intelligence='))?.slice('--code-intelligence='.length)
       if (ciArg && !['off', 'shadow', 'active'].includes(ciArg)) { console.error(`Invalid --code-intelligence value: ${ciArg} (expected off|shadow|active)`); return 1 }
-      return runRetrofit(targetDir, { loop, agents, codeGraph, codeIntelligence: ciArg as CodeIntelligenceMode | undefined, cleanWorktrees, runnerModel, runnerReasoning, agentModels, agentReasoning })
+      if (rest.includes('--browser-tools') && rest.includes('--no-browser-tools')) { console.error('Choose --browser-tools or --no-browser-tools'); return 1 }
+      const browserTools = rest.includes('--browser-tools') ? true : rest.includes('--no-browser-tools') ? false : undefined
+      return runRetrofit(targetDir, { loop, agents, codeGraph, browserTools, codeIntelligence: ciArg as CodeIntelligenceMode | undefined, cleanWorktrees, runnerModel, runnerReasoning, agentModels, agentReasoning })
     }
     case 'change': {
       const sub = rest[0]
@@ -751,8 +768,8 @@ export function main(argv: string[]): number | Promise<number> {
       return runUpgrade()
     default:
       console.log('Local diagnostics: yoke tools-preflight [dir] [--json] | usage [dir] [--from=ISO] [--to=ISO] [--run=id] [--json]')
-      console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|bind|assess|run|resume|pause|status|handoff|budget [dir] | projects add|list|remove | dashboard [dir] [--port=N]')
-      console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=graphify|serena] [--code-intelligence=off|shadow|active] [--clean-worktrees] [--runner-model=<model>] [--runner-reasoning=<effort>] [--model=<agent>:<model>] [--reasoning=<agent>:<effort>] [--loop] | worktrees <list|prune> [dir] [--all] [--force] | change <add|status> [dir] | code-intelligence-server --workspace=<dir> --mode=<mode> | prd <draft|check|assess|decompose> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] | design-scan [dir] | flow-smoke [dir] | upgrade>`)
+      console.log('Project workflows: yoke check [dir] [--json|--protect] | goal set|bind|assess|run|resume|pause|status|handoff|budget [dir] | budget status|reset [dir] [--json] | projects add|list|remove | dashboard [dir] [--port=N]')
+      console.log(`usage: yoke <setup [dir] | new <dir> [--idea="..."] | validate [canonDir] | retrofit [targetDir] [--agent=${AGENT_LIST}|all] [--code-graph=none|graphify|serena] [--browser-tools|--no-browser-tools] [--code-intelligence=off|shadow|active] [--clean-worktrees] [--runner-model=<model>] [--runner-reasoning=<effort>] [--model=<agent>:<model>] [--reasoning=<agent>:<effort>] [--loop] | worktrees <list|prune> [dir] [--all] [--force] | change <add|status> [dir] | code-intelligence-server --workspace=<dir> --mode=<mode> | prd <draft|check|assess|decompose> [dir] | loop <on|off|status|decision|answer|resume|run|cleanup> | context <init|status> | review [dir] | design-scan [dir] | flow-smoke [dir] | upgrade>`)
       return cmd ? 1 : 0
   }
 }

@@ -1,38 +1,16 @@
-# Yoke Harness — Agent Baseline
+# Yoke agent baseline
 
-You are operating in a project retrofitted by Yoke. Follow these always:
+Deliver the user's accepted outcome with the smallest complete change. Read relevant repository instructions and source; preserve unrelated work and protected acceptance criteria.
 
-- **Quality first:** Test-driven development is the default. No production code without a failing test first. See skill `tdd`.
-- **Stop-the-Line:** Do not start implementation until Definition of Done / Acceptance Criteria are written. See `policy/gates.md`.
-- **Role separation:** The agent that implements does not self-review, self-merge, or self-audit security. See `policy/roles.md`.
-- **Context efficiency:** Prefer the wired tools (rtk for command output, the code-graph for symbol lookup) over reading whole files. See `tools/`.
+- Establish observable acceptance before implementation. Reuse an approved plan; resolve routine details yourself and ask only about material unresolved decisions.
+- Choose checks by risk. Reproduce behavioral defects where feasible, run focused checks while editing, and satisfy required acceptance, integration, and release gates. Do not add artificial tests for prose or trivial configuration changes.
+- Keep one controller. When Yoke owns the loop, it owns scheduling, review, integration, and the shared execution budget. Workers must not launch nested loops or native subagents, reset budgets, or broaden permissions.
+- Use deterministic tools for routine work. Load only relevant source ranges and skill references; preserve complete failure evidence in artifacts. Optional code-graph, browser, and RTK tools must be installed and selected before use.
+- Use one review at a meaningful boundary, with extra specialist review for a concrete risk or required policy. Self-checks are useful but do not count as independent review. Blocking findings prevent approval.
+- Report verified results and material limits. Unknown usage is not zero; timeouts are budgets, not completion estimates. Do not claim publication or CI success before observing it.
 
-This file is the portable baseline. Agent-specific instructions are generated alongside it (CLAUDE.md, GEMINI.md).
+## Skill routing: choose one workflow
 
-## Host capabilities and execution budgets
+Use `yoke-workflow` for Yoke-owned planning and execution, `systematic-debugging` for an uncertain defect, and `yoke-retrofit` for setup. Pre-merge code review uses `review`. Load another skill only to resolve a specific need; do not automatically chain brainstorming, planning, TDD, and multiple reviewers for every task. Specialist product reviews, retrospectives, and release workflows remain available on request.
 
-- Use only tools and skills actually installed in the host. Legacy `superpowers:` references in adapted skills refer to the corresponding local skill; `test-driven-development` maps to `tdd`. Do not install another plugin just to resolve a namespace.
-- When Yoke owns the loop, worker concurrency, verification, and integration remain under its control. Do not start nested loops or native subagents from a worker. Without native delegation, work serially and expose missing independent-review evidence.
-- External controllers should keep the loop's blocking command attached. When the host needs a separate handoff, use `yoke loop wait [dir] --timeout=60 --json`, handle its explicit result, and inspect detailed evidence only for terminal/actionable states. Continue timeout waits in host code; see `loop/loop-spec.md` for cursors and exit codes.
-- Run focused checks for quick feedback, but never skip required acceptance, protected, integration, or release gates. Cache evidence only when code, configuration, and environment still match.
-- Distinguish observed durations from future estimates. Report the sample count, empirical range, and unknown waiting time; a timeout is a budget, not a promised completion time. Do not reduce reasoning or test scope merely to meet an estimate.
-
-## Skill routing & precedence
-
-When several skills could match the same task, resolve deterministically:
-
-1. **Methodology before role.** Skills that decide *how* to work (`brainstorming`, `writing-plans`,
-   `tdd`, `subagent-driven-development`, `systematic-debugging`, …) take precedence and set the
-   process. Role skills (`review`, `ship`, `health`, `retro`, …) add a perspective on top.
-2. **One canonical entrypoint per concern** — pick the most specific:
-   - Set up or update Yoke → `yoke-retrofit`
-   - Yoke-owned planning + autonomous story execution → `yoke-workflow`
-   - Plan-time architecture review → `plan-eng-review`
-   - Plan-time product / scope review → `plan-ceo-review`
-   - **Pre-merge code review → `review`** (the single canonical one)
-   - Requesting a review (dispatch a reviewer) → `requesting-code-review`
-   - Handling review feedback → `receiving-code-review`
-   - Overall order of operations (idea → deploy) → `workflow`
-3. **Don't double-run.** These skills declare their own triggers aggressively; when more than one
-   matches, the precedence above and the most-specific entrypoint decide. Do not run two skills
-   that serve the same concern on the same task.
+Keep a blocking loop attached. When a separate handoff is required, use `yoke loop wait [dir] --timeout=60 --json` and repeat timeout waits in host code. Inspect detailed evidence only for terminal or actionable states. See `loop/loop-spec.md` for cursors and exit codes, and `policy/` for acceptance and role ownership.

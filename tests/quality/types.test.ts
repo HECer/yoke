@@ -11,8 +11,10 @@ describe('quality defaults contract', () => {
     expect(parsed.repair).toMatchObject({ provider: 'openai', variant: 'medium' })
   })
 
-  it('rejects consistency counts other than the implemented swapped pair', () => {
-    expect(() => ProjectQualityDefaultsSchema.parse({ consistencyChecks: 1 })).toThrow()
+  it('supports single, paired, and adaptive consistency while rejecting unsupported counts', () => {
+    expect(ProjectQualityDefaultsSchema.parse({}).consistencyChecks).toBe('adaptive')
+    expect(ProjectQualityDefaultsSchema.parse({ consistencyChecks: 1 }).consistencyChecks).toBe(1)
+    expect(ProjectQualityDefaultsSchema.parse({ consistencyChecks: 'adaptive' }).consistencyChecks).toBe('adaptive')
     expect(() => ProjectQualityDefaultsSchema.parse({ consistencyChecks: 3 })).toThrow()
     expect(ProjectQualityDefaultsSchema.parse({ consistencyChecks: 2 }).consistencyChecks).toBe(2)
   })

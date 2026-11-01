@@ -1,10 +1,9 @@
-import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { existsSync, lstatSync, readFileSync, rmSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import { parse, stringify } from 'yaml'
 import { z } from 'zod'
 import { resolvePlanner } from '../routing/planning.js'
-import { readPlanningFile } from '../routing/contracts.js'
 import { acquireLock, releaseLock } from '../loop/lock.js'
 import { isAcceptanceCriterion, loadPrd, StorySchema, validateDependencies, type AcceptanceCriterion, type Story } from '../loop/prd.js'
 import { writeScopesOverlap, validWriteScope } from '../loop/scheduler.js'
@@ -13,6 +12,10 @@ import { loadConfig, type Agent } from '../retrofit/config.js'
 import { detectHostAgent, resolveRunnerAgent } from '../agents/host.js'
 import { agentInvocation, buildWatchdogInvocation, isAgentAvailable, runCapturedAgent, type AgentResult, type Invocation } from '../loop/runner.js'
 import { measureInvocation } from '../observability/invocation.js'
+import { withExecutionBudgetScope } from '../execution/budget.js'
+import { RequirementsSchema, type RequirementsLedger } from './requirements.js'
+import { assertPlanningState, publishPlanningState, readPlanningState, validatePlanningState } from './transaction.js'
+import { statePath } from '../workspace/state.js'
 
 const ProposalSchema = z.array(z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u),
@@ -30,10 +33,6 @@ export interface PrdDecomposeOptions {
   readonly timeoutMinutes?: number
   readonly isAvailable?: (agent: Agent) => boolean
   readonly run?: (invocation: Invocation) => AgentResult
-}
-
-function hash(value: string): string {
-  return createHash('sha256').update(value).digest('hex')
 }
 
 function splitPrompt(parent: Story, criteria: readonly AcceptanceCriterion[], proposalPath: string, brief: string): string {
@@ -101,6 +100,7 @@ function validatedChildren(parent: Story, stories: readonly Story[], proposal: z
       writes: child.writes,
       ...(parent.agent ? { agent: parent.agent } : {}),
       ...(parent.sourceChange ? { sourceChange: parent.sourceChange } : {}),
+      ...(parent.requirementsFor ? { requirementsFor: parent.requirementsFor } : {}),
     })
     return childStory
   })
@@ -109,6 +109,12 @@ function validatedChildren(parent: Story, stories: readonly Story[], proposal: z
     throw Error('each child must have 2-3 structured acceptance criteria')
   }
   return children
+}
+
+function splitCoverage(ledger: RequirementsLedger, parent: Story, children: Story[]): RequirementsLedger {
+  const childFor = new Map(children.flatMap(child => child.acceptance.filter(isAcceptanceCriterion).map(criterion => [criterion.id, child.id] as const)))
+  const remap = (entries: RequirementsLedger['requirements']) => entries.map(entry => ({ ...entry, criteria: entry.criteria.map(ref => ref.story === parent.id ? { ...ref, story: childFor.get(ref.criterion)! } : ref) }))
+  return { ...ledger, requirements: remap(ledger.requirements), invariants: remap(ledger.invariants) }
 }
 
 function replaceParent(stories: Story[], parent: Story, children: Story[]): Story[] {
@@ -141,18 +147,21 @@ function replaceParent(stories: Story[], parent: Story, children: Story[]): Stor
 }
 
 export function runPrdDecompose(root: string, options: PrdDecomposeOptions): number {
+  return withExecutionBudgetScope(root, () => decompose(root, options))
+}
+function decompose(root: string, options: PrdDecomposeOptions): number {
   let lock: ReturnType<typeof acquireLock> | undefined
   let proposalPath: string | undefined
   try {
     if (!options.story.trim()) throw Error('select a story with --story=<id>')
     const prdPath = join(root, '.yoke', 'prd.yaml')
-    const before = readPlanningFile(root, '.yoke/prd.yaml')
-    if (before === undefined) throw Error('No PRD. Draft the work package first.')
-    const brief = readPlanningFile(root, '.yoke/plan.md', 80_000) ?? ''
-    const beforeHash = hash(before), briefHash = hash(brief)
+    const before = readPlanningState(root)
+    if (before.prd === null) throw Error('No PRD. Draft the work package first.')
+    const brief = before.brief ?? ''
     const stories = loadPrd(prdPath)
     const parent = stories.find(story => story.id === options.story)
     if (!parent || parent.passes) throw Error('select an existing unfinished story')
+    if (parent.quality || parent.exploration) throw Error('Decomposition cannot safely partition quality or exploration semantics; prepare explicitly scoped child contracts instead')
     const criteria = parent.acceptance.filter(isAcceptanceCriterion)
     if (parent.acceptance.length < 4 || criteria.length !== parent.acceptance.length) throw Error('safe parallel decomposition requires at least four structured acceptance criteria')
     const scopes = parent.writes ?? []
@@ -184,11 +193,11 @@ export function runPrdDecompose(root: string, options: PrdDecomposeOptions): num
     if (!existsSync(proposalPath)) throw Error('planner did not create the requested proposal file')
     const proposal = parseProposal(proposalPath)
     const children = validatedChildren(parent, stories, proposal)
-    const currentPrd = readPlanningFile(root, '.yoke/prd.yaml') ?? ''
-    const currentBrief = readPlanningFile(root, '.yoke/plan.md', 80_000) ?? ''
-    if (hash(currentPrd) !== beforeHash || hash(currentBrief) !== briefHash || currentPrd !== before || currentBrief !== brief) {
-      throw Error('PRD or approved planning brief changed while decomposition was being prepared; refresh the proposal')
-    }
+    assertPlanningState(root, before)
+    const next = replaceParent(stories, parent, children)
+    const ledger = before.requirements === null ? undefined : RequirementsSchema.parse(parse(before.requirements, { maxAliasCount: 10 }))
+    const after = { ...before, prd: stringify(next), requirements: ledger ? stringify(splitCoverage(ledger, parent, children)) : null }
+    validatePlanningState(after)
     console.log(`Proposed split for ${parent.id}:`)
     for (const child of children) {
       console.log(`- ${child.id}: ${child.title}`)
@@ -199,22 +208,14 @@ export function runPrdDecompose(root: string, options: PrdDecomposeOptions): num
       console.log('Preview only. Re-run with --apply to replace the parent and update dependent stories.')
       return 0
     }
-    const next = replaceParent(stories, parent, children)
-    const tempPath = join(root, '.yoke', `prd-${randomUUID()}.tmp`)
-    try {
-      writeFileSync(tempPath, stringify(next), { flag: 'wx' })
-      const currentPrd = readPlanningFile(root, '.yoke/prd.yaml') ?? ''
-      const currentBrief = readPlanningFile(root, '.yoke/plan.md', 80_000) ?? ''
-      if (hash(currentPrd) !== beforeHash || hash(currentBrief) !== briefHash || currentPrd !== before || currentBrief !== brief) throw Error('PRD or approved planning brief changed before publish; no output applied')
-      renameSync(tempPath, prdPath)
-    } finally { rmSync(tempPath, { force: true }) }
+    publishPlanningState(root, before, after)
     console.log(`Applied split: ${parent.id} replaced by ${children.map(child => child.id).join(' and ')}. Reassess affected tasks with yoke prd assess.`)
     return 0
   } catch (error) {
     console.error(`PRD decomposition: ${(error as Error).message}`)
     return 1
   } finally {
-    if (proposalPath) rmSync(proposalPath, { force: true })
+    if (proposalPath) { try { rmSync(statePath(root, basename(proposalPath)), { force: true }) } catch { /* Retain linked proposal state for inspection. */ } }
     if (lock?.acquired) releaseLock(root, lock.ownerToken)
   }
 }

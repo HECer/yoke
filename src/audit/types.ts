@@ -18,5 +18,7 @@ export interface AuditSuppression {
 export interface AuditResult {
   code: 0 | 1 | 2
   findings: AuditFinding[]
+  dependencyStatus?: 'clean' | 'findings' | 'unavailable' | 'unsupported' | 'partial' | 'custom'
+  dependencyCoverage?: { scannedLockfiles: string[]; unscannedLockfiles: string[] }
   error?: string
 }

@@ -53,11 +53,11 @@ describe('Phase 5 parallel integration', { timeout: 60_000 }, () => {
       qualityRuntime: {
         invoke: (_agent, invocation) => {
           qualityCalls += 1
-          const request = JSON.parse(invocation.input) as { attemptId: string; candidateLabel: 'A' | 'B'; promptDigest: string; rubricDigest: string }
+          const request = JSON.parse(invocation.input) as { attemptId: string; bundles: Array<{ label: 'A' | 'B'; artifacts: Array<{ sha256: string }> }> }
           const attemptId = request.attemptId
-          const label = request.candidateLabel
+          const label = request.bundles.find(bundle => bundle.artifacts.some(artifact => artifact.sha256 === digest('candidate artifact')))!.label
           if (label !== 'A' && label !== 'B') throw new Error(`unexpected quality label ${label}`)
-          return { success: true, output: qualityVerdict(attemptId, label, request.promptDigest, request.rubricDigest), summary: 'critic approved' }
+          return { success: true, output: qualityVerdict(attemptId, label), summary: 'critic approved' }
         },
         firstLabel: () => 'A',
       },
@@ -185,8 +185,8 @@ function providerScript(id: string, barrier: string, mode: 'dag' | 'conflict'): 
   return `const fs=require('node:fs');const path=require('node:path');const id=${JSON.stringify(id)};const barrier=${JSON.stringify(barrier)};const finish=()=>{${completion};process.stdout.write('done\\n')};const waitFor=(file,done)=>{if(fs.existsSync(file))return done();const watcher=fs.watch(barrier,()=>{if(fs.existsSync(file)){watcher.close();done()}});if(fs.existsSync(file)){watcher.close();done()}};if(id!=='A'&&id!=='B')finish();else{fs.mkdirSync(barrier,{recursive:true});fs.writeFileSync(path.join(barrier,id),'');const ready=()=>fs.existsSync(path.join(barrier,'A'))&&fs.existsSync(path.join(barrier,'B'));const release=()=>{if(!ready())return false;fs.writeFileSync(path.join(barrier,'overlap'),id);if(${JSON.stringify(mode)}==='conflict'&&id==='B')waitFor(path.join(barrier,'release-B'),finish);else finish();return true};if(!release()){const watcher=fs.watch(barrier,()=>{if(release())watcher.close()});if(release())watcher.close()}}`
 }
 
-function qualityVerdict(attemptId: string, label: 'A' | 'B', promptDigest: string, rubricDigest: string): string {
-  return JSON.stringify({ schemaVersion: 1, attemptId, winner: 'candidate', biggestGap: 'none', evidence: ['candidate matches reference'], confidence: 'high', candidate: { label, digest: digest('candidate artifact') }, reference: { label: label === 'A' ? 'B' : 'A', digest: digest('trusted reference') }, provenance: { provider: 'codex', model: 'test-critic', promptDigest, rubricDigest, referenceDigest: digest('trusted reference'), candidateDigest: digest('candidate artifact') } })
+function qualityVerdict(attemptId: string, label: 'A' | 'B'): string {
+  return JSON.stringify({ schemaVersion: 1, attemptId, winner: label, biggestGap: 'none', evidence: ['candidate matches reference'], confidence: 'high' })
 }
 
 function capture(input: string, pattern: RegExp): string { return pattern.exec(input)?.[1] ?? (() => { throw new Error(`missing ${pattern}`) })() }

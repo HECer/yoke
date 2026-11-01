@@ -57,11 +57,13 @@ export const MachineEnvelopeSchema = z.object({
   durationMs: z.number().int().nonnegative(),
   permissions: PermissionProfileSchema,
   usage: ProviderTokenUsageSchema.optional(),
-  raw: z.record(z.unknown()).optional(),
+  raw: z.record(z.string(), z.unknown()).optional(),
 })
 
 export type Agent = z.infer<typeof AgentSchema>
 export type PermissionProfile = z.infer<typeof PermissionProfileSchema>
 export type ModelSelection = z.infer<typeof ModelSelectionSchema>
-export type AgentInvocation = z.infer<typeof AgentInvocationSchema>
+/** Host-only accounting attribution. Never serialized into provider prompts. */
+export interface ExecutionContext { root: string; role: string; provider?: Agent; storyId?: string }
+export type AgentInvocation = z.infer<typeof AgentInvocationSchema> & { execution?: ExecutionContext }
 export type ProviderTelemetry = z.infer<typeof ProviderTelemetrySchema>

@@ -56,8 +56,8 @@ describe('planClaude', () => {
     expect(manual).toMatch(/^---\n[\s\S]*disable-model-invocation: true[\s\S]*\n---/u)
   })
 
-  it('the .mcp.json content references graphify and playwright', () => {
-    const mcp = planClaude(canon, '/t').find(a => a.target === '.mcp.json')!
+  it('the .mcp.json content only includes selected tools', () => {
+    const mcp = planClaude(canon, '/t', false, 'graphify', false, 'off', false, true).find(a => a.target === '.mcp.json')!
     expect(mcp.content).toContain('graphify')
     expect(mcp.content).toContain('playwright')
   })

@@ -1,0 +1,84 @@
+{
+  "note": "Single local fixtures, separate Node processes, shared environment. Node filesystem byte counters exclude Git subprocess I/O. Timing/RSS are observations, not end-to-end or Rust speed claims.",
+  "node": "v24.22.1",
+  "fixtures": {
+    "eligible_32mib": {
+      "before": {
+        "workspaceBytes": 150995016,
+        "runtimeBytes": 380819064,
+        "largestRead": 126939688,
+        "readFileCalls": 62,
+        "readSyncCalls": 0,
+        "elapsedMs": 781.8844339999999,
+        "peakRssKiB": 350012,
+        "stats": {
+          "executed": 1,
+          "reused": 1
+        }
+      },
+      "after": {
+        "workspaceBytes": 100663332,
+        "runtimeBytes": 380819064,
+        "largestRead": 131072,
+        "readFileCalls": 1,
+        "readSyncCalls": 3711,
+        "elapsedMs": 485.71728,
+        "peakRssKiB": 39476,
+        "stats": {
+          "executed": 1,
+          "reused": 1
+        },
+        "diagnostics": {
+          "identityChecks": 3,
+          "workspaceFilesHashed": 30,
+          "workspaceBytesHashed": 100663332,
+          "runtimeBytesHashed": 380819064,
+          "identityMs": 484.3041139999999,
+          "skipped": {}
+        }
+      }
+    },
+    "oversized_81mib": {
+      "before": {
+        "workspaceBytes": 33554480,
+        "runtimeBytes": 253879376,
+        "largestRead": 126939688,
+        "readFileCalls": 24,
+        "readSyncCalls": 0,
+        "elapsedMs": 385.407189,
+        "peakRssKiB": 176252,
+        "stats": {
+          "executed": 2,
+          "reused": 0
+        }
+      },
+      "after": {
+        "workspaceBytes": 0,
+        "runtimeBytes": 0,
+        "largestRead": 0,
+        "readFileCalls": 1,
+        "readSyncCalls": 0,
+        "elapsedMs": 3.4483530000000044,
+        "peakRssKiB": 32692,
+        "stats": {
+          "executed": 2,
+          "reused": 0
+        },
+        "diagnostics": {
+          "identityChecks": 2,
+          "workspaceFilesHashed": 0,
+          "workspaceBytesHashed": 0,
+          "runtimeBytesHashed": 0,
+          "identityMs": 1.788840999999998,
+          "skipped": {
+            "byte_limit": 2
+          },
+          "lastSkip": {
+            "reason": "byte_limit",
+            "message": "Local inputs exceed 64 MiB; command reuse is disabled."
+          }
+        }
+      }
+    }
+  }
+}

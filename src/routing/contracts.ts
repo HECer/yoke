@@ -3,7 +3,8 @@ import { lstatSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from 'yaml'
 import type { Story } from '../loop/prd.js'
-import { normalizePlanningBytes, planningSourceDigest } from './planning-source.js'
+import { RequirementsSchema, type RequirementsLedger } from '../prd/requirements.js'
+import { normalizePlanningBytes } from './planning-source.js'
 
 export function readPlanningFile(root: string, relative: string, maxBytes = 1_048_576): string | undefined {
   let file = root
@@ -24,18 +25,28 @@ export function readPlanningFile(root: string, relative: string, maxBytes = 1_04
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 
 /** Progress, priority and model output do not change a task's requirements. */
-export function contractKeys(stories: Story[], brief = '', requirementDigest = ''): Map<string, string> {
+export function contractKeys(stories: Story[], brief = '', requirements: string | RequirementsLedger = ''): Map<string, string> {
   const byId = new Map(stories.map(story => [story.id, story]))
   if (byId.size !== stories.length || stories.length > 2000) throw Error('Invalid planning task set')
   const keys = new Map<string, string>(), visiting = new Set<string>()
   const plan = hash(normalizePlanningBytes(brief).toString('utf8'))
+  const ledger = typeof requirements === 'string' ? undefined : requirements
+  const entries = (items: RequirementsLedger['requirements'], storyId?: string) => items
+    .filter(item => !storyId || item.criteria.some(ref => ref.story === storyId))
+    .map(item => ({ id: item.id, text: item.text, criteria: item.criteria.filter(ref => !storyId || ref.story === storyId).map(ref => ({ story: ref.story, criterion: ref.criterion })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))) }))
+    .sort((a, b) => a.id.localeCompare(b.id))
   const visit = (id: string): string => {
     if (keys.has(id)) return keys.get(id)!
     const s = byId.get(id)
     if (!s || visiting.has(id)) throw Error('Invalid planning dependency graph')
     visiting.add(id)
     const upstream = [...(s.needs ?? [])].sort().map(need => [need, visit(need)])
-    const key = hash({ version: 1, plan, ...(requirementDigest ? { requirementDigest } : {}), ...(s.requirementsFor ? { requirementsFor: s.requirementsFor } : {}), id: s.id, title: s.title, acceptance: s.acceptance, writes: s.writes, area: s.area, agent: s.agent, upstream })
+    const binding = ledger ? {
+      requirementContract: { idea: ledger.objective.idea, approvedPlanSha256: ledger.objective.approvedPlanSha256,
+        requirements: entries(ledger.requirements, s.id), invariants: entries(ledger.invariants),
+        change: ledger.changes?.find(change => change.id === s.sourceChange) },
+    } : { ...(requirements ? { requirementDigest: requirements } : {}), ...(s.requirementsFor ? { requirementsFor: s.requirementsFor } : {}) }
+    const key = hash({ version: ledger ? 2 : 1, plan, ...binding, id: s.id, title: s.title, acceptance: s.acceptance, writes: s.writes, area: s.area, agent: s.agent, quality: s.quality, exploration: s.exploration, upstream })
     visiting.delete(id); keys.set(id, key)
     return key
   }
@@ -51,5 +62,5 @@ export function currentContractKey(root: string, story: Story): string {
   // the stable project root rather than a worker's mutable worktree copy.
   const stories = [...parsed.filter(s => s.id !== story.id), story]
   const requirements = readPlanningFile(root, '.yoke/requirements.yaml', 200_000)
-  return contractKeys(stories, readPlanningFile(root, '.yoke/plan.md', 80_000) ?? '', requirements === undefined ? '' : planningSourceDigest(requirements)).get(story.id)!
+  return contractKeys(stories, readPlanningFile(root, '.yoke/plan.md', 80_000) ?? '', requirements === undefined ? '' : RequirementsSchema.parse(parse(requirements, { maxAliasCount: 10 }))).get(story.id)!
 }

@@ -11,6 +11,7 @@ import type { Agent } from '../retrofit/config.js'
 import type { GitOps } from './gates.js'
 import { commandVerifier, commandsVerifier, retryingVerifier, type Verifier } from './verify.js'
 import { createVerificationSession } from './verification-cache.js'
+import { withExecutionBudgetScope } from '../execution/budget.js'
 import { readStatus, makeReporter, fmtDuration, type LoopReporter } from './reporter.js'
 import { acquireLock, releaseLock, readLock } from './lock.js'
 import { statePath } from '../workspace/state.js'
@@ -546,6 +547,9 @@ async function runContinuousExploration(targetDir: string, options: RunLoopComma
 }
 
 export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): number | Promise<number> {
+  return withExecutionBudgetScope(targetDir, () => runCommand(targetDir, opts))
+}
+function runCommand(targetDir: string, opts: RunLoopCommandOptions): number | Promise<number> {
   if (opts.explore && !opts.explorationSupervisor) return startContinuousExploration(targetDir, opts)
   let parallel = opts.parallel ?? 1
   const candidates = opts.candidates ?? 1
@@ -628,7 +632,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
   }
   const outputPolicy = resolveOutputPolicy(config)
   const verificationReuse = config.verify?.reusableCommands?.length
-    ? { session: createVerificationSession(), reusableCommands: config.verify.reusableCommands } : {}
+    ? { session: createVerificationSession({ inputPaths: config.verify.reusableInputPaths, onDiagnostic: diagnostic => console.error(`[verification reuse] ${diagnostic.message}`) }), reusableCommands: config.verify.reusableCommands } : {}
   const configuredVerifyCommand = opts.verify ? undefined : resolveVerifyCommand(targetDir, config)
   let verify = opts.verify
   if (!verify) {
@@ -797,7 +801,8 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
     isAvailable: available,
     permissions,
     selection: runnerSelection,
-    commit: (_path, request) => commitPaths(targetDir, ['.yoke/prd.yaml'], `yoke: plan change ${request.id}`, commitIdentity),
+    ownedLockToken: lock.ownerToken,
+    commit: (_path, request, paths) => commitPaths(targetDir, paths, `yoke: plan change ${request.id}`, commitIdentity),
   }))
 
   const reviewerProviders = !opts.reviewRunner && (opts.review || opts.reviewer) ? SUPPORTED_AGENTS.filter(available) : []
@@ -827,7 +832,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
         ? reviewerProviders.find(agent => agent !== implementer) ?? resolvedReviewer : resolvedReviewer
       if (selectedReviewer === implementer && !opts.allowSelfReview) return { success: false, summary: "Independent review requires a provider distinct from the routed implementer", reviewOutcome: { kind: "infrastructure", summary: "Routed implementation and reviewer share a provider" } }
       reviewProvider = selectedReviewer
-      return makeReviewRunner(selectedReviewer, idleMs, undefined, routingEnabled ? roleSelection(targetDir, config, context.story, selectedReviewer, "reviewer") : undefined)(context)
+      return makeReviewRunner(selectedReviewer, idleMs, undefined, routingEnabled ? roleSelection(targetDir, config, context.story, selectedReviewer, "reviewer") : undefined, targetDir)(context)
     }
   }
 
@@ -907,7 +912,7 @@ export function runLoopCommand(targetDir: string, opts: RunLoopCommandOptions): 
           runnerOpts,
           isAvailable: available,
         })
-      : makeRunner(runnerAgent, idleMs, runnerOpts)
+      : makeRunner(runnerAgent, idleMs, { ...runnerOpts, ownershipRoot: targetDir })
     const announce = opts.json ? console.error : console.log
     if (!opts.quiet) announce(`Runner: ${runnerAgent} · permissions: ${permissions} · routing: ${routingEnabled ? 'on' : routingRequested ? 'auto (parent; no worker profiles)' : 'off'} · workers: ${parallel} local / ${sharedLimit} shared maximum · isolation: ${isolate || parallel > 1 ? 'on' : 'off'} · cwd: ${targetDir}`)
   }

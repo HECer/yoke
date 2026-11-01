@@ -1,26 +1,25 @@
 import type { CodeIntelligenceResponse } from './contracts.js'
 import { shorten } from './evidence.js'
 
-export interface ResponseLimits { tokenBudget: number; maxBytes: number }
+export interface ResponseLimits { outputBytes?: number; tokenBudget?: number; maxBytes: number }
 const TRUNCATED = 'BUDGET_EXCEEDED: result truncated; coverage is partial.'
 
-/** The provider/tokenizer is unknown to this facade. Count one budget unit per
- * UTF-8 byte conservatively, including the response's own metrics. This is not
- * provider-measured token usage. JSON-RPC transport framing is outside this
- * structuredContent response and is not included. */
+/** Bytes enforce the transport cap. Tokens use a labelled bytes/4 approximation,
+ * not a tokenizer, provider measurement, safety bound or billing estimate. */
 export function measureResponse<T>(response: CodeIntelligenceResponse<T>): CodeIntelligenceResponse<T> {
   response.metrics.token_count_kind = 'estimated'
-  response.metrics.token_count_method = 'utf8_bytes_conservative'
+  response.metrics.token_count_method = 'utf8_bytes_div4'
   for (let i = 0; i < 10; i++) {
     const bytes = Buffer.byteLength(JSON.stringify(response), 'utf8')
-    if (response.metrics.returned_bytes === bytes && response.metrics.result_tokens === bytes) return response
-    response.metrics.returned_bytes = bytes; response.metrics.result_tokens = bytes
+    const estimate = Math.ceil(bytes / 4)
+    if (response.metrics.returned_bytes === bytes && response.metrics.result_tokens === estimate) return response
+    response.metrics.returned_bytes = bytes; response.metrics.result_tokens = estimate
   }
   return response
 }
 
 export function responseByteLimit(limits: ResponseLimits): number {
-  return Math.max(0, Math.floor(Math.min(limits.tokenBudget, limits.maxBytes)))
+  return Math.max(0, Math.floor(Math.min(limits.outputBytes ?? limits.tokenBudget ?? 9600, limits.maxBytes)))
 }
 
 /** This fixed-size failure is the only exception when a caller's budget cannot
@@ -30,7 +29,7 @@ export function budgetError(response: CodeIntelligenceResponse<unknown>): CodeIn
     schema_version: response.schema_version, request_id: shorten(response.request_id, 64), workspace_id: shorten(response.workspace_id, 128), snapshot_id: shorten(response.snapshot_id, 128),
     status: 'error', data: null,
     coverage: { backends_requested: [], backends_used: [], backends_missing: [], structural: 'unavailable', semantic: 'unavailable', documents: 'unavailable' },
-    provenance: [], warnings: [], metrics: { latency_ms: response.metrics.latency_ms, result_tokens: 0, token_count_kind: 'estimated', returned_bytes: 0 }, artifact_uri: null,
+    provenance: [], warnings: [], metrics: { latency_ms: response.metrics.latency_ms, result_tokens: 0, token_count_kind: 'estimated', returned_bytes: 0 }, artifact_uri: response.artifact_uri, evidence_cursor: response.evidence_cursor ?? null,
     error: { code: 'BUDGET_EXCEEDED', message: 'Budget cannot represent the mandatory response envelope.' },
   })
 }

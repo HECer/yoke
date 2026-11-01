@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-remediation-validation",
+  "measuredAt": "2026-11-01T16:10:49.211323+00:00",
+  "baselineCommit": "a97c5e09aee68c00acede09c92753f56ac754ecb",
+  "branch": "improve/2026-11-audit-remediation",
+  "runtime": {
+    "node": "v24.22.1",
+    "platform": "linux"
+  },
+  "checks": {
+    "typescriptNoEmit": "passed",
+    "typescriptBuild": "passed",
+    "canonValidation": "passed",
+    "releaseMetadata": "passed",
+    "gitDiffWhitespace": "passed",
+    "fullSuite": {
+      "status": "passed",
+      "testFilesPassed": 229,
+      "testFilesSkipped": 1,
+      "testsPassed": 2146,
+      "testsSkipped": 5,
+      "durationSeconds": 137.52
+    },
+    "dependencyAudit": {
+      "status": "passed",
+      "advisories": 0,
+      "report": "dependency-audit-2026-11-01.json"
+    },
+    "package": {
+      "status": "passed",
+      "checks": [
+        "Packed artifact",
+        "Production-only install in temporary directory with lifecycle scripts disabled",
+        "Installed CLI validates its bundled canon"
+      ]
+    },
+    "independentReviewProbes": {
+      "status": "passed",
+      "cases": [
+        "Distinct nested dispatch admission",
+        "Concurrent planning edit preserved",
+        "Forged workspace receipt rejected",
+        "Forged workspace journal rejected",
+        "Linked inbox ancestor rejected",
+        "Committed unreviewed state without host receipt rejected"
+      ]
+    },
+    "portableBenchmarks": {
+      "status": "passed",
+      "scripts": [
+        "bench/dashboard-remediation.mjs",
+        "bench/verification-cache-profile.mjs"
+      ],
+      "note": "Validated against immutable baseline source; original dated measurements remain unchanged."
+    }
+  },
+  "limits": [
+    "This records local validation. Remote platform/runtime CI results belong to the pull request commit.",
+    "All eight provider CLIs were unavailable; no authenticated compatibility or accepted-outcome cost comparison was run.",
+    "Local POSIX cancellation evidence does not establish native Windows process-tree ownership.",
+    "Planning tests establish process-interruption recovery, not full power-loss durability.",
+    "No Rust prototype or full rewrite was compiled or benchmarked."
+  ]
+}

@@ -23,6 +23,7 @@ describe('yoke setup', () => {
     await runSetup(dir, { interactive: false, routingStrategy: 'capability' })
     expect(loadConfig(dir)?.routing?.workers).toEqual([custom])
     expect(loadConfig(dir)?.routing?.optimization).toBeUndefined()
+    expect(loadConfig(dir)?.executionBudget).toBeUndefined()
     await runSetup(dir, { interactive: false, routingPreset: true })
     expect(loadConfig(dir)?.routing?.workers.map(w => w.tier)).toEqual(['light', 'standard', 'strong', 'frontier'])
   })
@@ -47,12 +48,13 @@ describe('yoke setup', () => {
   it('uses suitable host-aware defaults without prompting in non-interactive mode', async () => {
     expect(await runSetup(dir, { host: 'codex', interactive: false })).toBe(0)
     expect(loadConfig(dir)).toMatchObject({
-      agents: ['codex'], codeGraph: 'graphify',
+      agents: ['codex'], codeGraph: 'none', browserTools: false,
+      executionBudget: { id: 'default', maxCalls: 24, maxMinutes: 120, maxPromptBytes: 128000 },
       loop: { enabled: true, decisionPolicy: 'auto', parallel: 'auto', isolate: true },
       routing: { enabled: true, optimization: { version: 1, objective: 'balanced', minSamples: 20 } },
       runner: { agent: 'codex' },
     })
-    expect(loadConfig(dir)?.routing?.workers[0]?.profileMetadata).toEqual({ version: 1, catalog: 'yoke-1.22.0', source: 'yoke-default', basis: 'configured-prior' })
+    expect(loadConfig(dir)?.routing?.workers[0]?.profileMetadata).toEqual({ version: 1, catalog: 'yoke-2026-11', source: 'yoke-default', basis: 'configured-prior' })
   })
 
   it('recovers an old empty agent list with a valid fallback runner', async () => {

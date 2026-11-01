@@ -11,7 +11,7 @@ import { requirementsPacket } from '../prd/requirements.js'
 import { buildProviderInvocation, startProviderProcess } from '../agents/providers.js'
 import { parseProviderResult, parseProviderTelemetry } from '../agents/telemetry.js'
 import { providerTelemetryUsage } from '../observability/usage.js'
-import type { ModelSelection, PermissionProfile } from '../agents/types.js'
+import type { AgentInvocation, ModelSelection, PermissionProfile } from '../agents/types.js'
 import type { ProviderProcessHandle, ProviderProcessOptions } from '../agents/process.js'
 import { formatReviewContract, formatReviewStdoutContract, parseReviewVerdict, type ReviewVerdict } from '../review/verdict.js'
 import { prepareWindowsInvocation, windowsWatchdogArgs } from '../agents/windows-launch.js'
@@ -19,6 +19,7 @@ import { prepareChildEnvironment } from '../agents/child-environment.js'
 import { readSupervision } from '../agents/supervision.js'
 import type { ReviewOutcome } from '../quality/repair.js'
 import { executionFailure, type FailureObservation } from '../observability/failure.js'
+import { budgetedInvocation } from '../execution/budget.js'
 
 export interface AgentContext {
   attempt?: number
@@ -79,7 +80,7 @@ export function buildClaudePrompt(story: Story, context: string, onAmbiguity: Am
     ...(story.writes?.length ? ['', 'Approved write scopes:', ...story.writes.map(path => `- ${path}`), 'Keep shared contract changes within these scopes; preserve other workers\' ownership. Report a scope mismatch rather than changing unrelated files.'] : []),
     ...(story.assessment ? ['Planner approach:', story.assessment.approach] : []),
     '',
-    'Use focused tests during TDD and run the relevant acceptance checks after your changes.',
+    'Use focused behavioral tests for meaningful changes and run the relevant acceptance checks after your changes.',
     'Yoke independently runs the configured independent verification and required gates after you return; do not duplicate that entire sweep merely to finish your message.',
     'Run broader checks yourself when an explicit criterion, a cross-cutting change, or a failure requires them. Never skip or weaken required checks.',
     'Do NOT commit — the loop commits on your behalf after verifying.',
@@ -169,6 +170,7 @@ export interface Invocation {
   input: string
   cwd: string
   env?: NodeJS.ProcessEnv
+  execution?: AgentInvocation['execution']
 }
 
 // Headless agents must run non-interactively: with plain `-p` the CLI denies
@@ -178,7 +180,7 @@ export interface Invocation {
 // implementer actually able to write files and run the verify command.
 // (The loop is opt-in and scoped to the target project dir.)
 export function agentInvocation(agent: Agent, prompt: string, cwd: string, permissions: PermissionProfile = 'safe', selection: ModelSelection = {}): Invocation {
-  return buildProviderInvocation(agent, prompt, cwd, permissions, selection)
+  return { ...buildProviderInvocation(agent, prompt, cwd, permissions, selection), execution: { root: cwd, role: 'implementation', provider: agent } }
 }
 
 export function claudeInvocation(prompt: string, cwd: string): Invocation {
@@ -199,7 +201,7 @@ export function claudeStreamJsonInvocation(prompt: string, cwd: string): Invocat
 // which doubles as liveness. Token usage rides along for free. Other agents
 // keep their plain invocation (no machine-readable stream to gain).
 export function runnerInvocation(agent: Agent, prompt: string, cwd: string, _tokenReport = false, permissions: PermissionProfile = 'safe', selection: ModelSelection = {}): Invocation {
-  return buildProviderInvocation(agent, prompt, cwd, permissions, selection)
+  return agentInvocation(agent, prompt, cwd, permissions, selection)
 }
 
 // Parse claude stream-json output into cumulative token usage. Defensive by design:
@@ -261,11 +263,14 @@ function failureEvidence(error: unknown, tokens?: TokenUsage): { failure: Failur
 // killing by process-name/command-line pattern takes down other projects'
 // runners too. (Plain repos, e.g. `yoke review` outside a yoke project, get
 // no pid file rather than a littered .yoke dir.)
-export function buildWatchdogInvocation(inv: Invocation, idleTimeoutMs: number, ownershipRoot: string = inv.cwd, force = false): Invocation {
+export function buildWatchdogInvocation(inv: Invocation, idleTimeoutMs: number, ownershipRoot: string = inv.execution?.root ?? inv.cwd, force = false): Invocation {
+  if (idleTimeoutMs <= 0 && !force && ownershipRoot === (inv.execution?.root ?? inv.cwd)) return inv
+  inv = { ...inv, execution: { ...inv.execution, root: ownershipRoot, role: inv.execution?.role ?? 'agent' } }
   if (idleTimeoutMs <= 0 && !force) return inv
   const yokeDir = join(ownershipRoot, '.yoke')
   const pidArgs = existsSync(yokeDir) ? [`--pid-file=${join(yokeDir, 'runner.pid')}`] : []
   return {
+    ...inv,
     command: 'node',
     args: [...windowsWatchdogArgs(), `--idle-ms=${idleTimeoutMs}`, ...pidArgs, '--', inv.command, ...inv.args],
     input: inv.input,
@@ -289,6 +294,7 @@ export function win32CommandString(command: string, args: string[]): string {
 }
 
 function runCli(inv: Invocation): void {
+  return budgetedInvocation(inv.execution?.provider ?? inv.command as Agent, inv, () => {
     const launch = prepareInvocation(inv)
     execFileSync(launch.command, launch.args, {
       cwd: launch.cwd,
@@ -297,6 +303,7 @@ function runCli(inv: Invocation): void {
       env: launch.env,
       windowsHide: true,
     })
+  }, undefined, true)
 }
 
 // Like runCli, but with stdout PIPED and returned (stderr stays inherited) — for
@@ -304,9 +311,12 @@ function runCli(inv: Invocation): void {
 // The watchdog wrapper forwards the child's stdout to its own, so piping still works
 // through it. Throws on a non-zero exit; the error carries the partial stdout.
 function runCliCapture(inv: Invocation): string {
+  const provider = inv.execution?.provider ?? inv.command as Agent
+  return budgetedInvocation(provider, inv, () => {
   const launch = prepareInvocation(inv)
   const opts = { cwd: launch.cwd, input: inv.input, stdio: ['pipe', 'pipe', 'inherit'] as ['pipe', 'pipe', 'inherit'], encoding: 'utf8' as const, maxBuffer: 64 * 1024 * 1024 }
   return execFileSync(launch.command, launch.args, { ...opts, env: launch.env, windowsHide: true })
+  }, output => providerTelemetryUsage(parseProviderTelemetry(provider, output.split(/\r?\n/u)), provider), true)
 }
 
 // Reviews have a machine-readable result file, so their console stream is not
@@ -315,6 +325,7 @@ function runCliCapture(inv: Invocation): string {
 // reducing every failure to Node's generic "Command failed" message. The inner
 // watchdog still observes child output live and enforces the idle timeout.
 function runReviewCli(inv: Invocation): void {
+  return budgetedInvocation(inv.execution?.provider ?? inv.command as Agent, inv, () => {
   const launch = prepareInvocation(inv)
   const opts = {
     cwd: launch.cwd,
@@ -324,6 +335,7 @@ function runReviewCli(inv: Invocation): void {
     maxBuffer: 64 * 1024 * 1024,
   }
   execFileSync(launch.command, launch.args, { ...opts, env: launch.env, windowsHide: true })
+  }, undefined, true)
 }
 
 function processFailureSummary(error: unknown): string {
@@ -346,9 +358,12 @@ export interface CapturedAgentRun {
 
 /** Run a provider invocation with stdout captured for structured control-plane calls. */
 export function runCapturedAgent(agent: Agent, inv: Invocation): CapturedAgentRun {
+  inv = { ...inv, execution: { ...inv.execution, root: inv.execution?.root ?? inv.cwd, role: inv.execution?.role ?? 'agent', provider: agent } }
   try {
-    const output = runCliCapture(inv)
-    return { success: true, output, summary: 'exited 0', tokens: providerTelemetryUsage(parseProviderTelemetry(agent, output.split(/\r?\n/)), agent) }
+    return budgetedInvocation(agent, inv, admitted => {
+      const output = runCliCapture(admitted)
+      return { success: true, output, summary: 'exited 0', tokens: providerTelemetryUsage(parseProviderTelemetry(agent, output.split(/\r?\n/)), agent) }
+    })
   } catch (error) {
     const partial = (error as { stdout?: unknown }).stdout
     const output = partial == null ? '' : String(partial)
@@ -382,8 +397,7 @@ function probeVersion(command: string): boolean {
 // Mirrors makeRunner's try/catch: success=true when the CLI exits 0, false when it throws.
 export function runAgent(inv: Invocation): AgentResult {
   try {
-    runCli(inv)
-    return { success: true, summary: 'exited 0' }
+    return budgetedInvocation(inv.execution?.provider ?? inv.command as Agent, inv, admitted => { runCli(admitted); return { success: true, summary: 'exited 0' } })
   } catch (e) {
     return { success: false, summary: (e as Error).message, ...failureEvidence(e) }
   }
@@ -392,14 +406,14 @@ export function runAgent(inv: Invocation): AgentResult {
 /** Run a reviewer while retaining bounded stderr diagnostics on failure. */
 export function runReviewAgent(inv: Invocation): AgentResult {
   try {
-    runReviewCli(inv)
-    return { success: true, summary: 'exited 0' }
+    return budgetedInvocation(inv.execution?.provider ?? inv.command as Agent, inv, admitted => { runReviewCli(admitted); return { success: true, summary: 'exited 0' } })
   } catch (error) {
     return { success: false, summary: processFailureSummary(error), ...failureEvidence(error) }
   }
 }
 
 export interface RunnerOpts {
+  ownershipRoot?: string
   onStart?: (agent: Agent, selection: ModelSelection) => void
   /** Run claude in stream-json mode and report cumulative token usage on the AgentResult. */
   tokenReport?: boolean
@@ -419,6 +433,7 @@ export interface RunnerOpts {
 export type AsyncAgentRunner = (ctx: AgentContext) => ProviderProcessHandle
 
 export interface AsyncRunnerOpts {
+  readonly ownershipRoot?: string
   readonly onAmbiguity?: AmbiguityPolicy
   readonly perfCommand?: string
   readonly permissions?: PermissionProfile
@@ -429,14 +444,14 @@ export interface AsyncRunnerOpts {
 export function makeAsyncRunner(agent: Agent, opts: AsyncRunnerOpts = {}): AsyncAgentRunner {
   return (ctx: AgentContext): ProviderProcessHandle => startProviderProcess(
     agent,
-    runnerInvocation(
+    { ...runnerInvocation(
       agent,
       buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story) + (ctx.feedback ? "\nPrior independent failure; preserve useful existing changes and fix the root cause:\n" + feedbackPacket(ctx.feedback) : ""), opts.onAmbiguity, opts.perfCommand),
       ctx.targetDir,
       true,
       opts.permissions ?? 'safe',
       opts.selection,
-    ),
+    ), execution: { root: opts.ownershipRoot ?? ctx.targetDir, role: 'implementation', provider: agent, storyId: ctx.story.id } },
     { ...opts.process, attempt: ctx.attempt },
   )
 }
@@ -451,9 +466,10 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
     const started = Date.now()
     const attributed = (tokens: TokenUsage | undefined): TokenUsage | undefined => tokens ? { ...tokens, provider: agent, role: 'parent', storyId: ctx.story.id, durationMs: Date.now() - started } : undefined
     const base = runnerInvocation(agent, buildClaudePrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story) + (ctx.feedback ? "\nPrior independent failure; preserve useful existing changes and fix the root cause:\n" + feedbackPacket(ctx.feedback) : ""), opts.onAmbiguity, opts.perfCommand), ctx.targetDir, captureTokens, opts.permissions ?? 'safe', opts.selection)
+    base.execution = { root: opts.ownershipRoot ?? ctx.targetDir, role: 'implementation', provider: agent, storyId: ctx.story.id }
     let inv: Invocation
     try {
-      inv = buildWatchdogInvocation(prepareInvocation(base, captureTokens ? !opts.execCapture : !opts.exec), idleTimeoutMs, ctx.targetDir, true)
+      inv = buildWatchdogInvocation(prepareInvocation(base, captureTokens ? !opts.execCapture : !opts.exec), idleTimeoutMs, opts.ownershipRoot ?? ctx.targetDir, true)
       if (ctx.attempt) inv.args.splice(inv.args.indexOf('--'), 0, `--attempt=${ctx.attempt}`)
     } catch (error) {
       const evidence = failureEvidence(error)
@@ -462,9 +478,11 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
     if (captureTokens) {
       const capture = opts.execCapture ?? runCliCapture
       try {
-        const out = capture(inv)
-        const telemetry = parseProviderTelemetry(agent, out.split(/\r?\n/))
-        return { success: true, summary: `${agent} implemented ${ctx.story.id}`, tokens: attributed(providerTelemetryUsage(telemetry, agent)) }
+        const result = budgetedInvocation(agent, inv, admitted => {
+          const out = capture(admitted)
+          return { success: true, tokens: providerTelemetryUsage(parseProviderTelemetry(agent, out.split(/\r?\n/)), agent) }
+        })
+        return { success: true, summary: `${agent} implemented ${ctx.story.id}`, tokens: attributed(result.tokens) }
       } catch (e) {
         // Salvage usage from whatever the agent streamed before dying — those tokens were spent.
         const partial = (e as { stdout?: unknown }).stdout
@@ -477,7 +495,7 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
     try {
       // NOTE: the loop trusts the agent's exit code as a proxy for "it ran".
       // Independent verification happens in the loop (Baustein C2), not here.
-      ;(opts.exec ?? runCli)(inv)
+      budgetedInvocation(agent, inv, opts.exec ?? runCli)
       return { success: true, summary: `${agent} implemented ${ctx.story.id}` }
     } catch (e) {
       const evidence = failureEvidence(e)
@@ -488,10 +506,11 @@ export function makeRunner(agent: Agent, idleTimeoutMs = 0, opts: RunnerOpts = {
 
 export const claudeRunner: AgentRunner = makeRunner('claude')
 
-export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: Invocation) => void | CapturedAgentRun, selection: ModelSelection = {}): AgentRunner {
+export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: Invocation) => void | CapturedAgentRun, selection: ModelSelection = {}, ownershipRoot?: string): AgentRunner {
   return (ctx: AgentContext): AgentResult => {
     const before = repositoryFingerprint(ctx.targetDir)
     const base = agentInvocation(agent, buildReviewPrompt(ctx.story, contextBlockFor(ctx.targetDir, ctx.story), undefined, agent), ctx.targetDir, 'read-only', { ...selection, nativeMultiAgent: false })
+    base.execution = { root: ownershipRoot ?? ctx.targetDir, role: 'review', provider: agent, storyId: ctx.story.id }
     let processFailure: string | undefined
     let failure: FailureObservation | undefined
     let actualModel: string | undefined
@@ -499,7 +518,7 @@ export function makeReviewRunner(agent: Agent, idleTimeoutMs = 0, exec?: (inv: I
     let output = ''
     try {
       const inv = buildWatchdogInvocation(prepareInvocation(base, !exec), idleTimeoutMs)
-      const result = exec?.(inv) ?? runCapturedAgent(agent, inv)
+      const result = budgetedInvocation(agent, inv, admitted => exec?.(admitted) ?? runCapturedAgent(agent, admitted))
       if (!result.success) processFailure = result.summary
       failure = result.failure
       actualModel = result.tokens?.model

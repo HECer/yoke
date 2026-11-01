@@ -3,25 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { CodeIntelligenceCoordinator } from '../../src/code-intelligence/coordinator.js'
-import { approveEditPlan } from '../../src/code-intelligence/edit-plans.js'
 import { createSnapshot } from '../../src/code-intelligence/snapshots.js'
 import type { BackendAdapter } from '../../src/code-intelligence/adapters/types.js'
-
-// Preview constructs a separate sandbox adapter: mocking only options.adapters
-// leaves that path launching a real external Serena process in a unit test.
-vi.mock('../../src/code-intelligence/adapters/index.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../src/code-intelligence/adapters/index.js')>()
-  return { ...actual, createSerenaAdapter: (sandbox: string): BackendAdapter => ({
-    name: 'serena-lsp', version: 'test', semantic: true, documents: false,
-    async call(request) {
-      expect(request.tool).toBe('rename')
-      const path = join(sandbox, 'src/index.ts')
-      writeFileSync(path, readFileSync(path, 'utf8').replace('answer', String(request.arguments.new_name)))
-      return 'ok'
-    },
-    async close() {},
-  }) }
-})
 
 function root(): string { const value = mkdtempSync(join(tmpdir(), 'yoke-ci-coordinator-')); mkdirSync(join(value, 'src')); writeFileSync(join(value, 'src', 'index.ts'), 'export function answer() { return 42 }\n'); return value }
 function adapter(name: 'graft' | 'graphify' | 'serena-lsp', result: unknown, calls: string[], failure = false): BackendAdapter {
@@ -63,17 +46,16 @@ describe('code intelligence coordinator', () => {
     const response = await ci.dispatch('code_context', { workspace_id: ci.workspace_id, query: 'answer' }); expect(response.status).toBe('partial'); expect(response.coverage.backends_missing).toContain('graft'); expect(response.warnings[0]).toContain('unavailable'); await ci.close()
   })
 
-  it('requires active mode and Yoke approval before an isolated apply', async () => {
-    const calls: string[] = []; const project = root(); const snapshot = createSnapshot(project); const ci = new CodeIntelligenceCoordinator(project, { mode: 'active', adapters: { 'serena-lsp': adapter('serena-lsp', 'ok', calls) } })
-    const preview = await ci.dispatch('code_edit_preview', { workspace_id: ci.workspace_id, snapshot_id: snapshot.snapshot_id, validation_profile: 'default', operations: [{ kind: 'rename', symbol_id: 'answer', new_name: 'result' }] })
-    expect(['success', 'partial']).toContain(preview.status); const planId = (preview.data as any).plan_id as string
-    expect(preview.status).toBe('success')
-    expect((preview.data as any).changed_paths).toEqual(['src/index.ts'])
+  it.each(['shadow', 'active'] as const)('does not expose or execute edits in %s mode', async mode => {
+    const calls: string[] = []; const project = root(); const ci = new CodeIntelligenceCoordinator(project, { mode, adapters: { 'serena-lsp': adapter('serena-lsp', 'ok', calls) } })
+    for (const tool of ['code_edit_preview', 'code_edit_apply']) {
+      const response = await ci.dispatch(tool, { workspace_id: ci.workspace_id })
+      expect(response.status).toBe('blocked')
+      expect(response.error?.code).toBe('CAPABILITY_UNAVAILABLE')
+      expect(response.error?.message).toContain('unavailable')
+    }
+    expect(calls).toEqual([])
     expect(readFileSync(join(project, 'src/index.ts'), 'utf8')).toContain('function answer')
-    const denied = await ci.dispatch('code_edit_apply', { workspace_id: ci.workspace_id, plan_id: planId, expected_snapshot_id: snapshot.snapshot_id, idempotency_key: 'idempotency-123' }); expect(denied.status).toBe('blocked'); expect(denied.error?.code).toBe('APPROVAL_REQUIRED')
-    approveEditPlan(project, planId); const applied = await ci.dispatch('code_edit_apply', { workspace_id: ci.workspace_id, plan_id: planId, expected_snapshot_id: snapshot.snapshot_id, idempotency_key: 'idempotency-123' }); expect(applied.status).toBe('success'); expect((applied.data as any).committed).toBe(false); expect((applied.data as any).merged).toBe(false); await ci.close()
-    expect(readFileSync(join(project, 'src/index.ts'), 'utf8')).toContain('function answer')
-    const transaction = (applied.data as any).transaction_id as string
-    expect(readFileSync(join(project, '.yoke/code-intelligence/worktrees', transaction, 'src/index.ts'), 'utf8')).toContain('function result')
+    await ci.close()
   })
 })
